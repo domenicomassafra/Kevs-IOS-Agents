@@ -1318,6 +1318,41 @@ elements.passcodeClear.addEventListener('click', () => {
     void patchPasscode('', 'Clearing…', 'Passcode cleared.');
 });
 
+document.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement | null)?.closest?.('[data-rename-device]') as HTMLButtonElement | null;
+    if (!button) return;
+    event.preventDefault();
+    const current = button.getAttribute('data-device-name') ?? '';
+    const next = window.prompt('Rename this phone for the farm grid', current);
+    if (next === null) return;
+    const name = next.trim();
+    if (!name) {
+        window.alert('Name cannot be empty');
+        return;
+    }
+    button.disabled = true;
+    void (async () => {
+        try {
+            await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            document.title = `${name} · IOS AGENTS`;
+            const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/summary`);
+            if (!response.ok) throw new Error(`Could not refresh device header (${response.status})`);
+            const html = await response.text();
+            const summary = document.querySelector('#device-summary');
+            if (summary) summary.outerHTML = html;
+            const refreshed = document.querySelector<HTMLElement>('#device-summary[data-screen-width]');
+            if (refreshed) useDeviceSummary(refreshed);
+        } catch (error) {
+            button.disabled = false;
+            window.alert(errorMessage(error));
+        }
+    })();
+});
+
 elements.removeDevice.addEventListener('click', async () => {
     elements.removeDevice.disabled = true;
     elements.removeResult.textContent = 'Removing…';

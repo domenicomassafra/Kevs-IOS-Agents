@@ -69,6 +69,14 @@ function csrfBlocked(reply: FastifyReply): FastifyReply {
     });
 }
 
+/** Farm-facing label stored in devices.json — independent of the iOS device name. */
+function normalizeDeviceName(value: unknown): string {
+    if (typeof value !== 'string') throw httpError(400, 'Device name must be a string');
+    const name = value.trim().slice(0, 100);
+    if (!name) throw httpError(400, 'Device name cannot be empty');
+    return name;
+}
+
 function escapeHtml(value: unknown): string {
     return String(value ?? '').replace(/[&<>"']/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -361,7 +369,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const updated = await mutateRegisteredDevices((devices) => {
                 const device = devices.find((entry) => entry.udid === request.params.udid);
                 if (!device) throw httpError(404, 'Device not found');
-                if (name !== undefined) device.name = name;
+                if (name !== undefined) device.name = normalizeDeviceName(name);
                 if (wdaLocalPort !== undefined) device.wdaLocalPort = wdaLocalPort;
                 if (mjpegLocalPort !== undefined) device.mjpegLocalPort = mjpegLocalPort;
                 if (coordinateProfile !== undefined) device.coordinateProfile = coordinateProfile as RegisteredDevice['coordinateProfile'];
@@ -657,6 +665,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const disabled = devices.filter((device) => device.disabled);
             const toggleButton = (udid: string, label: string, next: boolean) =>
                 `<button type="button" class="button secondary device-toggle" data-toggle-device="${encodeURIComponent(udid)}" data-disabled="${next}">${label}</button>`;
+            const renameButton = (udid: string, currentName: string) =>
+                `<button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(udid)}" data-device-name="${escapeHtml(currentName)}">Rename</button>`;
             const cards = active.map((device) => {
                 const accounts = Object.values(device.pluginData).flatMap((value) => {
                     const candidate = value.accounts;
@@ -668,19 +678,28 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 const preview = device.connected
                     ? `<div class="device-preview-frame"><img class="device-preview" src="/api/devices/${encodeURIComponent(device.udid)}/remote/screenshot?t=${Date.now()}" alt="Screen of ${escapeHtml(device.name)}" draggable="false" onerror="this.style.visibility='hidden'"></div>`
                     : '<div class="device-preview-frame unavailable" aria-hidden="true"><div class="device-icon"></div></div>';
-                return `<article class="device-card">${preview}<div class="device-copy"><h2>${escapeHtml(device.name)}</h2><p>${device.connected ? `iOS ${escapeHtml(device.connected.osVersion)}` : escapeHtml(device.udid)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
+                return `<article class="device-card">${preview}<div class="device-copy"><h2>${escapeHtml(device.name)}</h2><p>${device.connected ? `iOS ${escapeHtml(device.connected.osVersion)}` : escapeHtml(device.udid)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${renameButton(device.udid, device.name)}${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
             }).join('');
             const disabledPanel = disabled.length
-                ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span>${escapeHtml(device.name)}</span>${toggleButton(device.udid, 'Reconnect', false)}</li>`).join('')}</ul></details>`
+                ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span>${escapeHtml(device.name)}</span><span class="inline-actions">${renameButton(device.udid, device.name)}${toggleButton(device.udid, 'Reconnect', false)}</span></li>`).join('')}</ul></details>`
                 : '';
-            const toggleScript = `<script>if(!window.__deviceToggle){window.__deviceToggle=1;document.addEventListener('click',async function(e){var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
-            return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${toggleScript}</section>`);
+            const deviceListScript = `<script>if(!window.__deviceListActions){window.__deviceListActions=1;document.addEventListener('click',async function(e){var rename=e.target.closest('[data-rename-device]');if(rename){e.preventDefault();var current=rename.getAttribute('data-device-name')||'';var next=window.prompt('Rename this phone for the farm grid',current);if(next===null)return;next=next.trim();if(!next){alert('Name cannot be empty');return}rename.disabled=true;var rr=await fetch('/api/devices/'+rename.dataset.renameDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name:next})});if(rr.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{rename.disabled=false;alert(((await rr.json().catch(function(){return{}}))||{}).error||'Rename failed')}return}var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
+            return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${deviceListScript}</section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/summary', async (request, reply) => {
-            const device = (await discoverConnectedDevices()).find(({ udid }) => udid === request.params.udid);
-            if (!device) return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
-            const screen = await remote.getScreenInfo(device.udid);
-            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected device</span><h1>${escapeHtml(device.name)}</h1><p>iOS ${escapeHtml(device.osVersion)} · ${screen.screenSize.width} × ${screen.screenSize.height} points · ${screen.scale}×</p></div><code>${escapeHtml(device.udid)}</code></section>`);
+            const [registered, connected] = await Promise.all([
+                loadRegisteredDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
+                discoverConnectedDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
+            ]);
+            if (!connected) {
+                if (!registered) {
+                    return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
+                }
+                return reply.type('text/html').send(`<section id="device-summary" class="device-summary"><div><span class="eyebrow">Registered device</span><div class="device-title-row"><h1>${escapeHtml(registered.name)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(registered.udid)}" data-device-name="${escapeHtml(registered.name)}">Rename</button></div><p>Offline · reconnect USB to control this phone</p></div><code>${escapeHtml(registered.udid)}</code></section>`);
+            }
+            const displayName = registered?.name ?? connected.name;
+            const screen = await remote.getScreenInfo(connected.udid);
+            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected device</span><div class="device-title-row"><h1>${escapeHtml(displayName)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(connected.udid)}" data-device-name="${escapeHtml(displayName)}">Rename</button></div><p>iOS ${escapeHtml(connected.osVersion)} · ${screen.screenSize.width} × ${screen.screenSize.height} points · ${screen.scale}×</p></div><code>${escapeHtml(connected.udid)}</code></section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/activity', async (request, reply) => {
             return reply.type('text/html').send(await renderActivity(request.params.udid));
