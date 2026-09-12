@@ -70,5 +70,27 @@ export const assets = schedulerSchema.table('assets', {
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 }, (table) => [index('assets_schedule_idx').on(table.scheduleId), index('assets_execution_idx').on(table.executionId)]);
 
+export const pipelineItemStatus = schedulerSchema.enum('pipeline_item_status', [
+    'ready', 'publishing', 'published', 'failed', 'cancelled',
+]);
+
+/** Ready-to-post inbox: video + caption, drained at fixed EST check times. */
+export const pipelineItems = schedulerSchema.table('pipeline_items', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    deviceUdid: text('device_udid').notNull(),
+    status: pipelineItemStatus('status').notNull().default('ready'),
+    caption: text('caption'),
+    assetId: uuid('asset_id').references(() => assets.id, { onDelete: 'restrict' }),
+    executionId: uuid('execution_id').references(() => executions.id, { onDelete: 'set null' }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
+}, (table) => [
+    index('pipeline_items_device_status_idx').on(table.deviceUdid, table.status, table.createdAt),
+    index('pipeline_items_asset_idx').on(table.assetId),
+]);
+
 export type ScheduleRow = typeof schedules.$inferSelect;
 export type ExecutionRow = typeof executions.$inferSelect;
+export type PipelineItemRow = typeof pipelineItems.$inferSelect;

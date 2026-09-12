@@ -44,10 +44,12 @@ interface LoadedDashboardTheme {
     indexHtml: string;
     deviceHtml: string;
     tasksHtml: string;
+    automationsHtml: string;
     devicesDemoHtml: string;
     styles: string;
     deviceScript: string;
     tasksScript: string;
+    automationsScript: string;
     registerDeviceHtml: string;
     registerDeviceScript: string;
     htmx: string;
@@ -133,7 +135,7 @@ function page(title: string, body: string, logoutPath?: string, navLinks: readon
     return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title><style>
 :root{color-scheme:dark}body{font:15px Outfit,system-ui,sans-serif;margin:0;background:#000;color:#f7f7f8}nav{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:14px 24px;background:#0c0c0e;border-bottom:1px solid rgb(255 255 255 / 10%)}nav a{color:#f7f7f8;text-decoration:none;font-weight:650}main{max-width:1100px;margin:24px auto;padding:0 20px}.card{background:#0c0c0e;border:1px solid rgb(255 255 255 / 10%);border-radius:14px;padding:18px;margin:14px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid rgb(255 255 255 / 8%)}code{font-size:12px}.muted{color:#8a8a93}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}button,.button{background:linear-gradient(105deg,#ff4b2b,#ff416c);color:white;border:0;border-radius:999px;padding:8px 14px;text-decoration:none;cursor:pointer;font-weight:700}input,select,textarea{padding:8px;border:1px solid rgb(255 255 255 / 14%);border-radius:10px;background:#070708;color:#f7f7f8}</style></head>
-<body><nav><a href="/">Devices</a><a href="/tasks">Tasks</a><a href="/docs">API</a>${extra}${logout}</nav><main>${body}</main><footer style="max-width:1100px;margin:24px auto;padding:16px 20px;color:#5c5c66;font-size:12px">${FOOTER_HTML}</footer></body></html>`;
+<body><nav><a href="/">Devices</a><a href="/automations">Automations</a><a href="/tasks">Tasks</a><a href="/docs">API</a>${extra}${logout}</nav><main>${body}</main><footer style="max-width:1100px;margin:24px auto;padding:16px 20px;color:#5c5c66;font-size:12px">${FOOTER_HTML}</footer></body></html>`;
 }
 
 async function registeredWithStatus() {
@@ -214,15 +216,17 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     if (options.dashboardTheme) {
         const root = options.dashboardTheme.rootDirectory;
         const require = createRequire(import.meta.url);
-        const [indexHtml, deviceHtml, tasksHtml, registerDeviceHtml, devicesDemoHtml, styles, deviceScript, tasksScript, registerDeviceScript, htmx] = await Promise.all([
+        const [indexHtml, deviceHtml, tasksHtml, automationsHtml, registerDeviceHtml, devicesDemoHtml, styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, htmx] = await Promise.all([
             readFile(path.join(root, 'templates/index.html'), 'utf8'),
             readFile(path.join(root, 'templates/device.html'), 'utf8'),
             readFile(path.join(root, 'templates/tasks.html'), 'utf8'),
+            readFile(path.join(root, 'templates/automations.html'), 'utf8'),
             readFile(path.join(root, 'templates/register-device.html'), 'utf8'),
             readFile(path.join(root, 'templates/devices-demo.html'), 'utf8'),
             readFile(path.join(root, 'styles.css'), 'utf8'),
             readFile(path.join(root, 'assets/device.js'), 'utf8'),
             readFile(path.join(root, 'assets/tasks.js'), 'utf8'),
+            readFile(path.join(root, 'assets/automations.js'), 'utf8'),
             readFile(path.join(root, 'assets/register-device.js'), 'utf8'),
             readFile(require.resolve('htmx.org/dist/htmx.min.js'), 'utf8'),
         ]);
@@ -230,7 +234,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         // fresh URL that no browser or CDN can serve stale.
         const versions: Record<string, string> = {
             'styles.css': assetHash(styles), 'device.js': assetHash(deviceScript),
-            'tasks.js': assetHash(tasksScript), 'register-device.js': assetHash(registerDeviceScript),
+            'tasks.js': assetHash(tasksScript), 'automations.js': assetHash(automationsScript),
+            'register-device.js': assetHash(registerDeviceScript),
             'htmx.min.js': assetHash(htmx),
         };
         const finalize = (html: string) => {
@@ -241,9 +246,10 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         };
         themed = {
             indexHtml: finalize(indexHtml), deviceHtml: finalize(deviceHtml),
-            tasksHtml: finalize(tasksHtml), registerDeviceHtml: finalize(registerDeviceHtml),
+            tasksHtml: finalize(tasksHtml), automationsHtml: finalize(automationsHtml),
+            registerDeviceHtml: finalize(registerDeviceHtml),
             devicesDemoHtml: finalize(devicesDemoHtml),
-            styles, deviceScript, tasksScript, registerDeviceScript, htmx,
+            styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, htmx,
         };
     }
 
@@ -657,6 +663,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         app.get('/assets/styles.css', asset('text/css', theme.styles));
         app.get('/assets/device.js', asset('text/javascript', theme.deviceScript));
         app.get('/assets/tasks.js', asset('text/javascript', theme.tasksScript));
+        app.get('/assets/automations.js', asset('text/javascript', theme.automationsScript));
         app.get('/assets/register-device.js', asset('text/javascript', theme.registerDeviceScript));
         app.get('/assets/htmx.min.js', asset('text/javascript', theme.htmx));
         app.get('/api/fragments/devices', async (_request, reply) => {
@@ -753,6 +760,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     });
     app.get('/tasks', async (_request, reply) => reply.type('text/html').send(
         themed?.tasksHtml ?? renderPage('Tasks', '<h1>Tasks</h1><p>The JSON API exposes schedules and execution history. Installed plugins add task forms to each device page.</p>'),
+    ));
+    app.get('/automations', async (_request, reply) => reply.type('text/html').send(
+        themed?.automationsHtml ?? renderPage('Automations', '<h1>Automations</h1><p>Pre-made templates are available when the dashboard theme is enabled.</p>'),
     ));
     app.get('/docs', async (_request, reply) => reply.type('text/html').send(renderPage('API', '<h1>API</h1><p>Use <code>/api/plugins</code>, <code>/api/devices</code>, <code>/api/schedules</code>, and <code>/api/executions</code>. This route follows the configured authentication policy.</p>')));
 

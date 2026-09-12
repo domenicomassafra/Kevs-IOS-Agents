@@ -77,8 +77,8 @@ function isCameraOrUtilityCell(label: string, name: string): boolean {
 const DURATION_RE = /\b(\d{1,2}:\d{2})\b/;
 
 async function readCellDuration(element: {
-    getAttribute(name: string): Promise<string>;
-    $$?(selector: string): Promise<Array<{ getAttribute(name: string): Promise<string> }>>;
+    getAttribute(name: string): Promise<string | null>;
+    $$?: (selector: string) => any;
 }): Promise<string | undefined> {
     for (const attr of ['label', 'name', 'value'] as const) {
         const raw = await element.getAttribute(attr).catch(() => '');

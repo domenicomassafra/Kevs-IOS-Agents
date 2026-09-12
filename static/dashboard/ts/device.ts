@@ -873,7 +873,8 @@ function renderMedia(): void {
 
 
 function selectedDestination(): 'draft' | 'publish' {
-    return (elements.postForm.elements.namedItem('destination') as RadioNodeList).value as 'draft' | 'publish';
+    // Publish-only for now — scheduling is via Start / Recurring, not Drafts.
+    return 'publish';
 }
 
 
@@ -895,10 +896,8 @@ function postTiming(): Record<string, unknown> {
 
 
 function updateDestination(): void {
-    const publishing = selectedDestination() === 'publish';
-    elements.publishConfirm.classList.toggle('visible', publishing);
-    if (!publishing) elements.confirmPublish.checked = false;
-    elements.submitPost.textContent = publishing ? 'Post publicly' : 'Save to Drafts';
+    elements.publishConfirm.classList.add('visible');
+    elements.submitPost.textContent = 'Publish';
 }
 
 
@@ -914,7 +913,7 @@ async function pollPost(): Promise<void> {
         } else {
             elements.submitPost.disabled = false;
             elements.postResult.textContent = run.status === 'succeeded'
-                ? `Completed: ${run.destination === 'publish' ? 'post submitted' : 'draft saved'}.`
+                ? 'Completed: post published.'
                 : 'Automation failed. Review the Automation log and the phone screen.';
         }
     } catch (error) {
@@ -962,8 +961,7 @@ function taskTitle(taskType: DeviceSchedule['taskType'], payload?: DeviceSchedul
         const details = payload?.durationMinutes ? ` · ${payload.durationMinutes} min` : '';
         return `${app} ${label}${details}`;
     }
-    const destination = payload?.destination === 'publish' ? 'Post publicly' : 'Save to drafts';
-    return payload?.account ? `${app} · ${destination} · ${payload.account}` : `${app} · ${destination}`;
+    return payload?.account ? `${app} · publish · ${payload.account}` : `${app} · publish`;
 }
 
 function timingDescription(timing: DeviceSchedule['timing']): string {

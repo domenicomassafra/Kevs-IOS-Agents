@@ -71,6 +71,113 @@ type PostPayload = JsonObject & {
     recurringPublishConfirmed?: boolean;
 };
 
+/** 12 / 3 / 6 / 9 PM America/New_York — drain one ready pipeline item each tick. */
+const PIPELINE_CHECK_TIMES = ['12:00', '15:00', '18:00', '21:00'] as const;
+const PIPELINE_TIMEZONE = 'America/New_York';
+const PIPELINE_FREQUENCIES = ['production', '60', '15', '5', '1'] as const;
+type PipelineFrequency = (typeof PIPELINE_FREQUENCIES)[number];
+
+type PostPipelinePluginData = {
+    enabled?: boolean;
+    scheduleIds?: string[];
+    frequency?: PipelineFrequency;
+};
+
+function parsePipelineFrequency(value: unknown): PipelineFrequency {
+    if (typeof value === 'string' && (PIPELINE_FREQUENCIES as readonly string[]).includes(value)) {
+        return value as PipelineFrequency;
+    }
+    return 'production';
+}
+
+function pipelineFrequencyLabel(frequency: PipelineFrequency): string {
+    if (frequency === 'production') return '12 / 3 / 6 / 9 PM Eastern';
+    if (frequency === '60') return 'every hour';
+    if (frequency === '15') return 'every 15 minutes';
+    if (frequency === '5') return 'every 5 minutes';
+    return 'every minute';
+}
+
+function pipelineCheckSummary(frequency: PipelineFrequency): Array<{ localTime?: string; timezone?: string; everyMinutes?: number; label: string }> {
+    if (frequency === 'production') {
+        return PIPELINE_CHECK_TIMES.map((localTime) => ({
+            localTime, timezone: PIPELINE_TIMEZONE, label: `${localTime} ${PIPELINE_TIMEZONE}`,
+        }));
+    }
+    const everyMinutes = Number(frequency);
+    return [{ everyMinutes, label: pipelineFrequencyLabel(frequency) }];
+}
+
+function postPipelineFromPluginData(data: JsonObject): PostPipelinePluginData {
+    const raw = data.postPipeline;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const obj = raw as Record<string, unknown>;
+    return {
+        enabled: obj.enabled === true,
+        scheduleIds: Array.isArray(obj.scheduleIds)
+            ? obj.scheduleIds.filter((id): id is string => typeof id === 'string')
+            : [],
+        frequency: parsePipelineFrequency(obj.frequency),
+    };
+}
+
+function withPostPipeline(data: JsonObject, pipeline: PostPipelinePluginData): JsonObject {
+    return { ...data, postPipeline: pipeline as unknown as JsonObject };
+}
+
+async function hashFile(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha256');
+        createReadStream(filePath).on('data', (chunk) => hash.update(chunk)).once('error', reject).once('end', () => resolve(hash.digest('hex')));
+    });
+}
+
+function createPipelineDrainTask(configuration: TikTokPluginConfiguration): TaskDefinition {
+    return {
+        type: 'pipeline-drain', version: 1, displayName: 'TikTok post pipeline',
+        validate() {
+            return {};
+        },
+        summarize: () => 'Post pipeline · check & publish',
+        estimateDurationMs: () => 60_000,
+        retryPolicy: () => ({ retryLimit: 0, retryDelaySeconds: 0, retryBackoff: false }),
+        supportsStop: () => true,
+        async execute(context: TaskExecutionContext) {
+            const claimed = await context.claimPipelineItem();
+            if (!claimed) {
+                await context.log('Pipeline empty — nothing to publish');
+                return { exitCode: 0, stopped: false };
+            }
+            await context.log(`Publishing pipeline item ${claimed.id} (${claimed.asset.name})`);
+            try {
+                const manifestPath = path.join(context.workspaceDirectory, 'manifest.json');
+                await writeFile(manifestPath, JSON.stringify({
+                    device: context.device,
+                    files: [{ path: claimed.asset.path, name: claimed.asset.name, mimeType: claimed.asset.mimeType }],
+                    destination: 'publish',
+                    ...(claimed.caption ? { caption: claimed.caption } : {}),
+                }));
+                const result = await context.runProcess({
+                    entrypoint: configuration.postEntrypoint ?? fileURLToPath(new URL('./tiktok/post.ts', import.meta.url)),
+                    args: [manifestPath],
+                });
+                if (result.error || result.exitCode !== 0) {
+                    const message = result.error ?? `Post exited with code ${result.exitCode}`;
+                    await context.failPipelineItem(claimed.id, message);
+                    return result;
+                }
+                await context.completePipelineItem(claimed.id);
+                await context.log(`Published pipeline item ${claimed.id}`);
+                return result;
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                await context.failPipelineItem(claimed.id, message);
+                throw error;
+            }
+        },
+    };
+}
+
 function objectPayload(value: JsonValue): Record<string, JsonValue> {
     if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Payload must be an object');
     return value;
@@ -282,7 +389,7 @@ function createPostTask(configuration: TikTokPluginConfiguration): TaskDefinitio
                 ...(input.recurringPublishConfirmed === true ? { recurringPublishConfirmed: true } : {}),
             };
         },
-        summarize: (payload) => `Post · ${payload.destination === 'publish' ? 'public' : 'draft'} · ${payload.media.length} media`,
+        summarize: (payload) => `Post · publish · ${payload.media.length} media`,
         estimateDurationMs: () => 60_000,
         retryPolicy: () => ({ retryLimit: 0, retryDelaySeconds: 0, retryBackoff: false }),
         supportsStop: () => true,
@@ -318,6 +425,7 @@ export function createTikTokPlugin(configuration: TikTokPluginConfiguration = {}
             createFollowingDoomscrollTask(configuration),
             createWorkflowReplayTask(configuration),
             createPostTask(configuration),
+            createPipelineDrainTask(configuration),
         ],
         devicePanels: [{
             id: 'tiktok-controls', title: 'TikTok',
@@ -671,10 +779,7 @@ export function createTikTokPlugin(configuration: TikTokPluginConfiguration = {}
                     const stored = await context.scheduler.registerAssets(await Promise.all(files.map(async (file) => ({
                         relativePath: path.relative(dataRoot, file.path), originalName: file.name, mimeType: file.mimeType,
                         size: (await stat(file.path)).size,
-                        sha256: await new Promise<string>((resolve, reject) => {
-                            const hash = crypto.createHash('sha256');
-                            createReadStream(file.path).on('data', (chunk) => hash.update(chunk)).once('error', reject).once('end', () => resolve(hash.digest('hex')));
-                        }),
+                        sha256: await hashFile(file.path),
                     }))));
                     assetIds = stored.map(({ id }) => id);
                     const schedule = await context.scheduler.createTask({
@@ -697,6 +802,155 @@ export function createTikTokPlugin(configuration: TikTokPluginConfiguration = {}
                 } catch (error) {
                     if (assetIds.length) await context.scheduler.deleteAssets(assetIds);
                     await rm(directory, { recursive: true, force: true });
+                    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+                }
+            });
+
+            context.app.get<{ Params: { udid: string } }>('/api/devices/:udid/tiktok/pipeline', async (request, reply) => {
+                const device = await deviceData(request.params.udid);
+                if (!device) return reply.code(404).send({ error: 'Device is not registered' });
+                const pipeline = postPipelineFromPluginData(tiktokPluginData(device));
+                const frequency = pipeline.frequency ?? 'production';
+                const items = await context.scheduler.listPipelineItems(device.udid);
+                return {
+                    enabled: pipeline.enabled === true,
+                    frequency,
+                    frequencyLabel: pipelineFrequencyLabel(frequency),
+                    checkTimes: pipelineCheckSummary(frequency),
+                    scheduleIds: pipeline.scheduleIds ?? [],
+                    items,
+                };
+            });
+
+            context.app.post<{ Params: { udid: string } }>('/api/devices/:udid/tiktok/pipeline/items', async (request, reply) => {
+                const device = await deviceData(request.params.udid);
+                if (!device) return reply.code(404).send({ error: 'Device is not registered' });
+                if (device.disabled) return reply.code(409).send({ error: 'This device is disconnected — reconnect it before queuing' });
+                const dataRoot = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
+                const assetRoot = path.join(dataRoot, 'assets');
+                await mkdir(assetRoot, { recursive: true });
+                const directory = await mkdtemp(path.join(assetRoot, 'pipeline-'));
+                let assetIds: string[] = [];
+                try {
+                    const fields = new Map<string, string>();
+                    let video: { path: string; name: string; mimeType: string } | undefined;
+                    for await (const part of request.parts()) {
+                        if (part.type === 'field') { fields.set(part.fieldname, String(part.value)); continue; }
+                        if (part.fieldname !== 'media' && part.fieldname !== 'video') continue;
+                        if (video) throw new Error('Upload exactly one video');
+                        const name = path.basename(part.filename || 'upload.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
+                        const filePath = path.join(directory, name);
+                        await pipeline(part.file, createWriteStream(filePath, { flags: 'wx' }));
+                        if (part.file.truncated) throw new Error(`${name} exceeds the upload limit`);
+                        if (!part.mimetype.startsWith('video/')) throw new Error('Pipeline accepts video only for now');
+                        video = { path: filePath, name, mimeType: part.mimetype };
+                    }
+                    if (!video) throw new Error('Choose a video file');
+                    const caption = fields.get('caption')?.trim() || fields.get('title')?.trim() || '';
+                    if (!caption) throw new Error('Add a title / caption');
+                    if (caption.length > 2200) throw new Error('Caption must be 2,200 characters or fewer');
+                    const stored = await context.scheduler.registerAssets([{
+                        relativePath: path.relative(dataRoot, video.path),
+                        originalName: video.name,
+                        mimeType: video.mimeType,
+                        size: (await stat(video.path)).size,
+                        sha256: await hashFile(video.path),
+                    }]);
+                    assetIds = stored.map(({ id }) => id);
+                    const item = await context.scheduler.enqueuePipelineItem({
+                        deviceUdid: device.udid,
+                        assetId: stored[0]!.id,
+                        caption,
+                    });
+                    return reply.code(201).send(item);
+                } catch (error) {
+                    if (assetIds.length) await context.scheduler.deleteAssets(assetIds);
+                    await rm(directory, { recursive: true, force: true });
+                    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+                }
+            });
+
+            context.app.delete<{ Params: { udid: string; id: string } }>('/api/devices/:udid/tiktok/pipeline/items/:id', async (request, reply) => {
+                const device = await deviceData(request.params.udid);
+                if (!device) return reply.code(404).send({ error: 'Device is not registered' });
+                const item = await context.scheduler.cancelPipelineItem(request.params.id, device.udid);
+                if (!item) return reply.code(404).send({ error: 'Pipeline item not found or already in flight' });
+                return { ok: true, item };
+            });
+
+            context.app.post<{ Params: { udid: string }; Body: { enabled?: boolean; frequency?: string } }>('/api/devices/:udid/tiktok/pipeline/auto', async (request, reply) => {
+                const device = await deviceData(request.params.udid);
+                if (!device) return reply.code(404).send({ error: 'Device is not registered' });
+                if (device.disabled) return reply.code(409).send({ error: 'This device is disconnected' });
+                const enabled = request.body?.enabled === true;
+                const frequency = parsePipelineFrequency(request.body?.frequency);
+                const pluginData = tiktokPluginData(device);
+                const current = postPipelineFromPluginData(pluginData);
+                const createdIds: string[] = [];
+                try {
+                    for (const id of current.scheduleIds ?? []) {
+                        try { await context.scheduler.setScheduleStatus(id, 'cancelled'); } catch { /* already gone */ }
+                    }
+                    if (enabled) {
+                        const timings: ScheduleTiming[] = frequency === 'production'
+                            ? PIPELINE_CHECK_TIMES.map((localTime) => ({
+                                kind: 'daily' as const, localTime, timezone: PIPELINE_TIMEZONE,
+                            }))
+                            : [{ kind: 'interval', everyMinutes: Number(frequency) }];
+                        for (const timing of timings) {
+                            const schedule = await context.scheduler.createTask({
+                                deviceUdid: device.udid,
+                                task: {
+                                    pluginId: 'com.git-agni.tiktok',
+                                    taskType: 'pipeline-drain',
+                                    taskVersion: 1,
+                                    payload: {},
+                                },
+                                timing,
+                                runWindowMinutes: frequency === 'production' ? 45 : Math.max(5, Number(frequency) + 2),
+                            }, pluginData);
+                            createdIds.push(schedule.id);
+                        }
+                    }
+                    const next = withPostPipeline(pluginData, { enabled, frequency, scheduleIds: createdIds });
+                    await context.mutateDevices((devices) => {
+                        const target = devices.find((entry) => entry.udid === device.udid);
+                        if (!target) throw new Error('Device disappeared while updating pipeline');
+                        target.pluginData['com.git-agni.tiktok'] = next;
+                    });
+                    return {
+                        enabled,
+                        frequency,
+                        frequencyLabel: pipelineFrequencyLabel(frequency),
+                        checkTimes: pipelineCheckSummary(frequency),
+                        scheduleIds: createdIds,
+                    };
+                } catch (error) {
+                    for (const id of createdIds) {
+                        try { await context.scheduler.setScheduleStatus(id, 'cancelled'); } catch { /* ignore */ }
+                    }
+                    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+                }
+            });
+
+            context.app.post<{ Params: { udid: string } }>('/api/devices/:udid/tiktok/pipeline/check-now', async (request, reply) => {
+                const device = await deviceData(request.params.udid);
+                if (!device) return reply.code(404).send({ error: 'Device is not registered' });
+                if (device.disabled) return reply.code(409).send({ error: 'This device is disconnected' });
+                try {
+                    const schedule = await context.scheduler.createTask({
+                        deviceUdid: device.udid,
+                        task: {
+                            pluginId: 'com.git-agni.tiktok',
+                            taskType: 'pipeline-drain',
+                            taskVersion: 1,
+                            payload: {},
+                        },
+                        timing: { kind: 'now' },
+                        runWindowMinutes: 45,
+                    }, device.pluginData['com.git-agni.tiktok'] ?? {});
+                    return reply.code(202).send(schedule);
+                } catch (error) {
                     return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
                 }
             });

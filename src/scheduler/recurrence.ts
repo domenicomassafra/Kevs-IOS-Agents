@@ -31,12 +31,20 @@ export function validateTiming(timing: ScheduleTiming, now = new Date()): void {
         if (runAt.getTime() < now.getTime() - 60_000) throw new Error('runAt cannot be in the past');
         return;
     }
+    if (timing.kind === 'interval') {
+        const minutes = timing.everyMinutes;
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+            throw new Error('Interval schedules require everyMinutes between 1 and 1440');
+        }
+        return;
+    }
     void parseRecurring(timing, now).next();
 }
 
 export function initialRunAt(timing: ScheduleTiming, now = new Date()): Date {
     if (timing.kind === 'now') return now;
     if (timing.kind === 'once') return new Date(timing.runAt);
+    if (timing.kind === 'interval') return now;
     return parseRecurring(timing, new Date(now.getTime() - 1_000)).next().toDate();
 }
 
@@ -48,6 +56,17 @@ export function latestDueOccurrence(
     if (storedNextRunAt > now) return null;
     if (timing.kind === 'now' || timing.kind === 'once') {
         return { scheduledFor: storedNextRunAt, nextRunAt: null };
+    }
+    if (timing.kind === 'interval') {
+        const stepMs = timing.everyMinutes * 60_000;
+        let scheduledFor = storedNextRunAt;
+        let nextRunAt = new Date(scheduledFor.getTime() + stepMs);
+        // Skip missed ticks so a paused worker does not enqueue a backlog.
+        while (nextRunAt <= now) {
+            scheduledFor = nextRunAt;
+            nextRunAt = new Date(nextRunAt.getTime() + stepMs);
+        }
+        return { scheduledFor, nextRunAt };
     }
     const latest = parseRecurring(timing, new Date(now.getTime() + 1_000)).prev().toDate();
     const next = parseRecurring(timing, now).next().toDate();

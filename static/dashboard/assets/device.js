@@ -785,7 +785,8 @@ function renderMedia() {
     }));
 }
 function selectedDestination() {
-    return elements.postForm.elements.namedItem('destination').value;
+    // Publish-only for now — scheduling is via Start / Recurring, not Drafts.
+    return 'publish';
 }
 function postTiming() {
     const kind = elements.postRecurring.checked ? elements.postFrequency.value : elements.postStartKind.value;
@@ -807,11 +808,8 @@ function postTiming() {
     };
 }
 function updateDestination() {
-    const publishing = selectedDestination() === 'publish';
-    elements.publishConfirm.classList.toggle('visible', publishing);
-    if (!publishing)
-        elements.confirmPublish.checked = false;
-    elements.submitPost.textContent = publishing ? 'Post publicly' : 'Save to Drafts';
+    elements.publishConfirm.classList.add('visible');
+    elements.submitPost.textContent = 'Publish';
 }
 async function pollPost() {
     try {
@@ -826,7 +824,7 @@ async function pollPost() {
         else {
             elements.submitPost.disabled = false;
             elements.postResult.textContent = run.status === 'succeeded'
-                ? `Completed: ${run.destination === 'publish' ? 'post submitted' : 'draft saved'}.`
+                ? 'Completed: post published.'
                 : 'Automation failed. Review the Automation log and the phone screen.';
         }
     }
@@ -873,8 +871,7 @@ function taskTitle(taskType, payload, pluginId) {
         const details = payload?.durationMinutes ? ` · ${payload.durationMinutes} min` : '';
         return `${app} ${label}${details}`;
     }
-    const destination = payload?.destination === 'publish' ? 'Post publicly' : 'Save to drafts';
-    return payload?.account ? `${app} · ${destination} · ${payload.account}` : `${app} · ${destination}`;
+    return payload?.account ? `${app} · publish · ${payload.account}` : `${app} · publish`;
 }
 function timingDescription(timing) {
     if (timing.kind === 'once')

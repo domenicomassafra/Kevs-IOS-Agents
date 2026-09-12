@@ -22,6 +22,7 @@
             </a>
             <nav class="topbar-nav">
                 <a class="crumb" href="/">Devices</a>
+                <a class="crumb" href="/automations">Automations</a>
                 <a class="crumb" href="/tasks">Tasks</a>
                 <button id="open-tasks" class="button secondary" type="button">Tasks &amp; schedules</button>
                 <button id="open-accounts" class="button secondary" type="button">TikTok accounts</button>
@@ -88,19 +89,67 @@
 
                     <div class="workflow-group">
                         <h3 class="workflow-group-label">TikTok</h3>
-                        <div class="workflow-grid">
-                            <button id="open-doomscroll" class="workflow-tile" type="button">
-                                <span class="workflow-tile-title">Warmup</span>
-                                <span class="workflow-tile-desc">For You · age the account</span>
-                            </button>
-                            <button id="open-following-doomscroll" class="workflow-tile" type="button">
-                                <span class="workflow-tile-title">Engagement</span>
-                                <span class="workflow-tile-desc">Following feed · stay on people you follow</span>
-                            </button>
-                            <button id="open-post" class="workflow-tile" type="button">
-                                <span class="workflow-tile-title">Create a post</span>
-                                <span class="workflow-tile-desc">Draft or publish video / slideshow</span>
-                            </button>
+                        <div class="workflow-rows">
+                            <article class="workflow-row">
+                                <button id="open-doomscroll" class="workflow-tile" type="button">
+                                    <span class="workflow-tile-title">Warmup</span>
+                                    <span class="workflow-tile-desc">For You · age the account</span>
+                                </button>
+                                <div class="workflow-how" aria-label="How Warmup works">
+                                    <p class="workflow-how-label">How it works</p>
+                                    <ol class="workflow-steps">
+                                        <li><span class="workflow-step-n">1</span><span class="workflow-step-t">Open TikTok</span></li>
+                                        <li><span class="workflow-step-n">2</span><span class="workflow-step-t">Land on For You</span></li>
+                                        <li><span class="workflow-step-n">3</span><span class="workflow-step-t">Watch &amp; swipe</span></li>
+                                        <li><span class="workflow-step-n">4</span><span class="workflow-step-t">Like · save · comment</span></li>
+                                    </ol>
+                                </div>
+                            </article>
+                            <article class="workflow-row">
+                                <button id="open-following-doomscroll" class="workflow-tile" type="button">
+                                    <span class="workflow-tile-title">Engagement</span>
+                                    <span class="workflow-tile-desc">Following feed · stay on people you follow</span>
+                                </button>
+                                <div class="workflow-how" aria-label="How Engagement works">
+                                    <p class="workflow-how-label">How it works</p>
+                                    <ol class="workflow-steps">
+                                        <li><span class="workflow-step-n">1</span><span class="workflow-step-t">Open TikTok</span></li>
+                                        <li><span class="workflow-step-n">2</span><span class="workflow-step-t">Switch to Following</span></li>
+                                        <li><span class="workflow-step-n">3</span><span class="workflow-step-t">Watch followed creators</span></li>
+                                        <li><span class="workflow-step-n">4</span><span class="workflow-step-t">Engage · keep scrolling</span></li>
+                                    </ol>
+                                </div>
+                            </article>
+                            <article class="workflow-row">
+                                <button id="open-post" class="workflow-tile" type="button">
+                                    <span class="workflow-tile-title">Create a post</span>
+                                    <span class="workflow-tile-desc">Publish video / slideshow · schedule when it runs</span>
+                                </button>
+                                <div class="workflow-how" aria-label="How Create a post works">
+                                    <p class="workflow-how-label">How it works</p>
+                                    <ol class="workflow-steps">
+                                        <li><span class="workflow-step-n">1</span><span class="workflow-step-t">Import to Photos</span></li>
+                                        <li><span class="workflow-step-n">2</span><span class="workflow-step-t">Create → Upload</span></li>
+                                        <li><span class="workflow-step-n">3</span><span class="workflow-step-t">Pick newest (bottom-right)</span></li>
+                                        <li><span class="workflow-step-n">4</span><span class="workflow-step-t">Caption → publish</span></li>
+                                    </ol>
+                                </div>
+                            </article>
+                            <article class="workflow-row">
+                                <a id="open-pipeline" class="workflow-tile" href="/automations?template=pipeline&amp;device=__DEVICE_UDID__">
+                                    <span class="workflow-tile-title">Post pipeline</span>
+                                    <span class="workflow-tile-desc">Queue video + caption · auto at 12/3/6/9 PM ET</span>
+                                </a>
+                                <div class="workflow-how" aria-label="How Post pipeline works">
+                                    <p class="workflow-how-label">How it works</p>
+                                    <ol class="workflow-steps">
+                                        <li><span class="workflow-step-n">1</span><span class="workflow-step-t">Add video + title</span></li>
+                                        <li><span class="workflow-step-n">2</span><span class="workflow-step-t">Sits in queue</span></li>
+                                        <li><span class="workflow-step-n">3</span><span class="workflow-step-t">Check at 12/3/6/9 PM ET</span></li>
+                                        <li><span class="workflow-step-n">4</span><span class="workflow-step-t">Publish to TikTok</span></li>
+                                    </ol>
+                                </div>
+                            </article>
                         </div>
                     </div>
 
@@ -375,7 +424,7 @@
     <dialog id="post-dialog">
         <form id="post-form" class="modal">
             <div class="modal-head"><div><span class="eyebrow">TikTok</span><h2>Create post</h2></div><button id="close-post" class="icon-button" type="button">Close</button></div>
-            <p>Choose one video or up to three slideshow images. Reorder images before starting.</p>
+            <p>Publishes to the signed-in account. Use Start / Recurring below to run now or schedule the automation.</p>
             <label for="media">Media</label>
             <input id="media" name="media-picker" type="file" accept="video/*,image/*" multiple required>
             <ol id="media-list"></ol>
@@ -388,10 +437,7 @@
                 <option value="" selected>Don't switch (already signed in)</option>__TIKTOK_ACCOUNT_OPTIONS__
             </select>
             <p class="hint">Switch only if you need a different account — Profile/switcher taps must be calibrated first.</p>
-            <fieldset><legend>Finish as</legend><div class="choices">
-                <label><input type="radio" name="destination" value="draft" checked> Save to Drafts</label>
-                <label><input type="radio" name="destination" value="publish"> Post publicly</label>
-            </div></fieldset>
+            <input type="hidden" name="destination" value="publish">
             <label class="checkbox-option"><input id="post-recurring" type="checkbox"> Recurring</label>
             <div id="post-start-options" class="field">
                 <label for="post-start-kind">Start</label>
@@ -411,9 +457,9 @@
                 </div></fieldset>
             </div>
             <div id="post-run-window-field" class="field schedule-window" hidden><label for="post-run-window">Run window (minutes)</label><input id="post-run-window" type="number" min="1" max="1440" value="30"></div>
-            <div id="publish-confirm" class="publish-confirm"><label><input id="confirm-publish" type="checkbox"> I understand this will publish to the signed-in TikTok account.</label></div>
+            <div id="publish-confirm" class="publish-confirm visible"><label><input id="confirm-publish" type="checkbox"> I understand this will publish to the signed-in TikTok account.</label></div>
             <p id="post-result" aria-live="polite"></p>
-            <div class="form-actions"><button id="cancel-post" class="button secondary" type="button">Cancel</button><button id="submit-post" class="button primary" type="submit">Save to Drafts</button></div>
+            <div class="form-actions"><button id="cancel-post" class="button secondary" type="button">Cancel</button><button id="submit-post" class="button primary" type="submit">Publish</button></div>
         </form>
     </dialog>
     <dialog id="instagram-doomscroll-dialog">
