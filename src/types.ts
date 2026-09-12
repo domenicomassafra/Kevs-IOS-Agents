@@ -15,7 +15,10 @@ export interface RegisteredDevice extends DeviceIdentity {
     /** Compiled tap-layout key; canonical here, not in pluginData. */
     coordinateProfile?: string;
     passcode?: string;
+    /** TikTok single-tap overrides (legacy flat map). */
     coordinates?: Record<string, { x: number; y: number }>;
+    /** Instagram single-tap overrides. */
+    instagramCoordinates?: Record<string, { x: number; y: number }>;
     disabled?: boolean;
     pluginData: Record<string, JsonObject>;
 }
@@ -24,7 +27,9 @@ export type ScheduleTiming =
     | { kind: 'now' }
     | { kind: 'once'; runAt: string }
     | { kind: 'daily'; localTime: string; timezone: string }
-    | { kind: 'weekly'; localTime: string; timezone: string; weekdays: number[] };
+    | { kind: 'weekly'; localTime: string; timezone: string; weekdays: number[] }
+    /** Repeating timer — useful for testing pipeline drains without waiting for clock slots. */
+    | { kind: 'interval'; everyMinutes: number };
 
 export interface TaskEnvelope<TPayload extends JsonObject = JsonObject> {
     pluginId: string;
@@ -47,6 +52,12 @@ export interface StoredAsset {
     mimeType: string;
     size: number;
     sha256: string;
+}
+
+export interface PipelineClaim {
+    id: string;
+    caption: string | null;
+    asset: StoredAsset;
 }
 
 export interface TaskExecutionResult {

@@ -5,11 +5,11 @@ import path from 'node:path';
 
 import type { DatabaseConnection } from '../database/client.js';
 import {
-    assets, executionAttempts, executionLogs, executions, schedules,
-    type ExecutionRow, type ScheduleRow,
+    assets, executionAttempts, executionLogs, executions, pipelineItems, schedules,
+    type ExecutionRow, type PipelineItemRow, type ScheduleRow,
 } from '../database/schema.js';
 import type { PluginRegistry } from '../registry.js';
-import type { CreateTaskInput, JsonObject, ScheduleTiming, StoredAsset, TaskEnvelope } from '../types.js';
+import type { CreateTaskInput, JsonObject, PipelineClaim, ScheduleTiming, StoredAsset, TaskEnvelope } from '../types.js';
 import { ensureDeviceQueue, queueNameForDevice } from './queue.js';
 import { initialRunAt, latestDueOccurrence } from './recurrence.js';
 import { DEFAULT_MIN_SCHEDULE_GAP_MINUTES, estimatedTaskWindow, validateTaskInput, windowsTooClose } from './validation.js';
@@ -185,9 +185,7 @@ export class SchedulerRepository {
             const queued = await this.connection.db.select().from(executions).where(and(
                 eq(executions.scheduleId, id), eq(executions.status, 'queued'),
             ));
-            for (const execution of queued) {
-                if (execution.queueJobId) await this.boss.cancel(queueNameForDevice(execution.deviceUdid), execution.queueJobId);
-            }
+            for (const execution of queued) await this.cancelQueuedJob(execution);
             await this.connection.db.update(executions).set({ status: 'cancelled', finishedAt: now, updatedAt: now })
                 .where(and(eq(executions.scheduleId, id), eq(executions.status, 'queued')));
             await this.purgeScheduleAssetsIfIdle(id);
@@ -281,7 +279,7 @@ export class SchedulerRepository {
         const [execution] = await this.connection.db.select().from(executions).where(eq(executions.id, id)).limit(1);
         if (!execution) return 'not-found';
         if (execution.status === 'queued') {
-            if (execution.queueJobId) await this.boss.cancel(queueNameForDevice(execution.deviceUdid), execution.queueJobId);
+            await this.cancelQueuedJob(execution);
             await this.finishExecution(id, 'cancelled', null, 'Cancelled before execution');
             return 'queued';
         }
@@ -296,6 +294,49 @@ export class SchedulerRepository {
         await this.connection.db.update(executions).set({ stopRequestedAt: new Date(), updatedAt: new Date() })
             .where(eq(executions.id, id));
         return 'running';
+    }
+
+    /**
+     * Cancel every queued job for a device and request stop on every running one.
+     * Used by the device-page Clear queue control so operators are not stuck
+     * cancelling one-by-one while Start silently stacks behind a backlog.
+     */
+    async clearDeviceQueue(
+        deviceUdid: string,
+        filter: { pluginId?: string; taskType?: string; onlyQueued?: boolean } = {},
+    ): Promise<{ cancelled: number; stopping: number }> {
+        const pending = await this.connection.db.select().from(executions).where(and(
+            eq(executions.deviceUdid, deviceUdid),
+            inArray(executions.status, filter.onlyQueued ? ['queued'] : ['queued', 'running']),
+        ));
+        let cancelled = 0;
+        let stopping = 0;
+        for (const execution of pending) {
+            if (filter.pluginId && execution.pluginId !== filter.pluginId) continue;
+            if (filter.taskType && execution.taskType !== filter.taskType) continue;
+            if (execution.status === 'queued') {
+                await this.cancelQueuedJob(execution);
+                await this.finishExecution(execution.id, 'cancelled', null, 'Cleared from device queue');
+                cancelled += 1;
+                continue;
+            }
+            const result = await this.requestStop(execution.id);
+            if (result === 'running') stopping += 1;
+            else if (result === 'queued') cancelled += 1;
+        }
+        return { cancelled, stopping };
+    }
+
+    private async cancelQueuedJob(execution: ExecutionRow): Promise<void> {
+        if (!execution.queueJobId) return;
+        try {
+            await this.boss.cancel(queueNameForDevice(execution.deviceUdid), execution.queueJobId);
+        } catch (error) {
+            console.error(
+                `pg-boss cancel failed for ${execution.id}:`,
+                error instanceof Error ? error.message : error,
+            );
+        }
     }
 
     async retryExecution(id: string, now = new Date()): Promise<ExecutionRow | null> {
@@ -330,15 +371,88 @@ export class SchedulerRepository {
         const pending = await this.connection.db.select().from(executions).where(inArray(executions.status, ['queued', 'running']));
         let changed = 0;
         for (const execution of pending) {
-            if (!execution.queueJobId) continue;
-            const [job] = await this.boss.findJobs(queueNameForDevice(execution.deviceUdid), { id: execution.queueJobId });
-            if (job?.state === 'retry' && execution.status === 'running') {
-                await this.resetForRetry(execution.id, 'Worker attempt interrupted; waiting for retry'); changed++;
-            } else if (job && (job.state === 'failed' || job.state === 'cancelled')) {
-                await this.finishExecution(execution.id, job.state === 'cancelled' ? 'cancelled' : 'failed', null, `Queue job ${job.state}`); changed++;
+            const queue = queueNameForDevice(execution.deviceUdid);
+            let job: { id: string; state?: string } | undefined;
+            if (execution.queueJobId) {
+                try {
+                    const found = await this.boss.findJobs(queue, { id: execution.queueJobId });
+                    job = found[0] as { id: string; state?: string } | undefined;
+                } catch {
+                    job = undefined;
+                }
+            }
+
+            const ageMs = Date.now() - new Date(execution.updatedAt).getTime();
+
+            if (execution.status === 'running') {
+                if (job?.state === 'retry') {
+                    await this.resetForRetry(execution.id, 'Worker attempt interrupted; waiting for retry');
+                    changed += 1;
+                } else if (!job || job.state === 'failed' || job.state === 'cancelled' || job.state === 'completed') {
+                    await this.finishExecution(
+                        execution.id,
+                        job?.state === 'cancelled' || execution.stopRequestedAt ? 'stopped' : 'failed',
+                        null,
+                        job ? `Queue job ${job.state}` : 'Queue job missing after worker restart',
+                    );
+                    changed += 1;
+                } else if (
+                    job.state === 'active'
+                    && (ageMs > 45_000 || (execution.stopRequestedAt && ageMs > 5_000))
+                ) {
+                    // Worker SIGTERM leaves the job "active" and blocks the singleton
+                    // device queue forever — same class of ghost as queued orphans.
+                    await this.boss.cancel(queue, job.id).catch(() => {});
+                    await this.finishExecution(
+                        execution.id,
+                        execution.stopRequestedAt ? 'stopped' : 'failed',
+                        null,
+                        'Abandoned active queue job after worker restart',
+                    );
+                    changed += 1;
+                    console.log(`Finalized zombie running execution ${execution.id}`);
+                }
+                continue;
+            }
+
+            // queued — re-enqueue when the pg-boss job is gone, finished, or left
+            // "active" without ever flipping the execution to running (zombie after
+            // a worker SIGTERM). Singleton device queues otherwise block forever.
+            const missingOrDead = !job || job.state === 'failed' || job.state === 'cancelled' || job.state === 'completed';
+            const zombieActive = job?.state === 'active' && ageMs > 45_000;
+            if (!missingOrDead && !zombieActive) continue;
+            try {
+                if (job && (job.state === 'active' || job.state === 'created')) {
+                    await this.boss.cancel(queue, job.id).catch(() => {});
+                }
+                await this.requeueQueuedExecution(execution);
+                changed += 1;
+                console.log(`Requeued orphaned execution ${execution.id} (was job state=${job?.state ?? 'missing'})`);
+            } catch (error) {
+                console.error(`Failed to requeue ${execution.id}:`, error);
             }
         }
         return changed;
+    }
+
+    /** Send a fresh pg-boss job for an execution that is still marked queued. */
+    private async requeueQueuedExecution(execution: ExecutionRow): Promise<void> {
+        const task = taskEnvelope(execution);
+        const definition = this.plugins.task(task);
+        const policy = definition.retryPolicy(execution.payload);
+        await ensureDeviceQueue(this.boss, execution.deviceUdid);
+        const queueJobId = await this.boss.send(queueNameForDevice(execution.deviceUdid), { executionId: execution.id }, {
+            retryLimit: policy.retryLimit,
+            retryDelay: policy.retryDelaySeconds,
+            retryBackoff: policy.retryBackoff,
+            expireInSeconds: Math.max(900, Math.ceil(definition.estimateDurationMs(execution.payload) / 1000) + 600),
+        });
+        if (!queueJobId) throw new Error(`Queue rejected requeue for ${execution.id}`);
+        await this.connection.db.update(executions).set({
+            queueJobId,
+            error: null,
+            updatedAt: new Date(),
+        }).where(and(eq(executions.id, execution.id), eq(executions.status, 'queued')));
     }
 
     async cleanup(historyDays = Number(process.env.SCHEDULER_HISTORY_DAYS ?? 30)): Promise<number> {
@@ -360,9 +474,105 @@ export class SchedulerRepository {
         const cutoff = new Date(Date.now() - hours * 3_600_000);
         const rows = await this.connection.db.select({ id: assets.id }).from(assets).where(and(
             isNull(assets.scheduleId), isNull(assets.executionId), lt(assets.createdAt, cutoff),
+            sql`not exists (
+                select 1 from scheduler.pipeline_items p
+                where p.asset_id = ${assets.id}
+                  and p.status in ('ready', 'publishing', 'failed')
+            )`,
         ));
         await this.purgeAssetIds(rows.map(({ id }) => id));
         return rows.length;
+    }
+
+    async enqueuePipelineItem(input: {
+        deviceUdid: string;
+        assetId: string;
+        caption?: string;
+    }): Promise<PipelineItemRow> {
+        const [row] = await this.connection.db.insert(pipelineItems).values({
+            deviceUdid: input.deviceUdid,
+            assetId: input.assetId,
+            caption: input.caption?.trim() || null,
+            status: 'ready',
+        }).returning();
+        if (!row) throw new Error('Unable to enqueue pipeline item');
+        return row;
+    }
+
+    async listPipelineItems(deviceUdid: string, limit = 50): Promise<Array<PipelineItemRow & { assetName: string | null; mimeType: string | null }>> {
+        const rows = await this.connection.db.select({
+            item: pipelineItems,
+            assetName: assets.originalName,
+            mimeType: assets.mimeType,
+        }).from(pipelineItems)
+            .leftJoin(assets, eq(pipelineItems.assetId, assets.id))
+            .where(eq(pipelineItems.deviceUdid, deviceUdid))
+            .orderBy(desc(pipelineItems.createdAt))
+            .limit(limit);
+        return rows.map(({ item, assetName, mimeType }) => ({ ...item, assetName, mimeType }));
+    }
+
+    async cancelPipelineItem(id: string, deviceUdid: string): Promise<PipelineItemRow | null> {
+        const [row] = await this.connection.db.select().from(pipelineItems).where(and(
+            eq(pipelineItems.id, id),
+            eq(pipelineItems.deviceUdid, deviceUdid),
+            inArray(pipelineItems.status, ['ready', 'failed']),
+        )).limit(1);
+        if (!row) return null;
+        const assetId = row.assetId;
+        await this.connection.db.delete(pipelineItems).where(eq(pipelineItems.id, id));
+        if (assetId) await this.purgeAssetIds([assetId]);
+        return { ...row, status: 'cancelled', updatedAt: new Date() };
+    }
+
+    async claimNextPipelineItem(deviceUdid: string, executionId: string): Promise<PipelineClaim | null> {
+        const claimed = await this.connection.db.transaction(async (tx) => {
+            const result = await tx.execute(sql`
+                update scheduler.pipeline_items
+                set status = 'publishing', execution_id = ${executionId}::uuid, updated_at = now(), error = null
+                where id = (
+                    select id from scheduler.pipeline_items
+                    where device_udid = ${deviceUdid} and status = 'ready'
+                    order by created_at asc
+                    for update skip locked
+                    limit 1
+                )
+                returning id, caption, asset_id
+            `);
+            const row = (result.rows as Array<{ id: string; caption: string | null; asset_id: string | null }>)[0];
+            if (!row?.asset_id) return null;
+            await tx.update(assets).set({ executionId }).where(eq(assets.id, row.asset_id));
+            return row as { id: string; caption: string | null; asset_id: string };
+        });
+        if (!claimed) return null;
+        const [assetRow] = await this.connection.db.select().from(assets).where(eq(assets.id, claimed.asset_id)).limit(1);
+        if (!assetRow) throw new Error(`Pipeline media asset ${claimed.asset_id} is missing`);
+        const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
+        return {
+            id: claimed.id,
+            caption: claimed.caption,
+            asset: {
+                id: assetRow.id,
+                path: path.resolve(root, assetRow.relativePath),
+                name: assetRow.originalName,
+                mimeType: assetRow.mimeType,
+                size: assetRow.size,
+                sha256: assetRow.sha256,
+            },
+        };
+    }
+
+    async completePipelineItem(id: string): Promise<void> {
+        // Detach media so finishExecution can purge the file without hitting the FK.
+        await this.connection.db.update(pipelineItems).set({
+            status: 'published', publishedAt: new Date(), updatedAt: new Date(), error: null, assetId: null,
+        }).where(eq(pipelineItems.id, id));
+    }
+
+    async failPipelineItem(id: string, error: string): Promise<void> {
+        await this.connection.db.update(pipelineItems).set({
+            status: 'failed', error, updatedAt: new Date(),
+        }).where(eq(pipelineItems.id, id));
     }
 
     private async purgeTerminalAssets(executionId: string): Promise<void> {
@@ -370,7 +580,7 @@ export class SchedulerRepository {
         if (!execution) return;
         if (execution.scheduleId) {
             const [schedule] = await this.connection.db.select().from(schedules).where(eq(schedules.id, execution.scheduleId)).limit(1);
-            if (schedule && ['daily', 'weekly'].includes(schedule.timing.kind) && schedule.status !== 'cancelled') return;
+            if (schedule && ['daily', 'weekly', 'interval'].includes(schedule.timing.kind) && schedule.status !== 'cancelled') return;
         }
         const rows = await this.connection.db.select({ id: assets.id }).from(assets).where(or(
             eq(assets.executionId, executionId),

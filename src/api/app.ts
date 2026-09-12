@@ -11,7 +11,8 @@ import { Readable } from 'node:stream';
 import { discoverConnectedDevices } from '../devices/discovery.js';
 import { loadRegisteredDevices, mutateRegisteredDevices, saveRegisteredDevices, redactDevice, PASSCODE_PATTERN, type RegisteredDevice } from '../devices/registry.js';
 import {
-    CALIBRATABLE_POINTS, POINT_LABELS, coordinatesForProfile, resolveDeviceCoordinates, validateCoordinateOverrides,
+    CALIBRATABLE_POINTS, labelsForApp, coordinatesForProfile, resolveDeviceCoordinates,
+    validateCoordinateOverrides, parseSocialApp,
 } from '../devices/coordinates.js';
 import { RegistryWdaRemoteControl } from '../devices/registry-remote.js';
 import type {
@@ -43,9 +44,12 @@ interface LoadedDashboardTheme {
     indexHtml: string;
     deviceHtml: string;
     tasksHtml: string;
+    automationsHtml: string;
+    devicesDemoHtml: string;
     styles: string;
     deviceScript: string;
     tasksScript: string;
+    automationsScript: string;
     registerDeviceHtml: string;
     registerDeviceScript: string;
     htmx: string;
@@ -67,23 +71,71 @@ function csrfBlocked(reply: FastifyReply): FastifyReply {
     });
 }
 
+/** Farm-facing label stored in devices.json — independent of the iOS device name. */
+function normalizeDeviceName(value: unknown): string {
+    if (typeof value !== 'string') throw httpError(400, 'Device name must be a string');
+    const name = value.replace(/\s+/g, ' ').trim().slice(0, 100);
+    if (!name) throw httpError(400, 'Device name cannot be empty');
+    return name;
+}
+
 function escapeHtml(value: unknown): string {
     return String(value ?? '').replace(/[&<>"']/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     })[character] ?? character);
 }
 
+function formatClock(ms: number): string {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function automationTimerHtml(execution: {
+    status: string;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+    payload: JsonObject;
+}): string {
+    const durationMinutes = Number(execution.payload.durationMinutes);
+    const hasDuration = Number.isFinite(durationMinutes) && durationMinutes > 0;
+    const plannedMs = hasDuration ? durationMinutes * 60_000 : null;
+
+    if (execution.status === 'running' && execution.startedAt) {
+        const elapsedMs = Date.now() - execution.startedAt.getTime();
+        if (plannedMs != null) {
+            const remainingMs = Math.max(0, plannedMs - elapsedMs);
+            const overtime = elapsedMs > plannedMs;
+            return `<div class="run-timer" aria-live="polite"><span class="timer-label">Session timer</span><span class="timer-values">${escapeHtml(formatClock(elapsedMs))} elapsed · ${overtime ? 'past planned end' : `${escapeHtml(formatClock(remainingMs))} left`} · ${escapeHtml(String(durationMinutes))} min planned</span></div>`;
+        }
+        return `<div class="run-timer" aria-live="polite"><span class="timer-label">Session timer</span><span class="timer-values">${escapeHtml(formatClock(elapsedMs))} elapsed</span></div>`;
+    }
+
+    if (execution.status === 'queued' && plannedMs != null) {
+        return `<div class="run-timer"><span class="timer-label">Session timer</span><span class="timer-values">Waiting to start · ${escapeHtml(String(durationMinutes))} min planned</span></div>`;
+    }
+
+    if (execution.startedAt && execution.finishedAt) {
+        const elapsedMs = execution.finishedAt.getTime() - execution.startedAt.getTime();
+        const planned = plannedMs != null ? ` · ${escapeHtml(String(durationMinutes))} min planned` : '';
+        return `<div class="run-timer"><span class="timer-label">Session timer</span><span class="timer-values">Ran ${escapeHtml(formatClock(elapsedMs))}${planned}</span></div>`;
+    }
+
+    return '';
+}
+
 // Shown at the foot of every dashboard page. Override the link with
 // PHONE_FARM_BRAND_URL; the text is fixed.
-const FOOTER_HTML = `Built by <a href="${escapeHtml(process.env.PHONE_FARM_BRAND_URL ?? 'https://agniverse.co')}" target="_blank" rel="noopener">Agniverse</a>, with love and curry &#10084;&#65039;`;
+const FOOTER_HTML = `Built by <a href="${escapeHtml(process.env.PHONE_FARM_BRAND_URL ?? '#')}" target="_blank" rel="noopener">kevbuilds apps</a> with love &#10084;&#65039;`;
 
 function page(title: string, body: string, logoutPath?: string, navLinks: readonly PluginNavLink[] = []): string {
     const logout = logoutPath ? `<a href="${escapeHtml(logoutPath)}" style="float:right;margin-right:0">Log out</a>` : '';
     const extra = navLinks.map((link) => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join('');
     return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title><style>
-body{font:15px system-ui,sans-serif;margin:0;background:#f6f7f9;color:#17202a}nav{padding:16px 24px;background:#111827;color:white}nav a{color:white;margin-right:18px}main{max-width:1100px;margin:24px auto;padding:0 20px}.card{background:white;border:1px solid #dde2e8;border-radius:10px;padding:18px;margin:14px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #e5e7eb}code{font-size:12px}.muted{color:#64748b}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}button,.button{background:#2563eb;color:white;border:0;border-radius:6px;padding:8px 12px;text-decoration:none;cursor:pointer}input,select,textarea{padding:8px;border:1px solid #cbd5e1;border-radius:6px}</style></head>
-<body><nav><a href="/">Devices</a><a href="/tasks">Tasks</a><a href="/docs">API</a>${extra}${logout}</nav><main>${body}</main><footer style="max-width:1100px;margin:24px auto;padding:16px 20px;color:#94a3b8;font-size:12px">${FOOTER_HTML}</footer></body></html>`;
+:root{color-scheme:dark}body{font:15px Outfit,system-ui,sans-serif;margin:0;background:#000;color:#f7f7f8}nav{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:14px 24px;background:#0c0c0e;border-bottom:1px solid rgb(255 255 255 / 10%)}nav a{color:#f7f7f8;text-decoration:none;font-weight:650}main{max-width:1100px;margin:24px auto;padding:0 20px}.card{background:#0c0c0e;border:1px solid rgb(255 255 255 / 10%);border-radius:14px;padding:18px;margin:14px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid rgb(255 255 255 / 8%)}code{font-size:12px}.muted{color:#8a8a93}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}button,.button{background:linear-gradient(105deg,#ff4b2b,#ff416c);color:white;border:0;border-radius:999px;padding:8px 14px;text-decoration:none;cursor:pointer;font-weight:700}input,select,textarea{padding:8px;border:1px solid rgb(255 255 255 / 14%);border-radius:10px;background:#070708;color:#f7f7f8}</style></head>
+<body><nav><a href="/">Devices</a><a href="/automations">Automations</a><a href="/tasks">Tasks</a><a href="/docs">API</a>${extra}${logout}</nav><main>${body}</main><footer style="max-width:1100px;margin:24px auto;padding:16px 20px;color:#5c5c66;font-size:12px">${FOOTER_HTML}</footer></body></html>`;
 }
 
 async function registeredWithStatus() {
@@ -164,14 +216,17 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     if (options.dashboardTheme) {
         const root = options.dashboardTheme.rootDirectory;
         const require = createRequire(import.meta.url);
-        const [indexHtml, deviceHtml, tasksHtml, registerDeviceHtml, styles, deviceScript, tasksScript, registerDeviceScript, htmx] = await Promise.all([
+        const [indexHtml, deviceHtml, tasksHtml, automationsHtml, registerDeviceHtml, devicesDemoHtml, styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, htmx] = await Promise.all([
             readFile(path.join(root, 'templates/index.html'), 'utf8'),
             readFile(path.join(root, 'templates/device.html'), 'utf8'),
             readFile(path.join(root, 'templates/tasks.html'), 'utf8'),
+            readFile(path.join(root, 'templates/automations.html'), 'utf8'),
             readFile(path.join(root, 'templates/register-device.html'), 'utf8'),
+            readFile(path.join(root, 'templates/devices-demo.html'), 'utf8'),
             readFile(path.join(root, 'styles.css'), 'utf8'),
             readFile(path.join(root, 'assets/device.js'), 'utf8'),
             readFile(path.join(root, 'assets/tasks.js'), 'utf8'),
+            readFile(path.join(root, 'assets/automations.js'), 'utf8'),
             readFile(path.join(root, 'assets/register-device.js'), 'utf8'),
             readFile(require.resolve('htmx.org/dist/htmx.min.js'), 'utf8'),
         ]);
@@ -179,7 +234,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         // fresh URL that no browser or CDN can serve stale.
         const versions: Record<string, string> = {
             'styles.css': assetHash(styles), 'device.js': assetHash(deviceScript),
-            'tasks.js': assetHash(tasksScript), 'register-device.js': assetHash(registerDeviceScript),
+            'tasks.js': assetHash(tasksScript), 'automations.js': assetHash(automationsScript),
+            'register-device.js': assetHash(registerDeviceScript),
             'htmx.min.js': assetHash(htmx),
         };
         const finalize = (html: string) => {
@@ -190,15 +246,28 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         };
         themed = {
             indexHtml: finalize(indexHtml), deviceHtml: finalize(deviceHtml),
-            tasksHtml: finalize(tasksHtml), registerDeviceHtml: finalize(registerDeviceHtml),
-            styles, deviceScript, tasksScript, registerDeviceScript, htmx,
+            tasksHtml: finalize(tasksHtml), automationsHtml: finalize(automationsHtml),
+            registerDeviceHtml: finalize(registerDeviceHtml),
+            devicesDemoHtml: finalize(devicesDemoHtml),
+            styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, htmx,
         };
     }
 
     const renderActivity = async (deviceUdid: string, message?: string): Promise<string> => {
-        const executions = await options.scheduler.listExecutions(25, deviceUdid);
-        const execution = executions.find(({ status }) => status === 'running') ?? executions[0];
-        if (!execution) return `<section id="device-activity" class="run-panel"><div class="run-heading"><span class="status idle"><span class="dot"></span>idle</span><span class="run-meta">No automation has run on this device yet.</span></div>${message ? `<p class="run-error">${escapeHtml(message)}</p>` : ''}<pre>Waiting for output…</pre></section>`;
+        const executions = await options.scheduler.listExecutions(50, deviceUdid);
+        const running = executions.filter(({ status }) => status === 'running');
+        const queued = executions.filter(({ status }) => status === 'queued');
+        const execution = running[0] ?? queued[0] ?? executions[0];
+        const queueSummary = [
+            running.length ? `${running.length} running` : null,
+            queued.length ? `${queued.length} queued` : null,
+        ].filter(Boolean).join(' · ') || 'idle';
+        const clearQueue = (running.length + queued.length) > 0
+            ? `<form class="queue-clear-form" hx-post="/api/devices/${encodeURIComponent(deviceUdid)}/queue/clear" hx-target="#device-activity" hx-swap="outerHTML"><button class="button danger" type="submit">Clear queue</button></form>`
+            : '';
+        if (!execution) {
+            return `<section id="device-activity" class="run-panel"><div class="run-heading"><span class="status idle"><span class="dot"></span>idle</span><span class="run-meta">No automation has run on this device yet.</span></div>${message ? `<p class="run-error">${escapeHtml(message)}</p>` : ''}<pre>Waiting for output…</pre></section>`;
+        }
         const detail = await options.scheduler.execution(execution.id);
         // A plugin (or task version) can be uninstalled while old executions
         // still reference it — degrade instead of throwing out of the fragment.
@@ -214,8 +283,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             : `${execution.pluginId}/${execution.taskType}@${execution.taskVersion} (plugin not installed)`;
         const canStop = execution.status === 'queued' || (execution.status === 'running' && (definition?.supportsStop(execution.payload) ?? true));
         const stop = canStop
-            ? `<form hx-post="/api/executions/${execution.id}/stop" hx-target="#device-activity" hx-swap="outerHTML"><button class="button secondary" type="submit">Stop</button></form>` : '';
-        return `<section id="device-activity" class="run-panel" hx-get="/api/devices/${encodeURIComponent(deviceUdid)}/fragments/activity" hx-trigger="every 1s" hx-swap="outerHTML"><div class="run-heading"><span class="status ${escapeHtml(execution.status)}"><span class="dot"></span>${escapeHtml(execution.status)}</span><span class="run-meta">${escapeHtml(summary)} · ${escapeHtml(execution.scheduledFor.toISOString())}</span></div>${message ? `<p class="run-error">${escapeHtml(message)}</p>` : ''}${stop}<pre>${detail?.logs.length ? detail.logs.map(escapeHtml).join('\n') : escapeHtml(execution.error ?? 'Waiting for worker output…')}</pre></section>`;
+            ? `<form hx-post="/api/executions/${execution.id}/stop" hx-target="#device-activity" hx-swap="outerHTML"><button class="button secondary" type="submit">Stop current</button></form>` : '';
+        const timer = automationTimerHtml(execution);
+        return `<section id="device-activity" class="run-panel" hx-get="/api/devices/${encodeURIComponent(deviceUdid)}/fragments/activity" hx-trigger="every 1s" hx-swap="outerHTML"><div class="run-heading"><span class="status ${escapeHtml(execution.status)}"><span class="dot"></span>${escapeHtml(execution.status)}</span><span class="run-meta">${escapeHtml(summary)} · ${escapeHtml(execution.scheduledFor.toISOString())}</span></div>${timer}<div class="queue-bar"><span class="queue-summary"><span class="status ${queued.length || running.length ? 'queued' : 'idle'}"><span class="dot"></span></span>Queue: ${escapeHtml(queueSummary)}</span><div class="inline-actions">${clearQueue}${stop}</div></div>${message ? `<p class="run-error">${escapeHtml(message)}</p>` : ''}<pre>${detail?.logs.length ? detail.logs.map(escapeHtml).join('\n') : escapeHtml(execution.error ?? 'Waiting for worker output…')}</pre></section>`;
     };
 
     app.get('/health', async () => {
@@ -293,9 +363,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.code(201).send(redactDevice(created));
         },
     );
-    app.patch<{ Params: { udid: string }; Body: { name?: string; wdaLocalPort?: number; mjpegLocalPort?: number; passcode?: string; coordinates?: unknown; disabled?: boolean; coordinateProfile?: string; pluginData?: Record<string, JsonObject> } }>(
+    app.patch<{ Params: { udid: string }; Body: { name?: string; wdaLocalPort?: number; mjpegLocalPort?: number; passcode?: string; coordinates?: unknown; instagramCoordinates?: unknown; disabled?: boolean; coordinateProfile?: string; pluginData?: Record<string, JsonObject> } }>(
         '/api/devices/:udid', async (request, reply) => {
-            const { passcode, coordinates, name, wdaLocalPort, mjpegLocalPort, disabled, coordinateProfile, pluginData } = request.body;
+            const { passcode, coordinates, instagramCoordinates, name, wdaLocalPort, mjpegLocalPort, disabled, coordinateProfile, pluginData } = request.body ?? {};
             if (passcode !== undefined && passcode !== '' && !PASSCODE_PATTERN.test(passcode)) {
                 return reply.code(400).send({ error: 'Device passcode must contain at least four digits' });
             }
@@ -305,7 +375,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const updated = await mutateRegisteredDevices((devices) => {
                 const device = devices.find((entry) => entry.udid === request.params.udid);
                 if (!device) throw httpError(404, 'Device not found');
-                if (name !== undefined) device.name = name;
+                if (name !== undefined) device.name = normalizeDeviceName(name);
                 if (wdaLocalPort !== undefined) device.wdaLocalPort = wdaLocalPort;
                 if (mjpegLocalPort !== undefined) device.mjpegLocalPort = mjpegLocalPort;
                 if (coordinateProfile !== undefined) device.coordinateProfile = coordinateProfile as RegisteredDevice['coordinateProfile'];
@@ -315,11 +385,24 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 // passcode: a value sets it, '' clears it, omitting it leaves it
                 if (passcode === '') delete device.passcode;
                 else if (passcode !== undefined) device.passcode = passcode;
-                // coordinates: the object replaces the whole override map; {} clears it
+                // coordinates / instagramCoordinates: merge into the existing
+                // override map so a TikTok save never clobbers Instagram (and
+                // vice versa). Send {} to clear that app's overrides.
                 if (coordinates !== undefined) {
-                    const overrides = validateCoordinateOverrides(coordinates, device.coordinateProfile);
-                    if (Object.keys(overrides).length === 0) delete device.coordinates;
-                    else device.coordinates = overrides;
+                    const incoming = validateCoordinateOverrides(coordinates, device.coordinateProfile);
+                    if (Object.keys(coordinates as object).length === 0) {
+                        delete device.coordinates;
+                    } else {
+                        device.coordinates = { ...device.coordinates, ...incoming };
+                    }
+                }
+                if (instagramCoordinates !== undefined) {
+                    const incoming = validateCoordinateOverrides(instagramCoordinates, device.coordinateProfile);
+                    if (Object.keys(instagramCoordinates as object).length === 0) {
+                        delete device.instagramCoordinates;
+                    } else {
+                        device.instagramCoordinates = { ...device.instagramCoordinates, ...incoming };
+                    }
                 }
                 return device;
             });
@@ -327,18 +410,22 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return redactDevice(updated);
         },
     );
-    app.get<{ Params: { udid: string } }>('/api/devices/:udid/coordinates', async (request, reply) => {
+    app.get<{ Params: { udid: string }; Querystring: { app?: string } }>('/api/devices/:udid/coordinates', async (request, reply) => {
         const device = (await loadRegisteredDevices()).find(({ udid }) => udid === request.params.udid);
         if (!device) return reply.code(404).send({ error: 'Device not found' });
-        const base = coordinatesForProfile(device.coordinateProfile).tiktok;
-        const effective = resolveDeviceCoordinates(device.coordinateProfile, device.coordinates).tiktok;
+        const app = parseSocialApp(request.query.app);
+        const overrides = app === 'instagram' ? device.instagramCoordinates : device.coordinates;
+        const base = coordinatesForProfile(device.coordinateProfile)[app];
+        const effective = resolveDeviceCoordinates(device.coordinateProfile, overrides, app)[app];
+        const labels = labelsForApp(app);
         return {
+            app,
             profile: device.coordinateProfile ?? 'iphone8',
             screenSize: coordinatesForProfile(device.coordinateProfile).screenSize,
             points: CALIBRATABLE_POINTS.map((name) => ({
-                name, label: POINT_LABELS[name],
+                name, label: labels[name],
                 default: base[name], current: effective[name],
-                overridden: Boolean(device.coordinates?.[name]),
+                overridden: Boolean(overrides?.[name]),
             })),
         };
     });
@@ -507,6 +594,16 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         }
         return { result };
     });
+    app.post<{ Params: { udid: string } }>('/api/devices/:udid/queue/clear', async (request, reply) => {
+        const result = await options.scheduler.clearDeviceQueue(request.params.udid);
+        const note = result.cancelled || result.stopping
+            ? `Cleared ${result.cancelled} queued · stopping ${result.stopping} running`
+            : 'Queue already empty';
+        if (request.headers['hx-request']) {
+            return reply.type('text/html').send(await renderActivity(request.params.udid, note));
+        }
+        return result;
+    });
     app.post<{ Params: { id: string } }>('/api/executions/:id/retry', async (request, reply) => {
         const execution = await options.scheduler.retryExecution(request.params.id);
         return execution ?? reply.code(409).send({ error: 'Execution is not retryable' });
@@ -566,6 +663,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         app.get('/assets/styles.css', asset('text/css', theme.styles));
         app.get('/assets/device.js', asset('text/javascript', theme.deviceScript));
         app.get('/assets/tasks.js', asset('text/javascript', theme.tasksScript));
+        app.get('/assets/automations.js', asset('text/javascript', theme.automationsScript));
         app.get('/assets/register-device.js', asset('text/javascript', theme.registerDeviceScript));
         app.get('/assets/htmx.min.js', asset('text/javascript', theme.htmx));
         app.get('/api/fragments/devices', async (_request, reply) => {
@@ -574,6 +672,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const disabled = devices.filter((device) => device.disabled);
             const toggleButton = (udid: string, label: string, next: boolean) =>
                 `<button type="button" class="button secondary device-toggle" data-toggle-device="${encodeURIComponent(udid)}" data-disabled="${next}">${label}</button>`;
+            const renameButton = (udid: string) =>
+                `<button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(udid)}">Rename</button>`;
             const cards = active.map((device) => {
                 const accounts = Object.values(device.pluginData).flatMap((value) => {
                     const candidate = value.accounts;
@@ -585,19 +685,28 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 const preview = device.connected
                     ? `<div class="device-preview-frame"><img class="device-preview" src="/api/devices/${encodeURIComponent(device.udid)}/remote/screenshot?t=${Date.now()}" alt="Screen of ${escapeHtml(device.name)}" draggable="false" onerror="this.style.visibility='hidden'"></div>`
                     : '<div class="device-preview-frame unavailable" aria-hidden="true"><div class="device-icon"></div></div>';
-                return `<article class="device-card">${preview}<div class="device-copy"><h2>${escapeHtml(device.name)}</h2><p>${device.connected ? `iOS ${escapeHtml(device.connected.osVersion)}` : escapeHtml(device.udid)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
+                return `<article class="device-card">${preview}<div class="device-copy"><h2 class="device-name">${escapeHtml(device.name)}</h2><p>${device.connected ? `iOS ${escapeHtml(device.connected.osVersion)}` : escapeHtml(device.udid)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${renameButton(device.udid)}${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
             }).join('');
             const disabledPanel = disabled.length
-                ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span>${escapeHtml(device.name)}</span>${toggleButton(device.udid, 'Reconnect', false)}</li>`).join('')}</ul></details>`
+                ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span class="device-name">${escapeHtml(device.name)}</span><span class="inline-actions">${renameButton(device.udid)}${toggleButton(device.udid, 'Reconnect', false)}</span></li>`).join('')}</ul></details>`
                 : '';
-            const toggleScript = `<script>if(!window.__deviceToggle){window.__deviceToggle=1;document.addEventListener('click',async function(e){var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
-            return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${toggleScript}</section>`);
+            const deviceListScript = `<script>if(!window.__deviceListActions){window.__deviceListActions=1;document.addEventListener('click',async function(e){var rename=e.target.closest('[data-rename-device]');if(rename){e.preventDefault();var root=rename.closest('.device-card,li')||rename.parentElement;var title=root&&root.querySelector('.device-name');var current=(title&&title.textContent||'').replace(/\\s+/g,' ').trim();var next=window.prompt('Rename this phone for the farm grid',current);if(next===null)return;next=next.replace(/\\s+/g,' ').trim();if(!next){alert('Name cannot be empty');return}rename.disabled=true;var rr=await fetch('/api/devices/'+rename.dataset.renameDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name:next})});if(rr.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{rename.disabled=false;var err=((await rr.json().catch(function(){return{}}))||{}).error||('Rename failed ('+rr.status+')');alert(err)}return}var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
+            return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${deviceListScript}</section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/summary', async (request, reply) => {
-            const device = (await discoverConnectedDevices()).find(({ udid }) => udid === request.params.udid);
-            if (!device) return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
-            const screen = await remote.getScreenInfo(device.udid);
-            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected device</span><h1>${escapeHtml(device.name)}</h1><p>iOS ${escapeHtml(device.osVersion)} · ${screen.screenSize.width} × ${screen.screenSize.height} points · ${screen.scale}×</p></div><code>${escapeHtml(device.udid)}</code></section>`);
+            const [registered, connected] = await Promise.all([
+                loadRegisteredDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
+                discoverConnectedDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
+            ]);
+            if (!connected) {
+                if (!registered) {
+                    return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
+                }
+                return reply.type('text/html').send(`<section id="device-summary" class="device-summary"><div><span class="eyebrow">Registered device</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(registered.name)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(registered.udid)}">Rename</button></div><p>Offline · reconnect USB to control this phone</p></div><code>${escapeHtml(registered.udid)}</code></section>`);
+            }
+            const displayName = registered?.name ?? connected.name;
+            const screen = await remote.getScreenInfo(connected.udid);
+            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected device</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(displayName)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(connected.udid)}">Rename</button></div><p>iOS ${escapeHtml(connected.osVersion)} · ${screen.screenSize.width} × ${screen.screenSize.height} points · ${screen.scale}×</p></div><code>${escapeHtml(connected.udid)}</code></section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/activity', async (request, reply) => {
             return reply.type('text/html').send(await renderActivity(request.params.udid));
@@ -613,6 +722,10 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         const candidates = connected.filter(({ udid }) => !registeredIds.has(udid)).map((device) => `<option value="${escapeHtml(device.udid)}" data-name="${escapeHtml(device.name)}">${escapeHtml(device.name)} · ${escapeHtml(device.osVersion)}</option>`).join('');
         const registration = candidates ? `<section class="card"><h2>Register connected device</h2><form id="register-device"><select name="udid">${candidates}</select> <button>Register</button></form><p id="register-result" class="muted"></p><script>document.getElementById('register-device').addEventListener('submit',async function(e){e.preventDefault();var s=e.currentTarget.udid;var o=s.options[s.selectedIndex];var r=await fetch('/api/devices',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({udid:o.value,name:o.dataset.name,pluginData:{}})});document.getElementById('register-result').textContent=r.ok?'Registered. Reloading…':(await r.json()).error;if(r.ok)setTimeout(function(){location.reload()},500)});</script></section>` : '';
         return reply.type('text/html').send(renderPage('Devices', `<h1>Devices</h1>${registration}<div class="grid">${cards || '<p>No devices registered.</p>'}</div>`));
+    });
+    app.get('/demo/devices', async (_request, reply) => {
+        if (!themed) return reply.type('text/html').send(renderPage('Fleet demo', '<h1>Fleet demo</h1><p>Enable the dashboard theme to preview the 20-seat layout.</p>'));
+        return reply.type('text/html').send(themed.devicesDemoHtml);
     });
     app.get('/devices/register', async (_request, reply) => {
         if (!themed) return reply.type('text/html').send(renderPage('Register device', '<h1>Register device</h1><p>Use <code>POST /api/device-registrations</code> to start device setup.</p>'));
@@ -647,6 +760,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     });
     app.get('/tasks', async (_request, reply) => reply.type('text/html').send(
         themed?.tasksHtml ?? renderPage('Tasks', '<h1>Tasks</h1><p>The JSON API exposes schedules and execution history. Installed plugins add task forms to each device page.</p>'),
+    ));
+    app.get('/automations', async (_request, reply) => reply.type('text/html').send(
+        themed?.automationsHtml ?? renderPage('Automations', '<h1>Automations</h1><p>Pre-made templates are available when the dashboard theme is enabled.</p>'),
     ));
     app.get('/docs', async (_request, reply) => reply.type('text/html').send(renderPage('API', '<h1>API</h1><p>Use <code>/api/plugins</code>, <code>/api/devices</code>, <code>/api/schedules</code>, and <code>/api/executions</code>. This route follows the configured authentication policy.</p>')));
 

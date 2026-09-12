@@ -167,6 +167,9 @@ export async function executeAutomation(
             signal: controller.signal,
             log: (line) => repository.appendLogs(execution.id, attempt, [line]),
             runProcess: (specification) => runPluginProcess(specification, environment, controller.signal, (lines) => repository.appendLogs(execution.id, attempt, lines)),
+            claimPipelineItem: () => repository.claimNextPipelineItem(execution.deviceUdid, execution.id),
+            completePipelineItem: (id) => repository.completePipelineItem(id),
+            failPipelineItem: (id, error) => repository.failPipelineItem(id, error),
         };
         return await definition.execute(context, execution.payload);
     } catch (error) {

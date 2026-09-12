@@ -14,6 +14,8 @@ export interface RegisteredDevice {
     passcode?: string;
     /** Per-device single-tap coordinate overrides (dashboard calibration). */
     coordinates?: DeviceCoordinateOverrides;
+    /** Instagram single-tap overrides (dashboard calibration). */
+    instagramCoordinates?: DeviceCoordinateOverrides;
     /** When true the farm keeps the entry but stops supervising it — no WDA, no worker, no discovery polling. */
     disabled?: boolean;
     pluginData: Record<string, JsonObject>;
@@ -49,7 +51,14 @@ export async function loadRegisteredDevices(registryPath = defaultRegistryPath):
         throw new Error(`${registryPath} contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
     for (const device of devices) {
-        coordinatesForProfile(device.coordinateProfile);
+        // Unknown profiles used to throw here and turn every PATCH (including
+        // rename) into a generic 400. Fall back so the rest of the farm stays usable.
+        try {
+            coordinatesForProfile(device.coordinateProfile);
+        } catch {
+            delete device.coordinateProfile;
+            coordinatesForProfile(device.coordinateProfile);
+        }
         device.pluginData ??= {};
     }
     return devices;
@@ -65,6 +74,13 @@ export async function saveRegisteredDevices(devices: RegisteredDevice[], registr
         if (device.coordinates !== undefined) {
             device.coordinates = validateCoordinateOverrides(device.coordinates, device.coordinateProfile);
             if (Object.keys(device.coordinates).length === 0) delete device.coordinates;
+        }
+        if (device.instagramCoordinates !== undefined) {
+            device.instagramCoordinates = validateCoordinateOverrides(
+                device.instagramCoordinates,
+                device.coordinateProfile,
+            );
+            if (Object.keys(device.instagramCoordinates).length === 0) delete device.instagramCoordinates;
         }
         if (device.disabled !== true) delete device.disabled;
         if (unique.has(device.udid)) throw new Error(`Device ${device.udid} is already registered`);

@@ -11,6 +11,8 @@ const elements = {
     statusText: element('#status span:last-child'),
     refresh: element('#refresh'),
     toggle: element('#toggle'),
+    recordScreen: element('#record-screen'),
+    recordStatus: element('#record-status'),
     remoteButtons: Array.from(document.querySelectorAll('[data-remote-action]')),
     openPost: element('#open-post'),
     openDoomscroll: element('#open-doomscroll'),
@@ -46,6 +48,73 @@ const elements = {
     doomscrollWeekdays: element('#doomscroll-weekdays'),
     doomscrollRunAt: element('#doomscroll-run-at'),
     doomscrollRunAtIso: element('#doomscroll-run-at-iso'),
+    doomscrollResult: element('#doomscroll-result'),
+    doomscrollCommentEnabled: element('#doomscroll-comment-enabled'),
+    doomscrollCommentText: element('#doomscroll-comment-text'),
+    openFollowingDoomscroll: element('#open-following-doomscroll'),
+    followingDoomscrollDialog: element('#following-doomscroll-dialog'),
+    closeFollowingDoomscroll: element('#close-following-doomscroll'),
+    cancelFollowingDoomscroll: element('#cancel-following-doomscroll'),
+    followingDoomscrollForm: element('#following-doomscroll-form'),
+    followingDoomscrollDuration: element('#following-doomscroll-duration'),
+    followingDoomscrollDurationButtons: Array.from(document.querySelectorAll('[data-following-doomscroll-duration]')),
+    followingCommentEnabled: element('#following-comment-enabled'),
+    followingCommentText: element('#following-comment-text'),
+    followingDoomscrollResult: element('#following-doomscroll-result'),
+    trainToggle: element('#train-toggle'),
+    trainSave: element('#train-save'),
+    trainClear: element('#train-clear'),
+    trainStatus: element('#train-status'),
+    trainSteps: element('#train-steps'),
+    trainSaveDialog: element('#train-save-dialog'),
+    trainSaveForm: element('#train-save-form'),
+    closeTrainSave: element('#close-train-save'),
+    cancelTrainSave: element('#cancel-train-save'),
+    trainWorkflowName: element('#train-workflow-name'),
+    trainWorkflowFeed: element('#train-workflow-feed'),
+    trainSaveResult: element('#train-save-result'),
+    refreshWorkflows: element('#refresh-workflows'),
+    workflowList: element('#workflow-list'),
+    openInstagramDoomscroll: element('#open-instagram-doomscroll'),
+    instagramDoomscrollDialog: element('#instagram-doomscroll-dialog'),
+    closeInstagramDoomscroll: element('#close-instagram-doomscroll'),
+    cancelInstagramDoomscroll: element('#cancel-instagram-doomscroll'),
+    instagramDoomscrollDuration: element('#instagram-doomscroll-duration'),
+    instagramDoomscrollDurationButtons: Array.from(document.querySelectorAll('[data-instagram-doomscroll-duration]')),
+    openInstagramFollowingDoomscroll: element('#open-instagram-following-doomscroll'),
+    instagramFollowingDoomscrollDialog: element('#instagram-following-doomscroll-dialog'),
+    closeInstagramFollowingDoomscroll: element('#close-instagram-following-doomscroll'),
+    cancelInstagramFollowingDoomscroll: element('#cancel-instagram-following-doomscroll'),
+    instagramFollowingDoomscrollForm: element('#instagram-following-doomscroll-form'),
+    instagramFollowingDoomscrollDuration: element('#instagram-following-doomscroll-duration'),
+    instagramFollowingDoomscrollDurationButtons: Array.from(document.querySelectorAll('[data-instagram-following-doomscroll-duration]')),
+    instagramFollowingCommentEnabled: element('#instagram-following-comment-enabled'),
+    instagramFollowingCommentText: element('#instagram-following-comment-text'),
+    instagramFollowingDoomscrollResult: element('#instagram-following-doomscroll-result'),
+    openInstagramColdDms: element('#open-instagram-cold-dms'),
+    instagramColdDmsDialog: element('#instagram-cold-dms-dialog'),
+    closeInstagramColdDms: element('#close-instagram-cold-dms'),
+    cancelInstagramColdDms: element('#cancel-instagram-cold-dms'),
+    instagramColdDmsForm: element('#instagram-cold-dms-form'),
+    instagramColdDmsAccount: element('#instagram-cold-dms-account'),
+    instagramColdDmsResult: element('#instagram-cold-dms-result'),
+    instagramDoomscrollForm: element('#instagram-doomscroll-form'),
+    instagramCommentEnabled: element('#instagram-comment-enabled'),
+    instagramCommentText: element('#instagram-comment-text'),
+    instagramDoomscrollRecurring: element('#instagram-doomscroll-recurring'),
+    instagramDoomscrollStartOptions: element('#instagram-doomscroll-start-options'),
+    instagramDoomscrollStartKind: element('#instagram-doomscroll-start-kind'),
+    instagramDoomscrollOnceFields: element('#instagram-doomscroll-once-fields'),
+    instagramDoomscrollRecurringFields: element('#instagram-doomscroll-recurring-fields'),
+    instagramDoomscrollFrequency: element('#instagram-doomscroll-frequency'),
+    instagramDoomscrollWeekdayFields: element('#instagram-doomscroll-weekday-fields'),
+    instagramDoomscrollWeekdayInputs: Array.from(document.querySelectorAll('#instagram-doomscroll-weekday-fields input[type="checkbox"]')),
+    instagramDoomscrollRunWindowField: element('#instagram-doomscroll-run-window-field'),
+    instagramDoomscrollScheduleKind: element('#instagram-doomscroll-schedule-kind'),
+    instagramDoomscrollWeekdays: element('#instagram-doomscroll-weekdays'),
+    instagramDoomscrollRunAt: element('#instagram-doomscroll-run-at'),
+    instagramDoomscrollRunAtIso: element('#instagram-doomscroll-run-at-iso'),
+    instagramDoomscrollResult: element('#instagram-doomscroll-result'),
     timezoneInputs: Array.from(document.querySelectorAll('.browser-timezone')),
     postRecurring: element('#post-recurring'),
     postStartOptions: element('#post-start-options'),
@@ -65,6 +134,12 @@ const elements = {
     accountsDialog: element('#accounts-dialog'),
     openAccounts: element('#open-accounts'),
     closeAccounts: element('#close-accounts'),
+    instagramAccountsForm: element('#instagram-accounts-form'),
+    instagramDeviceAccounts: element('#instagram-device-accounts'),
+    instagramAccountsResult: element('#instagram-accounts-result'),
+    instagramAccountsDialog: element('#instagram-accounts-dialog'),
+    openInstagramAccounts: element('#open-instagram-accounts'),
+    closeInstagramAccounts: element('#close-instagram-accounts'),
     passcodeDialog: element('#passcode-dialog'),
     openPasscode: element('#open-passcode'),
     closePasscode: element('#close-passcode'),
@@ -73,6 +148,8 @@ const elements = {
     closeRemove: element('#close-remove'),
     deviceSchedules: element('#device-schedules'),
     deviceExecutions: element('#device-executions'),
+    deviceQueueStatus: element('#device-queue-status'),
+    clearDeviceQueue: element('#clear-device-queue'),
     tasksDialog: element('#tasks-dialog'),
     openTasks: element('#open-tasks'),
     closeTasks: element('#close-tasks'),
@@ -84,6 +161,7 @@ const elements = {
     openCalibrate: element('#open-calibrate'),
     calibrateDialog: element('#calibrate-dialog'),
     closeCalibrate: element('#close-calibrate'),
+    calApp: element('#cal-app'),
     calScreen: element('#cal-screen'),
     calControl: element('#cal-control'),
     calUnlock: element('#cal-unlock'),
@@ -101,6 +179,209 @@ let screenSize;
 let paused = false;
 let connecting = false;
 let pointerStart;
+let trainRecording = false;
+let trainStartedAt = 0;
+let trainEvents = [];
+const SCREEN_RECORD_MAX_MS = 10 * 60_000;
+const SCREEN_RECORD_FPS = 12;
+let screenCapture;
+function pickScreenRecorderMimeType() {
+    const candidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4',
+    ];
+    for (const type of candidates) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type))
+            return type;
+    }
+    return '';
+}
+function formatRecordElapsed(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+function updateRecordUi(recording, message = '') {
+    elements.recordScreen.classList.toggle('recording', recording);
+    elements.recordScreen.textContent = recording ? 'Stop & download' : 'Record screen';
+    elements.recordStatus.hidden = !message;
+    elements.recordStatus.textContent = message;
+}
+function drawScreenCaptureFrame(session) {
+    const image = elements.screen;
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    if (width > 0 && height > 0) {
+        if (session.canvas.width !== width || session.canvas.height !== height) {
+            session.canvas.width = width;
+            session.canvas.height = height;
+        }
+        try {
+            session.context.drawImage(image, 0, 0, width, height);
+        }
+        catch {
+            // Frame may be mid-decode; skip and keep recording.
+        }
+    }
+    session.frameHandle = window.setTimeout(() => drawScreenCaptureFrame(session), Math.round(1000 / SCREEN_RECORD_FPS));
+}
+function downloadScreenCapture(blob, mimeType) {
+    const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const shortUdid = udid.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'device';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `ios-agents-${shortUdid}-${stamp}.${extension}`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+async function stopScreenCapture(reason = 'Recording saved') {
+    const session = screenCapture;
+    if (!session)
+        return;
+    screenCapture = undefined;
+    window.clearTimeout(session.frameHandle);
+    window.clearInterval(session.tickHandle);
+    await new Promise((resolve) => {
+        session.recorder.addEventListener('stop', () => resolve(), { once: true });
+        if (session.recorder.state !== 'inactive')
+            session.recorder.stop();
+        else
+            resolve();
+    });
+    for (const track of session.stream.getTracks())
+        track.stop();
+    const blob = new Blob(session.chunks, { type: session.mimeType || 'video/webm' });
+    if (blob.size > 0) {
+        downloadScreenCapture(blob, blob.type || session.mimeType);
+        updateRecordUi(false, `${reason} · ${(blob.size / (1024 * 1024)).toFixed(1)} MB`);
+    }
+    else {
+        updateRecordUi(false, 'Recording produced an empty file — keep the live stream visible and try again.');
+    }
+}
+async function startScreenCapture() {
+    if (screenCapture)
+        return;
+    if (typeof MediaRecorder === 'undefined') {
+        updateRecordUi(false, 'This browser cannot record canvas video.');
+        return;
+    }
+    if (paused || !elements.screen.getAttribute('src')) {
+        updateRecordUi(false, 'Start the live stream before recording.');
+        return;
+    }
+    const mimeType = pickScreenRecorderMimeType();
+    if (!mimeType) {
+        updateRecordUi(false, 'No supported MediaRecorder codec in this browser.');
+        return;
+    }
+    // Wait briefly for the first MJPEG frame dimensions.
+    const readyAt = Date.now() + 2_500;
+    while (Date.now() < readyAt && (!elements.screen.naturalWidth || !elements.screen.naturalHeight)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    const width = elements.screen.naturalWidth || screenSize?.width || 390;
+    const height = elements.screen.naturalHeight || screenSize?.height || 844;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) {
+        updateRecordUi(false, 'Could not open a drawing surface for recording.');
+        return;
+    }
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(elements.screen, 0, 0, width, height);
+    const stream = canvas.captureStream(SCREEN_RECORD_FPS);
+    const chunks = [];
+    let recorder;
+    try {
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
+    }
+    catch (error) {
+        updateRecordUi(false, errorMessage(error));
+        for (const track of stream.getTracks())
+            track.stop();
+        return;
+    }
+    const session = {
+        recorder,
+        chunks,
+        canvas,
+        context,
+        stream,
+        startedAt: Date.now(),
+        frameHandle: 0,
+        tickHandle: 0,
+        mimeType,
+    };
+    recorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0)
+            chunks.push(event.data);
+    });
+    recorder.addEventListener('error', () => {
+        void stopScreenCapture('Recording stopped after an encoder error');
+    });
+    screenCapture = session;
+    recorder.start(1_000);
+    drawScreenCaptureFrame(session);
+    session.tickHandle = window.setInterval(() => {
+        if (!screenCapture)
+            return;
+        const elapsed = Date.now() - screenCapture.startedAt;
+        updateRecordUi(true, `Recording ${formatRecordElapsed(elapsed)}`);
+        if (elapsed >= SCREEN_RECORD_MAX_MS) {
+            void stopScreenCapture('Auto-stopped at 10 minutes');
+        }
+    }, 500);
+    updateRecordUi(true, 'Recording 0:00');
+}
+function summarizeTrainAction(action) {
+    if (action.type === 'tap')
+        return `tap (${action.x}, ${action.y})`;
+    if (action.type === 'swipe') {
+        return `swipe (${action.startX},${action.startY})→(${action.endX},${action.endY})`;
+    }
+    return action.type;
+}
+function renderTrainSteps() {
+    elements.trainSteps.innerHTML = '';
+    for (const event of trainEvents) {
+        const li = document.createElement('li');
+        li.textContent = `+${event.t}ms · ${summarizeTrainAction(event.action)}`;
+        elements.trainSteps.append(li);
+    }
+    elements.trainSteps.hidden = trainEvents.length === 0;
+    elements.trainStatus.textContent = trainRecording
+        ? `Recording… ${trainEvents.length} gesture${trainEvents.length === 1 ? '' : 's'}`
+        : (trainEvents.length ? `${trainEvents.length} gestures ready to save` : '');
+}
+function recordTrainEvent(action) {
+    if (!trainRecording)
+        return;
+    const t = Math.max(0, Math.round(performance.now() - trainStartedAt));
+    trainEvents.push({ t, action });
+    renderTrainSteps();
+}
+function setTrainRecording(active) {
+    trainRecording = active;
+    if (active) {
+        trainStartedAt = performance.now();
+        trainEvents = [];
+    }
+    elements.trainToggle.textContent = active ? 'Stop training' : 'Train workflow';
+    elements.trainSave.hidden = active || trainEvents.length === 0;
+    elements.trainClear.hidden = trainEvents.length === 0 && !active;
+    renderTrainSteps();
+}
 let orderedMedia = [];
 let postPoll;
 let connectionPoll;
@@ -122,6 +403,18 @@ function updateDoomscrollSchedule() {
     elements.doomscrollRunWindowField.hidden = kind === 'now';
     elements.doomscrollRunAt.required = kind === 'once';
 }
+function updateInstagramDoomscrollSchedule() {
+    const recurring = elements.instagramDoomscrollRecurring.checked;
+    const kind = recurring ? elements.instagramDoomscrollFrequency.value : elements.instagramDoomscrollStartKind.value;
+    elements.instagramDoomscrollScheduleKind.value = kind;
+    elements.instagramDoomscrollWeekdays.value = selectedWeekdays(elements.instagramDoomscrollWeekdayInputs).join(',');
+    elements.instagramDoomscrollStartOptions.hidden = recurring;
+    elements.instagramDoomscrollOnceFields.hidden = recurring || kind !== 'once';
+    elements.instagramDoomscrollRecurringFields.hidden = !recurring;
+    elements.instagramDoomscrollWeekdayFields.hidden = !recurring || kind !== 'weekly';
+    elements.instagramDoomscrollRunWindowField.hidden = kind === 'now';
+    elements.instagramDoomscrollRunAt.required = kind === 'once';
+}
 function updatePostSchedule() {
     const recurring = elements.postRecurring.checked;
     const kind = recurring ? elements.postFrequency.value : elements.postStartKind.value;
@@ -136,21 +429,47 @@ elements.doomscrollRecurring.addEventListener('change', updateDoomscrollSchedule
 elements.doomscrollStartKind.addEventListener('change', updateDoomscrollSchedule);
 elements.doomscrollFrequency.addEventListener('change', updateDoomscrollSchedule);
 elements.doomscrollWeekdayInputs.forEach((input) => input.addEventListener('change', updateDoomscrollSchedule));
+elements.instagramDoomscrollRecurring.addEventListener('change', updateInstagramDoomscrollSchedule);
+elements.instagramDoomscrollStartKind.addEventListener('change', updateInstagramDoomscrollSchedule);
+elements.instagramDoomscrollFrequency.addEventListener('change', updateInstagramDoomscrollSchedule);
+elements.instagramDoomscrollWeekdayInputs.forEach((input) => input.addEventListener('change', updateInstagramDoomscrollSchedule));
 elements.postRecurring.addEventListener('change', updatePostSchedule);
 elements.postStartKind.addEventListener('change', updatePostSchedule);
 elements.postFrequency.addEventListener('change', updatePostSchedule);
 elements.doomscrollForm.addEventListener('submit', () => {
     updateDoomscrollSchedule();
+    elements.doomscrollResult.textContent = 'Starting…';
     elements.doomscrollRunAtIso.value = elements.doomscrollRunAt.value
         ? new Date(elements.doomscrollRunAt.value).toISOString()
         : '';
 });
+elements.instagramDoomscrollForm.addEventListener('submit', () => {
+    updateInstagramDoomscrollSchedule();
+    elements.instagramDoomscrollResult.textContent = 'Starting…';
+    elements.instagramDoomscrollRunAtIso.value = elements.instagramDoomscrollRunAt.value
+        ? new Date(elements.instagramDoomscrollRunAt.value).toISOString()
+        : '';
+});
 elements.openDoomscroll.addEventListener('click', () => elements.doomscrollDialog.showModal());
+elements.doomscrollCommentEnabled.addEventListener('change', () => {
+    elements.doomscrollCommentText.disabled = !elements.doomscrollCommentEnabled.checked;
+    if (elements.doomscrollCommentEnabled.checked && !elements.doomscrollCommentText.value.trim()) {
+        elements.doomscrollCommentText.value = '🔥';
+    }
+});
 elements.closeDoomscroll.addEventListener('click', () => elements.doomscrollDialog.close());
 elements.cancelDoomscroll.addEventListener('click', () => elements.doomscrollDialog.close());
 elements.doomscrollDurationButtons.forEach((button) => {
     button.addEventListener('click', () => {
         elements.doomscrollDuration.value = button.dataset.doomscrollDuration ?? '';
+    });
+});
+elements.openInstagramDoomscroll.addEventListener('click', () => elements.instagramDoomscrollDialog.showModal());
+elements.closeInstagramDoomscroll.addEventListener('click', () => elements.instagramDoomscrollDialog.close());
+elements.cancelInstagramDoomscroll.addEventListener('click', () => elements.instagramDoomscrollDialog.close());
+elements.instagramDoomscrollDurationButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        elements.instagramDoomscrollDuration.value = button.dataset.instagramDoomscrollDuration ?? '';
     });
 });
 function errorMessage(error) {
@@ -172,6 +491,17 @@ function startStream() {
         return;
     setStatus('Connecting video stream…');
     elements.screen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
+}
+/** Drop MJPEG during post/upload — Photos + Create + FYP cold-start piles on WDA harder than warmup swipes. */
+function pauseStreamForAutomation(message = 'Video stream paused during post (keeps WDA stable)') {
+    if (paused && !elements.screen.getAttribute('src'))
+        return;
+    paused = true;
+    elements.toggle.textContent = 'Resume stream';
+    if (screenCapture)
+        void stopScreenCapture('Recording stopped — automation started');
+    elements.screen.removeAttribute('src');
+    setStatus(message);
 }
 async function connectRemote() {
     if (paused || connecting || !screenSize)
@@ -229,18 +559,64 @@ document.addEventListener('htmx:afterSwap', () => {
 });
 document.addEventListener('htmx:afterRequest', (event) => {
     const detail = event.detail;
-    if (detail?.elt === elements.doomscrollForm && detail.successful) {
-        elements.doomscrollDialog.close();
+    if (detail?.elt === elements.doomscrollForm) {
+        if (detail.successful) {
+            elements.doomscrollResult.textContent = '';
+            elements.doomscrollDialog.close();
+        }
+        else {
+            const message = detail.xhr?.responseText?.match(/<p class="run-error">([^<]+)<\/p>/)?.[1]
+                ?? 'Could not start doomscroll. Check Activity for details.';
+            elements.doomscrollResult.textContent = message.trim();
+        }
+    }
+    if (detail?.elt === elements.instagramDoomscrollForm) {
+        if (detail.successful) {
+            elements.instagramDoomscrollResult.textContent = '';
+            elements.instagramDoomscrollDialog.close();
+        }
+        else {
+            const message = detail.xhr?.responseText?.match(/<p class="run-error">([^<]+)<\/p>/)?.[1]
+                ?? 'Could not start doomscroll. Check Activity for details.';
+            elements.instagramDoomscrollResult.textContent = message.trim();
+        }
     }
 });
+function containContentBox(element, mediaWidth, mediaHeight) {
+    const rect = element.getBoundingClientRect();
+    const mw = mediaWidth > 0 ? mediaWidth : rect.width;
+    const mh = mediaHeight > 0 ? mediaHeight : rect.height;
+    const scale = Math.min(rect.width / mw, rect.height / mh);
+    const width = mw * scale;
+    const height = mh * scale;
+    return {
+        left: rect.left + (rect.width - width) / 2,
+        top: rect.top + (rect.height - height) / 2,
+        width,
+        height,
+        elementWidth: rect.width,
+        elementHeight: rect.height,
+    };
+}
+/** Map a pointer event on an object-fit:contain image to device points. */
+function pointFromContainedMedia(event, img, deviceSize) {
+    const mediaW = img.naturalWidth || deviceSize.width;
+    const mediaH = img.naturalHeight || deviceSize.height;
+    const box = containContentBox(img, mediaW, mediaH);
+    if (box.width <= 0 || box.height <= 0) {
+        throw new Error('Screen content size is unavailable');
+    }
+    const x = ((event.clientX - box.left) / box.width) * deviceSize.width;
+    const y = ((event.clientY - box.top) / box.height) * deviceSize.height;
+    return {
+        x: Math.max(0, Math.min(deviceSize.width, Math.round(x))),
+        y: Math.max(0, Math.min(deviceSize.height, Math.round(y))),
+    };
+}
 function pointFromEvent(event) {
     if (!screenSize)
         throw new Error('Screen dimensions are unavailable');
-    const rect = elements.screen.getBoundingClientRect();
-    return {
-        x: Math.round((event.clientX - rect.left) * screenSize.width / rect.width),
-        y: Math.round((event.clientY - rect.top) * screenSize.height / rect.height),
-    };
+    return pointFromContainedMedia(event, elements.screen, screenSize);
 }
 async function sendAction(action) {
     setStatus('Sending input…');
@@ -251,6 +627,8 @@ async function sendAction(action) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(action),
         });
+        if (trainRecording)
+            recordTrainEvent(action);
         setStatus(action.type === 'tap' ? `Tapped (${action.x}, ${action.y})` : 'Remote connected', 'ready');
     }
     catch (error) {
@@ -329,12 +707,16 @@ elements.screen.addEventListener('error', () => {
     if (paused)
         return;
     elements.screen.removeAttribute('src');
+    if (screenCapture)
+        void stopScreenCapture('Recording stopped — stream disconnected');
     setStatus('Video stream disconnected; checking the phone connection…', 'error');
     void pollConnection();
 });
 elements.refresh.addEventListener('click', async () => {
     elements.refresh.disabled = true;
     window.clearTimeout(connectionPoll);
+    if (screenCapture)
+        await stopScreenCapture('Recording stopped — reconnecting');
     elements.screen.removeAttribute('src');
     setStatus('Restarting the phone connection…');
     try {
@@ -351,12 +733,31 @@ elements.toggle.addEventListener('click', () => {
     paused = !paused;
     elements.toggle.textContent = paused ? 'Resume stream' : 'Pause stream';
     if (paused) {
+        if (screenCapture)
+            void stopScreenCapture('Recording stopped — stream paused');
         elements.screen.removeAttribute('src');
         setStatus('Video stream paused');
     }
     else {
         void connectRemote();
     }
+});
+elements.recordScreen.addEventListener('click', () => {
+    if (screenCapture) {
+        void stopScreenCapture('Recording saved');
+        return;
+    }
+    void startScreenCapture();
+});
+window.addEventListener('beforeunload', () => {
+    if (!screenCapture)
+        return;
+    window.clearTimeout(screenCapture.frameHandle);
+    window.clearInterval(screenCapture.tickHandle);
+    if (screenCapture.recorder.state !== 'inactive')
+        screenCapture.recorder.stop();
+    for (const track of screenCapture.stream.getTracks())
+        track.stop();
 });
 function renderMedia() {
     elements.mediaList.replaceChildren(...orderedMedia.map((file, index) => {
@@ -384,7 +785,8 @@ function renderMedia() {
     }));
 }
 function selectedDestination() {
-    return elements.postForm.elements.namedItem('destination').value;
+    // Publish-only for now — scheduling is via Start / Recurring, not Drafts.
+    return 'publish';
 }
 function postTiming() {
     const kind = elements.postRecurring.checked ? elements.postFrequency.value : elements.postStartKind.value;
@@ -406,11 +808,8 @@ function postTiming() {
     };
 }
 function updateDestination() {
-    const publishing = selectedDestination() === 'publish';
-    elements.publishConfirm.classList.toggle('visible', publishing);
-    if (!publishing)
-        elements.confirmPublish.checked = false;
-    elements.submitPost.textContent = publishing ? 'Post publicly' : 'Save to Drafts';
+    elements.publishConfirm.classList.add('visible');
+    elements.submitPost.textContent = 'Publish';
 }
 async function pollPost() {
     try {
@@ -419,12 +818,13 @@ async function pollPost() {
             ? 'Post automation is running. Follow its live output in the Automation log.'
             : '';
         if (run.status === 'running') {
+            pauseStreamForAutomation();
             postPoll = window.setTimeout(() => void pollPost(), 1000);
         }
         else {
             elements.submitPost.disabled = false;
             elements.postResult.textContent = run.status === 'succeeded'
-                ? `Completed: ${run.destination === 'publish' ? 'post submitted' : 'draft saved'}.`
+                ? 'Completed: post published.'
                 : 'Automation failed. Review the Automation log and the phone screen.';
         }
     }
@@ -454,13 +854,24 @@ function taskActionButton(label, action) {
     });
     return buttonElement;
 }
-function taskTitle(taskType, payload) {
-    if (taskType === 'doomscroll') {
+function pluginLabel(pluginId) {
+    if (pluginId === 'com.git-agni.instagram')
+        return 'Instagram';
+    if (pluginId === 'com.git-agni.tiktok')
+        return 'TikTok';
+    return pluginId ? pluginId.replace(/^com\.git-agni\./, '') : 'Task';
+}
+function taskTitle(taskType, payload, pluginId) {
+    const app = pluginLabel(pluginId);
+    if (taskType === 'doomscroll' || taskType === 'doomscroll-following') {
+        const isInstagram = pluginId === 'com.git-agni.instagram';
+        const label = taskType === 'doomscroll-following'
+            ? (isInstagram ? 'engage following' : 'engagement')
+            : (isInstagram ? 'warmup' : 'warmup');
         const details = payload?.durationMinutes ? ` · ${payload.durationMinutes} min` : '';
-        return `Doomscroll${details}`;
+        return `${app} ${label}${details}`;
     }
-    const destination = payload?.destination === 'publish' ? 'Post publicly' : 'Save to drafts';
-    return payload?.account ? `${destination} · ${payload.account}` : destination;
+    return payload?.account ? `${app} · publish · ${payload.account}` : `${app} · publish`;
 }
 function timingDescription(timing) {
     if (timing.kind === 'once')
@@ -486,7 +897,7 @@ function renderDeviceSchedules(schedules) {
         row.className = 'task-row';
         const copy = document.createElement('div');
         const title = document.createElement('h3');
-        title.textContent = taskTitle(schedule.taskType, schedule.payload);
+        title.textContent = taskTitle(schedule.taskType, schedule.payload, schedule.pluginId);
         const meta = document.createElement('p');
         meta.textContent = `${timingDescription(schedule.timing)} · next ${formatDate(schedule.nextRunAt)}`;
         copy.append(title, meta);
@@ -513,6 +924,20 @@ function renderDeviceSchedules(schedules) {
     }));
 }
 function renderDeviceExecutions(executions) {
+    const running = executions.filter((execution) => execution.status === 'running').length;
+    const queued = executions.filter((execution) => execution.status === 'queued').length;
+    // Warmup/doomscroll is light enough to keep Live Control; post/upload is not.
+    if (executions.some((execution) => execution.status === 'running' && execution.taskType === 'post')) {
+        pauseStreamForAutomation();
+    }
+    if (running || queued) {
+        elements.deviceQueueStatus.textContent = `Queue: ${running} running · ${queued} waiting`;
+        elements.clearDeviceQueue.disabled = false;
+    }
+    else {
+        elements.deviceQueueStatus.textContent = 'Queue: empty — nothing running or waiting';
+        elements.clearDeviceQueue.disabled = true;
+    }
     if (!executions.length) {
         elements.deviceExecutions.className = 'task-list empty-state';
         elements.deviceExecutions.textContent = 'No task runs for this device yet.';
@@ -524,7 +949,7 @@ function renderDeviceExecutions(executions) {
         row.className = 'task-row';
         const copy = document.createElement('div');
         const title = document.createElement('h3');
-        title.textContent = execution.taskType === 'post' ? 'Post' : 'Doomscroll';
+        title.textContent = taskTitle(execution.taskType, undefined, execution.pluginId);
         const meta = document.createElement('p');
         meta.textContent = `${formatDate(execution.scheduledFor)}${execution.error ? ` · ${execution.error}` : ''}`;
         copy.append(title, meta);
@@ -533,16 +958,18 @@ function renderDeviceExecutions(executions) {
         state.textContent = execution.status;
         const actions = document.createElement('div');
         actions.className = 'inline-actions';
-        if (execution.status === 'queued' || (execution.status === 'running' && execution.taskType === 'doomscroll')) {
+        if (execution.status === 'queued' || (execution.status === 'running' && (execution.taskType === 'doomscroll' || execution.taskType === 'doomscroll-following'))) {
             actions.append(taskActionButton(execution.status === 'queued' ? 'Cancel' : 'Stop', async () => {
                 await jsonRequest(`/api/executions/${execution.id}/stop`, { method: 'POST' });
             }));
         }
         if (execution.status === 'failed' || execution.status === 'stopped') {
             actions.append(taskActionButton('Retry', async () => {
-                if (execution.taskType === 'post'
-                    && !window.confirm('The post may already have reached TikTok. Retry only after checking the device.'))
-                    return;
+                if (execution.taskType === 'post') {
+                    const app = pluginLabel(execution.pluginId);
+                    if (!window.confirm(`The post may already have reached ${app}. Retry only after checking the device.`))
+                        return;
+                }
                 await jsonRequest(`/api/executions/${execution.id}/retry`, { method: 'POST' });
             }));
         }
@@ -568,7 +995,41 @@ async function loadDeviceTasks() {
         elements.deviceExecutions.textContent = message;
     }
 }
-elements.openPost.addEventListener('click', () => elements.postDialog.showModal());
+function syncTikTokAccountSelects(accounts) {
+    const previousDoomscroll = document.querySelector('#doomscroll-account')?.value ?? '';
+    const previousFollowing = document.querySelector('#following-doomscroll-account')?.value ?? '';
+    const previousPost = elements.postAccount.value;
+    elements.postAccount.replaceChildren(new Option("Don't switch (already signed in)", '', true, true));
+    const doomscrollAccount = element('#doomscroll-account');
+    const followingAccount = element('#following-doomscroll-account');
+    doomscrollAccount.replaceChildren(new Option("Don't switch", ''));
+    followingAccount.replaceChildren(new Option("Don't switch", ''));
+    for (const account of accounts) {
+        elements.postAccount.add(new Option(account, account));
+        doomscrollAccount.add(new Option(account, account));
+        followingAccount.add(new Option(account, account));
+    }
+    if (accounts.includes(previousPost))
+        elements.postAccount.value = previousPost;
+    if (accounts.includes(previousDoomscroll))
+        doomscrollAccount.value = previousDoomscroll;
+    if (accounts.includes(previousFollowing))
+        followingAccount.value = previousFollowing;
+}
+function preferSolePostAccount() {
+    // Keep "Don't switch" as the default — forced switches need calibrated Profile/switcher taps.
+}
+elements.openPost.addEventListener('click', () => {
+    const listed = [...elements.postAccount.options].filter((option) => option.value).map((option) => option.value);
+    if (listed.length === 0) {
+        const fromField = elements.deviceAccounts.value.split(',').map((value) => value.trim()).filter(Boolean)
+            .map((value) => value.startsWith('@') ? value : `@${value}`);
+        if (fromField.length > 0)
+            syncTikTokAccountSelects(fromField);
+    }
+    preferSolePostAccount();
+    elements.postDialog.showModal();
+});
 elements.closePost.addEventListener('click', () => elements.postDialog.close());
 elements.cancelPost.addEventListener('click', () => elements.postDialog.close());
 elements.media.addEventListener('change', () => {
@@ -617,16 +1078,18 @@ elements.postForm.addEventListener('submit', async (event) => {
     form.append('runWindowMinutes', elements.postRunWindow.value);
     form.append('recurringPublishConfirmed', String(destination !== 'publish' || elements.confirmPublish.checked));
     elements.submitPost.disabled = true;
+    // Drop MJPEG before media upload / Appium starts — waiting for "running"
+    // still leaves the stream on during the heaviest Photos + FYP window.
+    pauseStreamForAutomation();
     elements.postResult.textContent = 'Uploading media to the automation server…';
     try {
         const result = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/posts`, { method: 'POST', body: form });
         window.clearTimeout(postPoll);
+        elements.submitPost.disabled = false;
+        elements.postResult.textContent = '';
+        elements.postDialog.close();
         if (result.status === 'running') {
-            await pollPost();
-        }
-        else {
-            elements.submitPost.disabled = false;
-            elements.postResult.textContent = 'Post automation scheduled. Follow its status and live output in the Automation log.';
+            void pollPost();
         }
         void loadDeviceTasks();
     }
@@ -644,33 +1107,66 @@ elements.accountsForm.addEventListener('submit', async (event) => {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ accounts: elements.deviceAccounts.value.split(',') }),
         });
-        const previousDoomscroll = (document.querySelector('#doomscroll-account'))?.value ?? '';
-        elements.postAccount.replaceChildren(new Option('Choose an account…', '', false, true));
-        elements.postAccount.options[0].disabled = true;
-        const doomscrollAccount = element('#doomscroll-account');
-        doomscrollAccount.replaceChildren(new Option("Don't switch", ''));
-        for (const account of result.accounts) {
-            elements.postAccount.add(new Option(account, account));
-            doomscrollAccount.add(new Option(account, account));
-        }
-        if (result.accounts.includes(previousDoomscroll))
-            doomscrollAccount.value = previousDoomscroll;
+        syncTikTokAccountSelects(result.accounts);
         elements.deviceAccounts.value = result.accounts.join(', ');
         elements.accountsResult.textContent = result.accounts.length ? 'Accounts saved.' : 'Account switching is optional.';
+        elements.accountsDialog.close();
     }
     catch (error) {
         elements.accountsResult.textContent = errorMessage(error);
     }
 });
+elements.instagramAccountsForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    elements.instagramAccountsResult.textContent = 'Saving…';
+    try {
+        const result = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/instagram/accounts`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ accounts: elements.instagramDeviceAccounts.value.split(',') }),
+        });
+        const previousDoomscroll = (document.querySelector('#instagram-doomscroll-account'))?.value ?? '';
+        const previousFriends = (document.querySelector('#instagram-following-doomscroll-account'))?.value ?? '';
+        const previousColdDms = elements.instagramColdDmsAccount.value;
+        const doomscrollAccount = element('#instagram-doomscroll-account');
+        const friendsAccount = element('#instagram-following-doomscroll-account');
+        doomscrollAccount.replaceChildren(new Option("Don't switch", ''));
+        friendsAccount.replaceChildren(new Option("Don't switch", ''));
+        elements.instagramColdDmsAccount.replaceChildren(new Option("Don't switch", ''));
+        for (const account of result.accounts) {
+            doomscrollAccount.add(new Option(account, account));
+            friendsAccount.add(new Option(account, account));
+            elements.instagramColdDmsAccount.add(new Option(account, account));
+        }
+        if (result.accounts.includes(previousDoomscroll))
+            doomscrollAccount.value = previousDoomscroll;
+        if (result.accounts.includes(previousFriends))
+            friendsAccount.value = previousFriends;
+        if (result.accounts.includes(previousColdDms))
+            elements.instagramColdDmsAccount.value = previousColdDms;
+        elements.instagramDeviceAccounts.value = result.accounts.join(', ');
+        elements.instagramAccountsResult.textContent = result.accounts.length ? 'Accounts saved.' : 'Account switching is optional.';
+    }
+    catch (error) {
+        elements.instagramAccountsResult.textContent = errorMessage(error);
+    }
+});
 const cal = {
+    app: 'tiktok',
     screen: undefined,
     points: [],
     overrides: {},
+    /** Keep unsaved per-app edits when switching TikTok ↔ Instagram. */
+    overridesByApp: {
+        tiktok: {},
+        instagram: {},
+    },
     armed: undefined,
+    dirty: false,
 };
 function calValue(name) {
     const point = cal.points.find((entry) => entry.name === name);
-    return cal.overrides[name] ?? point.default;
+    return cal.overrides[name] ?? point.current ?? point.default;
 }
 function renderCalPoints() {
     elements.calPoints.replaceChildren(...cal.points.map((point) => {
@@ -691,7 +1187,11 @@ function renderCalPoints() {
         reset.className = 'cal-reset';
         reset.title = 'Reset to profile';
         reset.textContent = '↺';
-        reset.addEventListener('click', () => { delete cal.overrides[point.name]; renderCal(); });
+        reset.addEventListener('click', () => {
+            delete cal.overrides[point.name];
+            cal.dirty = true;
+            renderCal();
+        });
         li.append(pick, xy, reset);
         return li;
     }));
@@ -699,12 +1199,21 @@ function renderCalPoints() {
 function renderCalMarkers() {
     if (!cal.screen)
         return;
+    const mediaW = elements.calScreen.naturalWidth || cal.screen.width;
+    const mediaH = elements.calScreen.naturalHeight || cal.screen.height;
+    const box = containContentBox(elements.calScreen, mediaW, mediaH);
     elements.calMarkers.replaceChildren(...cal.points.map((point) => {
         const value = calValue(point.name);
         const marker = document.createElement('span');
         marker.className = `m${point.name in cal.overrides ? ' overridden' : ''}${cal.armed === point.name ? ' armed' : ''}`;
-        marker.style.left = `${(value.x / cal.screen.width) * 100}%`;
-        marker.style.top = `${(value.y / cal.screen.height) * 100}%`;
+        const left = box.elementWidth <= 0 ? 0
+            : ((box.left - elements.calScreen.getBoundingClientRect().left)
+                + (value.x / cal.screen.width) * box.width) / box.elementWidth * 100;
+        const top = box.elementHeight <= 0 ? 0
+            : ((box.top - elements.calScreen.getBoundingClientRect().top)
+                + (value.y / cal.screen.height) * box.height) / box.elementHeight * 100;
+        marker.style.left = `${left}%`;
+        marker.style.top = `${top}%`;
         marker.title = point.label;
         return marker;
     }));
@@ -713,24 +1222,39 @@ function renderCal() {
     renderCalPoints();
     renderCalMarkers();
 }
+async function loadCalibratePoints(app) {
+    // Stash in-progress edits for the app we're leaving so switching
+    // TikTok ↔ Instagram does not throw away unsaved Instagram points.
+    if (cal.points.length > 0) {
+        cal.overridesByApp[cal.app] = { ...cal.overrides };
+    }
+    const data = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/coordinates?app=${encodeURIComponent(app)}`);
+    cal.app = data.app;
+    cal.screen = data.screenSize;
+    cal.points = data.points;
+    const fromServer = {};
+    for (const point of data.points)
+        if (point.overridden)
+            fromServer[point.name] = point.current;
+    const local = cal.overridesByApp[app] ?? {};
+    // Prefer local unsaved edits over the server snapshot for this app.
+    cal.overrides = { ...fromServer, ...local };
+    cal.overridesByApp[app] = { ...cal.overrides };
+    cal.armed = undefined;
+    elements.calApp.value = data.app;
+    elements.calProfile.textContent = `${data.profile} · ${data.app === 'instagram' ? 'Instagram' : 'TikTok'}`;
+    elements.calSave.textContent = data.app === 'instagram' ? 'Save Instagram' : 'Save TikTok';
+    renderCal();
+}
 async function openCalibrate() {
     elements.calStatus.textContent = 'Loading…';
     elements.calibrateDialog.showModal();
     try {
-        const data = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/coordinates`);
-        cal.screen = data.screenSize;
-        cal.points = data.points;
-        cal.overrides = {};
-        for (const point of data.points)
-            if (point.overridden)
-                cal.overrides[point.name] = point.current;
-        cal.armed = undefined;
         elements.calControl.checked = false;
         elements.calScreen.parentElement?.classList.remove('controlling');
-        elements.calProfile.textContent = data.profile;
+        await loadCalibratePoints(elements.calApp.value);
         elements.calScreen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
         elements.calStatus.textContent = '';
-        renderCal();
     }
     catch (error) {
         elements.calStatus.textContent = errorMessage(error);
@@ -743,13 +1267,46 @@ function closeCalibrate() {
 elements.openCalibrate.addEventListener('click', () => void openCalibrate());
 elements.closeCalibrate.addEventListener('click', closeCalibrate);
 elements.calCancel.addEventListener('click', closeCalibrate);
+elements.calApp.addEventListener('change', () => {
+    if (!elements.calibrateDialog.open)
+        return;
+    elements.calStatus.textContent = 'Loading…';
+    void loadCalibratePoints(elements.calApp.value)
+        .then(() => { elements.calStatus.textContent = ''; })
+        .catch((error) => { elements.calStatus.textContent = errorMessage(error); });
+});
 elements.openTasks.addEventListener('click', () => {
     void loadDeviceTasks();
     elements.tasksDialog.showModal();
 });
 elements.closeTasks.addEventListener('click', () => elements.tasksDialog.close());
+elements.clearDeviceQueue.addEventListener('click', async () => {
+    if (!window.confirm('Cancel every queued job and stop every running automation on this device?'))
+        return;
+    elements.clearDeviceQueue.disabled = true;
+    elements.deviceQueueStatus.textContent = 'Clearing queue…';
+    try {
+        const result = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/queue/clear`, { method: 'POST' });
+        elements.deviceQueueStatus.textContent =
+            `Cleared ${result.cancelled} queued · stopping ${result.stopping} running`;
+        await loadDeviceTasks();
+        const activityResponse = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/activity`);
+        if (activityResponse.ok) {
+            const html = await activityResponse.text();
+            const current = document.querySelector('#device-activity');
+            if (current)
+                current.outerHTML = html;
+        }
+    }
+    catch (error) {
+        elements.deviceQueueStatus.textContent = errorMessage(error);
+        elements.clearDeviceQueue.disabled = false;
+    }
+});
 elements.openAccounts.addEventListener('click', () => elements.accountsDialog.showModal());
 elements.closeAccounts.addEventListener('click', () => elements.accountsDialog.close());
+elements.openInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.showModal());
+elements.closeInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.close());
 elements.openPasscode.addEventListener('click', () => {
     elements.passcodeResult.textContent = '';
     elements.passcodeDialog.showModal();
@@ -761,18 +1318,18 @@ elements.openRemove.addEventListener('click', () => {
 });
 elements.closeRemove.addEventListener('click', () => elements.removeDialog.close());
 elements.calResetAll.addEventListener('click', () => {
-    if (!confirm('Reset all touch points to the profile defaults?'))
+    if (!confirm(`Reset all ${cal.app === 'instagram' ? 'Instagram' : 'TikTok'} touch points to the profile defaults?`))
         return;
     cal.overrides = {};
+    cal.overridesByApp[cal.app] = {};
     cal.armed = undefined;
+    cal.dirty = true;
     renderCal();
 });
 function calPointFromEvent(event) {
-    const rect = elements.calScreen.getBoundingClientRect();
-    return {
-        x: Math.round((event.clientX - rect.left) * cal.screen.width / rect.width),
-        y: Math.round((event.clientY - rect.top) * cal.screen.height / rect.height),
-    };
+    if (!cal.screen)
+        throw new Error('Calibration screen size is unavailable');
+    return pointFromContainedMedia(event, elements.calScreen, cal.screen);
 }
 async function calSendAction(action) {
     elements.calStatus.textContent = 'Sending input…';
@@ -801,6 +1358,8 @@ elements.calScreen.addEventListener('click', (event) => {
     if (elements.calControl.checked || !cal.armed || !cal.screen)
         return;
     cal.overrides[cal.armed] = calPointFromEvent(event);
+    cal.overridesByApp[cal.app] = { ...cal.overrides };
+    cal.dirty = true;
     cal.armed = undefined;
     renderCal();
 });
@@ -827,18 +1386,28 @@ elements.calScreen.addEventListener('pointerup', (event) => {
 elements.calScreen.addEventListener('pointercancel', () => { calPointerStart = undefined; });
 elements.calSave.addEventListener('click', async () => {
     elements.calSave.disabled = true;
-    elements.calStatus.textContent = 'Saving…';
+    const appLabel = cal.app === 'instagram' ? 'Instagram' : 'TikTok';
+    elements.calStatus.textContent = `Saving ${appLabel}…`;
     try {
+        // Snapshot current edits into the per-app bag before PATCH.
+        cal.overridesByApp[cal.app] = { ...cal.overrides };
+        const body = cal.app === 'instagram'
+            ? { instagramCoordinates: cal.overrides }
+            : { coordinates: cal.overrides };
+        // Empty object clears this app's overrides (Reset all → Save).
         await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ coordinates: cal.overrides }),
+            body: JSON.stringify(body),
         });
+        // Re-load from server so the UI matches what was actually persisted.
+        cal.overridesByApp[cal.app] = {};
+        cal.dirty = false;
+        await loadCalibratePoints(cal.app);
         const count = Object.keys(cal.overrides).length;
-        elements.calStatus.textContent = count ? `Saved ${count} override${count === 1 ? '' : 's'}.` : 'Cleared all overrides.';
-        for (const point of cal.points)
-            point.overridden = point.name in cal.overrides;
-        renderCal();
+        elements.calStatus.textContent = count
+            ? `Saved ${count} ${appLabel} override${count === 1 ? '' : 's'}.`
+            : `Cleared all ${appLabel} overrides.`;
     }
     catch (error) {
         elements.calStatus.textContent = errorMessage(error);
@@ -882,6 +1451,47 @@ elements.passcodeClear.addEventListener('click', () => {
         return;
     void patchPasscode('', 'Clearing…', 'Passcode cleared.');
 });
+document.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('[data-rename-device]');
+    if (!button)
+        return;
+    event.preventDefault();
+    const title = document.querySelector('.device-name')?.textContent ?? '';
+    const current = title.replace(/\s+/g, ' ').trim();
+    const next = window.prompt('Rename this phone for the farm grid', current);
+    if (next === null)
+        return;
+    const name = next.replace(/\s+/g, ' ').trim();
+    if (!name) {
+        window.alert('Name cannot be empty');
+        return;
+    }
+    button.disabled = true;
+    void (async () => {
+        try {
+            await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            document.title = `${name} · IOS AGENTS`;
+            const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/summary`);
+            if (!response.ok)
+                throw new Error(`Could not refresh device header (${response.status})`);
+            const html = await response.text();
+            const summary = document.querySelector('#device-summary');
+            if (summary)
+                summary.outerHTML = html;
+            const refreshed = document.querySelector('#device-summary[data-screen-width]');
+            if (refreshed)
+                useDeviceSummary(refreshed);
+        }
+        catch (error) {
+            button.disabled = false;
+            window.alert(errorMessage(error));
+        }
+    })();
+});
 elements.removeDevice.addEventListener('click', async () => {
     elements.removeDevice.disabled = true;
     elements.removeResult.textContent = 'Removing…';
@@ -900,10 +1510,270 @@ elements.removeDevice.addEventListener('click', async () => {
 });
 updateDestination();
 updateDoomscrollSchedule();
+updateInstagramDoomscrollSchedule();
 updatePostSchedule();
 setInterval(() => { if (elements.tasksDialog.open)
     void loadDeviceTasks(); }, 5_000);
 const loadedSummary = document.querySelector('#device-summary[data-screen-width]');
 if (loadedSummary)
     useDeviceSummary(loadedSummary);
+// --- Workflow train / following doomscroll ---------------------------------
+elements.trainToggle.addEventListener('click', () => {
+    setTrainRecording(!trainRecording);
+});
+elements.trainClear.addEventListener('click', () => {
+    trainEvents = [];
+    setTrainRecording(false);
+});
+elements.trainSave.addEventListener('click', () => {
+    if (trainEvents.length === 0)
+        return;
+    elements.trainSaveResult.textContent = '';
+    elements.trainWorkflowName.value = elements.trainWorkflowName.value || 'following-engage';
+    elements.trainSaveDialog.showModal();
+});
+elements.closeTrainSave.addEventListener('click', () => elements.trainSaveDialog.close());
+elements.cancelTrainSave.addEventListener('click', () => elements.trainSaveDialog.close());
+elements.trainSaveForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    elements.trainSaveResult.textContent = 'Saving…';
+    try {
+        await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/tiktok/workflows`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                name: elements.trainWorkflowName.value.trim(),
+                events: trainEvents,
+                meta: { feed: elements.trainWorkflowFeed.value, source: 'recording' },
+            }),
+        });
+        elements.trainSaveResult.textContent = 'Saved.';
+        trainEvents = [];
+        setTrainRecording(false);
+        elements.trainSaveDialog.close();
+        await loadWorkflows();
+    }
+    catch (error) {
+        elements.trainSaveResult.textContent = errorMessage(error);
+    }
+});
+async function swapDeviceActivity(response) {
+    if (!response.ok)
+        throw new Error(`Request failed (${response.status})`);
+    const html = await response.text();
+    const activity = document.querySelector('#device-activity');
+    if (activity)
+        activity.outerHTML = html;
+}
+function appendBuiltinWorkflowRow(options) {
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.innerHTML = `<div><strong>${options.title}</strong><div class="run-meta">${options.meta}</div></div>`;
+    const actions = document.createElement('div');
+    actions.className = 'inline-actions';
+    const configure = document.createElement('button');
+    configure.type = 'button';
+    configure.className = 'button secondary';
+    configure.textContent = 'Configure';
+    configure.addEventListener('click', () => options.onConfigure());
+    const run = document.createElement('button');
+    run.type = 'button';
+    run.className = 'button secondary';
+    run.textContent = 'Run 5m';
+    run.addEventListener('click', async () => {
+        run.disabled = true;
+        try {
+            await options.onRun5m();
+        }
+        catch (error) {
+            setStatus(errorMessage(error), 'error');
+        }
+        finally {
+            run.disabled = false;
+        }
+    });
+    actions.append(configure, run);
+    row.append(actions);
+    elements.workflowList.append(row);
+}
+async function loadWorkflows() {
+    elements.workflowList.classList.add('loading-card');
+    elements.workflowList.innerHTML = '<span class="spinner" aria-hidden="true"></span>Loading workflows…';
+    try {
+        const data = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/tiktok/workflows`);
+        const workflows = data.workflows ?? [];
+        elements.workflowList.classList.remove('loading-card');
+        elements.workflowList.innerHTML = '';
+        appendBuiltinWorkflowRow({
+            title: 'Instagram · Engage following',
+            meta: 'Built-in · Reels → Friends · like/comment',
+            onConfigure: () => elements.instagramFollowingDoomscrollDialog.showModal(),
+            onRun5m: async () => {
+                const form = new FormData();
+                form.set('durationMinutes', '5');
+                form.set('personality', 'dialed');
+                form.set('likeEnabled', 'on');
+                form.set('commentEnabled', 'on');
+                form.set('commentText', '🔥');
+                form.set('scheduleKind', 'now');
+                form.set('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
+                const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/instagram/fragments/following-scroll-run`, { method: 'POST', body: form });
+                await swapDeviceActivity(response);
+            },
+        });
+        appendBuiltinWorkflowRow({
+            title: 'TikTok · Engagement',
+            meta: 'Built-in · Following feed · like/comment/save',
+            onConfigure: () => elements.followingDoomscrollDialog.showModal(),
+            onRun5m: async () => {
+                const form = new FormData();
+                form.set('durationMinutes', '5');
+                form.set('personality', 'dialed');
+                form.set('likeEnabled', 'on');
+                form.set('commentEnabled', 'on');
+                form.set('saveEnabled', 'on');
+                form.set('commentText', '🔥');
+                form.set('scheduleKind', 'now');
+                form.set('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
+                const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/following-scroll-run`, { method: 'POST', body: form });
+                await swapDeviceActivity(response);
+            },
+        });
+        if (workflows.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'hint';
+            empty.textContent = 'No trained gesture workflows yet. Use Train workflow on the live screen.';
+            elements.workflowList.append(empty);
+            return;
+        }
+        for (const workflow of workflows) {
+            const row = document.createElement('div');
+            row.className = 'task-row';
+            row.innerHTML = `<div><strong>${workflow.name}</strong><div class="run-meta">${workflow.steps.length} steps · ${new Date(workflow.createdAt).toLocaleString()}</div></div>`;
+            const actions = document.createElement('div');
+            actions.className = 'inline-actions';
+            const replay = document.createElement('button');
+            replay.type = 'button';
+            replay.className = 'button secondary';
+            replay.textContent = 'Replay 5m';
+            replay.addEventListener('click', async () => {
+                replay.disabled = true;
+                try {
+                    const form = new FormData();
+                    form.set('workflowId', workflow.id);
+                    form.set('durationMinutes', '5');
+                    const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/workflow-replay-run`, {
+                        method: 'POST',
+                        body: form,
+                    });
+                    await swapDeviceActivity(response);
+                }
+                catch (error) {
+                    setStatus(errorMessage(error), 'error');
+                }
+                finally {
+                    replay.disabled = false;
+                }
+            });
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'button secondary';
+            remove.textContent = 'Delete';
+            remove.addEventListener('click', async () => {
+                if (!confirm(`Delete workflow “${workflow.name}”?`))
+                    return;
+                await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/tiktok/workflows/${encodeURIComponent(workflow.id)}`, {
+                    method: 'DELETE',
+                });
+                await loadWorkflows();
+            });
+            actions.append(replay, remove);
+            row.append(actions);
+            elements.workflowList.append(row);
+        }
+    }
+    catch (error) {
+        elements.workflowList.classList.remove('loading-card');
+        elements.workflowList.textContent = errorMessage(error);
+    }
+}
+elements.refreshWorkflows.addEventListener('click', () => { void loadWorkflows(); });
+void loadWorkflows();
+elements.openFollowingDoomscroll.addEventListener('click', () => elements.followingDoomscrollDialog.showModal());
+elements.closeFollowingDoomscroll.addEventListener('click', () => elements.followingDoomscrollDialog.close());
+elements.cancelFollowingDoomscroll.addEventListener('click', () => elements.followingDoomscrollDialog.close());
+elements.followingDoomscrollDurationButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        elements.followingDoomscrollDuration.value = button.dataset.followingDoomscrollDuration ?? '5';
+    });
+});
+elements.followingCommentEnabled.addEventListener('change', () => {
+    elements.followingCommentText.disabled = !elements.followingCommentEnabled.checked;
+    if (elements.followingCommentEnabled.checked && !elements.followingCommentText.value.trim()) {
+        elements.followingCommentText.value = '🔥';
+    }
+});
+elements.instagramCommentEnabled.addEventListener('change', () => {
+    elements.instagramCommentText.disabled = !elements.instagramCommentEnabled.checked;
+    if (elements.instagramCommentEnabled.checked && !elements.instagramCommentText.value.trim()) {
+        elements.instagramCommentText.value = '🔥';
+    }
+});
+elements.instagramFollowingCommentEnabled.addEventListener('change', () => {
+    elements.instagramFollowingCommentText.disabled = !elements.instagramFollowingCommentEnabled.checked;
+    if (elements.instagramFollowingCommentEnabled.checked && !elements.instagramFollowingCommentText.value.trim()) {
+        elements.instagramFollowingCommentText.value = '🔥';
+    }
+});
+elements.openInstagramFollowingDoomscroll.addEventListener('click', () => elements.instagramFollowingDoomscrollDialog.showModal());
+elements.closeInstagramFollowingDoomscroll.addEventListener('click', () => elements.instagramFollowingDoomscrollDialog.close());
+elements.cancelInstagramFollowingDoomscroll.addEventListener('click', () => elements.instagramFollowingDoomscrollDialog.close());
+elements.instagramFollowingDoomscrollDurationButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        elements.instagramFollowingDoomscrollDuration.value = button.dataset.instagramFollowingDoomscrollDuration ?? '5';
+    });
+});
+elements.instagramFollowingDoomscrollForm.addEventListener('htmx:afterRequest', ((event) => {
+    const detail = event.detail;
+    if (detail.successful) {
+        elements.instagramFollowingDoomscrollResult.textContent = 'Started.';
+        elements.instagramFollowingDoomscrollDialog.close();
+    }
+    else {
+        elements.instagramFollowingDoomscrollResult.textContent = detail.xhr?.responseText
+            ? 'Could not start — check Activity.'
+            : 'Request failed.';
+    }
+}));
+elements.openInstagramColdDms.addEventListener('click', () => {
+    elements.instagramColdDmsResult.textContent = '';
+    elements.instagramColdDmsDialog.showModal();
+});
+elements.closeInstagramColdDms.addEventListener('click', () => elements.instagramColdDmsDialog.close());
+elements.cancelInstagramColdDms.addEventListener('click', () => elements.instagramColdDmsDialog.close());
+elements.instagramColdDmsForm.addEventListener('htmx:afterRequest', ((event) => {
+    const detail = event.detail;
+    if (detail.successful) {
+        elements.instagramColdDmsResult.textContent = 'Started.';
+        elements.instagramColdDmsDialog.close();
+        void loadDeviceTasks();
+    }
+    else {
+        elements.instagramColdDmsResult.textContent = detail.xhr?.responseText
+            ? 'Could not start — check Activity.'
+            : 'Request failed.';
+    }
+}));
+elements.followingDoomscrollForm.addEventListener('htmx:afterRequest', ((event) => {
+    const detail = event.detail;
+    if (detail.successful) {
+        elements.followingDoomscrollResult.textContent = 'Started.';
+        elements.followingDoomscrollDialog.close();
+    }
+    else {
+        elements.followingDoomscrollResult.textContent = detail.xhr?.responseText
+            ? 'Could not start — check Activity.'
+            : 'Request failed.';
+    }
+}));
 export {};

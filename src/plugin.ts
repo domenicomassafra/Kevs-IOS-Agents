@@ -4,6 +4,7 @@ import type {
     DeviceIdentity,
     JsonObject,
     JsonValue,
+    PipelineClaim,
     StoredAsset,
     TaskExecutionResult,
     TaskRetryPolicy,
@@ -22,7 +23,7 @@ export interface DeviceAutomation {
 }
 
 export interface TaskValidationContext {
-    timingKind: 'now' | 'once' | 'daily' | 'weekly';
+    timingKind: 'now' | 'once' | 'daily' | 'weekly' | 'interval';
     devicePluginData: JsonObject;
 }
 
@@ -37,6 +38,10 @@ export interface TaskExecutionContext {
     signal: AbortSignal;
     log(line: string): Promise<void>;
     runProcess(specification: PluginProcessSpecification): Promise<TaskExecutionResult>;
+    /** Claim the next ready pipeline item for this device (FIFO). */
+    claimPipelineItem(): Promise<PipelineClaim | null>;
+    completePipelineItem(id: string): Promise<void>;
+    failPipelineItem(id: string, error: string): Promise<void>;
 }
 
 export interface PluginProcessSpecification {
