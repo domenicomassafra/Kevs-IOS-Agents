@@ -51,7 +51,14 @@ export async function loadRegisteredDevices(registryPath = defaultRegistryPath):
         throw new Error(`${registryPath} contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
     for (const device of devices) {
-        coordinatesForProfile(device.coordinateProfile);
+        // Unknown profiles used to throw here and turn every PATCH (including
+        // rename) into a generic 400. Fall back so the rest of the farm stays usable.
+        try {
+            coordinatesForProfile(device.coordinateProfile);
+        } catch {
+            delete device.coordinateProfile;
+            coordinatesForProfile(device.coordinateProfile);
+        }
         device.pluginData ??= {};
     }
     return devices;

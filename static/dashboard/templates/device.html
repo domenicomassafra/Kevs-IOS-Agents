@@ -45,6 +45,8 @@
                     <div class="inline-actions">
                         <button id="refresh" class="icon-button" type="button">Reconnect</button>
                         <button id="toggle" class="icon-button" type="button">Pause</button>
+                        <button id="record-screen" class="icon-button" type="button" title="Record the live phone screen for agent context">Record screen</button>
+                        <span id="record-status" class="run-meta" aria-live="polite" hidden></span>
                     </div>
                 </div>
                 <div class="stream-workspace">
@@ -68,7 +70,7 @@
                     </div>
                 </div>
                 <div id="status" class="stream-status"><span class="dot"></span><span>Waiting for device details…</span></div>
-                <p class="hint">Click to tap and drag to swipe. Remote input pauses while a warmup or engagement session is running.</p>
+                <p class="hint">Click to tap and drag to swipe. Remote input pauses while a warmup or engagement session is running. Live video stays on for warmups; it pauses automatically during post/upload (heavier on WDA). <strong>Record screen</strong> captures the live view in-browser (WebM) so you can attach it when briefing an agent.</p>
                 <div class="train-bar">
                     <button id="train-toggle" class="button secondary" type="button">Train workflow</button>
                     <button id="train-save" class="button primary" type="button" hidden>Save recording</button>

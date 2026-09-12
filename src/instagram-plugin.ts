@@ -243,7 +243,7 @@ function createPostTask(configuration: InstagramPluginConfiguration): TaskDefini
         summarize: (payload) => `Upload · ${payload.media.length} media`,
         estimateDurationMs: () => 60_000,
         retryPolicy: () => ({ retryLimit: 0, retryDelaySeconds: 0, retryBackoff: false }),
-        supportsStop: () => false,
+        supportsStop: () => true,
         async execute(context: TaskExecutionContext, payload) {
             const byId = new Map(context.assets.map((asset) => [asset.id, asset]));
             const files = payload.media.map((media) => {

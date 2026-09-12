@@ -97,7 +97,8 @@ const IPHONE8_TIKTOK: SocialAppCoordinates = {
     accountSwitcher: { x: 185, y: 158 },
     create: { x: 187, y: 640 },
     postContent: { x: 187, y: 640 },
-    upload: { x: 30, y: 635 },
+    // Camera sheet · Recents thumbnail (bottom-left), not the top Sounds chip.
+    upload: { x: 48, y: 590 },
     selectMultiple: { x: 24, y: 618 },
     useLayout: { x: 24, y: 489 },
     picker: {
@@ -321,6 +322,23 @@ export const DEVICE_COORDINATES = {
             comment: { x: 359, y: 533 },
             followingTab: { x: 158, y: 85 },
             homeTab: { x: 40, y: 826 },
+            // Camera create · bottom-left Recents thumbnail (from live screenshot).
+            upload: { x: 52, y: 745 },
+            // Full-screen Videos/Recents grid (not the old half-sheet tray).
+            picker: {
+                ...scaleSocial(IPHONE8_TIKTOK, SX_13, SY_13).picker,
+                firstY: 220,
+                cellY: 220,
+                cellX: 64,
+                circleX: 64,
+                columnStep: 130,
+                rowStep: 130,
+            },
+            // Full-screen publish form · red Post is top-right (not bottom).
+            finish: { x: 350, y: 72 },
+            draft: { x: 70, y: 800 },
+            // Description text (under cover) — y≈299 lands on "# Hashtags" and seeds "#".
+            caption: { x: 145, y: 235 },
             swipe: { x: 126, startY: 696, endY: 190, durationMs: 380 },
         },
         instagram: {
@@ -361,6 +379,18 @@ export const DEVICE_COORDINATES = {
             comment: { x: 370, y: 552 },
             followingTab: { x: 163, y: 88 },
             create: { x: 206, y: 818 },
+            // Camera create · bottom-left Recents thumbnail.
+            upload: { x: 55, y: 770 },
+            // Full-screen Videos/Recents grid (not the old half-sheet tray).
+            picker: {
+                ...scaleSocial(IPHONE8_TIKTOK, SX_17, SY_17).picker,
+                firstY: 230,
+                cellY: 230,
+                cellX: 66,
+                circleX: 66,
+                columnStep: 135,
+                rowStep: 135,
+            },
             liveClose: { x: 385, y: 62 },
             swipe: { x: 130, startY: 721, endY: 197, durationMs: 380 },
         },
@@ -453,7 +483,7 @@ export type CalibratablePoint = typeof CALIBRATABLE_POINTS[number];
 
 export const TIKTOK_POINT_LABELS: Record<CalibratablePoint, string> = {
     profileTab: 'TikTok: Profile tab', homeTab: 'TikTok: Home tab', accountSwitcher: 'TikTok: Account switcher',
-    create: 'TikTok: Create (+)', postContent: 'TikTok: Post content (unused)', upload: 'TikTok: Upload', selectMultiple: 'TikTok: Select multiple', useLayout: 'TikTok: Use layout',
+    create: 'TikTok: Create (+)', postContent: 'TikTok: Post content (unused)', upload: 'TikTok: Upload (camera gallery)', selectMultiple: 'TikTok: Select multiple', useLayout: 'TikTok: Use layout',
     pickerNext: 'TikTok: Media picker · Next', editorNext: 'TikTok: Editor · Next', caption: 'TikTok: Caption field',
     keyboardBack: 'TikTok: Keyboard · back', draft: 'TikTok: Save draft', finish: 'TikTok: Post / Finish',
     like: 'TikTok: Like button', save: 'TikTok: Save/bookmark button',

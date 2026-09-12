@@ -57,10 +57,20 @@
 +  __block NSError *changeError = nil;
 +  dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
 +  [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-+    PHAssetChangeRequest *request = [mimeType hasPrefix:@"video/"]
-+      ? [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:fileURL]
-+      : [PHAssetChangeRequest creationRequestForAssetFromImageAtFileURL:fileURL];
-+    identifier = request.placeholderForCreatedAsset.localIdentifier;
++    if ([mimeType hasPrefix:@"video/"]) {
++      // Prefer PHAssetCreationRequest so we can stamp creationDate=now.
++      // TikTok's Videos album sorts by creation date (file metadata), not
++      // import time — without this, older .mov files sink below newer
++      // camera/screen recordings and automation picks the wrong cell.
++      PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
++      request.creationDate = [NSDate date];
++      request.modificationDate = [NSDate date];
++      [request addResourceWithType:PHAssetResourceTypeVideo fileURL:fileURL options:nil];
++      identifier = request.placeholderForCreatedAsset.localIdentifier;
++    } else {
++      PHAssetChangeRequest *request = [PHAssetChangeRequest creationRequestForAssetFromImageAtFileURL:fileURL];
++      identifier = request.placeholderForCreatedAsset.localIdentifier;
++    }
 +  } completionHandler:^(BOOL success, NSError *operationError) {
 +    succeeded = success;
 +    changeError = operationError;

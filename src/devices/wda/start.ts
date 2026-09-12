@@ -41,6 +41,10 @@ const localPort = Number.parseInt(process.env.WDA_LOCAL_PORT ?? '8100', 10);
 const remotePort = Number.parseInt(process.env.WDA_REMOTE_PORT ?? '8100', 10);
 const mjpegLocalPort = Number.parseInt(process.env.MJPEG_LOCAL_PORT ?? '9100', 10);
 const mjpegRemotePort = Number.parseInt(process.env.MJPEG_REMOTE_PORT ?? '9100', 10);
+// Preview stream defaults (dashboard does not need HQ). Host env is forwarded
+// into the on-device WDA process via the Runner scheme.
+if (!process.env.MJPEG_SCALING_FACTOR) process.env.MJPEG_SCALING_FACTOR = '40';
+if (!process.env.MJPEG_SERVER_SCREENSHOT_QUALITY) process.env.MJPEG_SERVER_SCREENSHOT_QUALITY = '25';
 
 await access(projectPath);
 if (![localPort, remotePort, mjpegLocalPort, mjpegRemotePort].every(Number.isSafeInteger)) {

@@ -81,6 +81,10 @@ function defaultSpawnSupervisor(device: RegisteredDevice): ChildProcess {
             IOS_UDID: device.udid,
             WDA_LOCAL_PORT: String(device.wdaLocalPort ?? Number(process.env.WDA_LOCAL_PORT ?? 8100)),
             MJPEG_LOCAL_PORT: String(device.mjpegLocalPort ?? Number(process.env.MJPEG_LOCAL_PORT ?? 9100)),
+            // Dashboard preview only — keep frames small/cheap so TikTok FYP +
+            // Appium don't knock WDA over. Overrides via .env still win if set.
+            MJPEG_SCALING_FACTOR: process.env.MJPEG_SCALING_FACTOR ?? '40',
+            MJPEG_SERVER_SCREENSHOT_QUALITY: process.env.MJPEG_SERVER_SCREENSHOT_QUALITY ?? '25',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
     });

@@ -371,15 +371,88 @@ export class SchedulerRepository {
         const pending = await this.connection.db.select().from(executions).where(inArray(executions.status, ['queued', 'running']));
         let changed = 0;
         for (const execution of pending) {
-            if (!execution.queueJobId) continue;
-            const [job] = await this.boss.findJobs(queueNameForDevice(execution.deviceUdid), { id: execution.queueJobId });
-            if (job?.state === 'retry' && execution.status === 'running') {
-                await this.resetForRetry(execution.id, 'Worker attempt interrupted; waiting for retry'); changed++;
-            } else if (job && (job.state === 'failed' || job.state === 'cancelled')) {
-                await this.finishExecution(execution.id, job.state === 'cancelled' ? 'cancelled' : 'failed', null, `Queue job ${job.state}`); changed++;
+            const queue = queueNameForDevice(execution.deviceUdid);
+            let job: { id: string; state?: string } | undefined;
+            if (execution.queueJobId) {
+                try {
+                    const found = await this.boss.findJobs(queue, { id: execution.queueJobId });
+                    job = found[0] as { id: string; state?: string } | undefined;
+                } catch {
+                    job = undefined;
+                }
+            }
+
+            const ageMs = Date.now() - new Date(execution.updatedAt).getTime();
+
+            if (execution.status === 'running') {
+                if (job?.state === 'retry') {
+                    await this.resetForRetry(execution.id, 'Worker attempt interrupted; waiting for retry');
+                    changed += 1;
+                } else if (!job || job.state === 'failed' || job.state === 'cancelled' || job.state === 'completed') {
+                    await this.finishExecution(
+                        execution.id,
+                        job?.state === 'cancelled' || execution.stopRequestedAt ? 'stopped' : 'failed',
+                        null,
+                        job ? `Queue job ${job.state}` : 'Queue job missing after worker restart',
+                    );
+                    changed += 1;
+                } else if (
+                    job.state === 'active'
+                    && (ageMs > 45_000 || (execution.stopRequestedAt && ageMs > 5_000))
+                ) {
+                    // Worker SIGTERM leaves the job "active" and blocks the singleton
+                    // device queue forever — same class of ghost as queued orphans.
+                    await this.boss.cancel(queue, job.id).catch(() => {});
+                    await this.finishExecution(
+                        execution.id,
+                        execution.stopRequestedAt ? 'stopped' : 'failed',
+                        null,
+                        'Abandoned active queue job after worker restart',
+                    );
+                    changed += 1;
+                    console.log(`Finalized zombie running execution ${execution.id}`);
+                }
+                continue;
+            }
+
+            // queued — re-enqueue when the pg-boss job is gone, finished, or left
+            // "active" without ever flipping the execution to running (zombie after
+            // a worker SIGTERM). Singleton device queues otherwise block forever.
+            const missingOrDead = !job || job.state === 'failed' || job.state === 'cancelled' || job.state === 'completed';
+            const zombieActive = job?.state === 'active' && ageMs > 45_000;
+            if (!missingOrDead && !zombieActive) continue;
+            try {
+                if (job && (job.state === 'active' || job.state === 'created')) {
+                    await this.boss.cancel(queue, job.id).catch(() => {});
+                }
+                await this.requeueQueuedExecution(execution);
+                changed += 1;
+                console.log(`Requeued orphaned execution ${execution.id} (was job state=${job?.state ?? 'missing'})`);
+            } catch (error) {
+                console.error(`Failed to requeue ${execution.id}:`, error);
             }
         }
         return changed;
+    }
+
+    /** Send a fresh pg-boss job for an execution that is still marked queued. */
+    private async requeueQueuedExecution(execution: ExecutionRow): Promise<void> {
+        const task = taskEnvelope(execution);
+        const definition = this.plugins.task(task);
+        const policy = definition.retryPolicy(execution.payload);
+        await ensureDeviceQueue(this.boss, execution.deviceUdid);
+        const queueJobId = await this.boss.send(queueNameForDevice(execution.deviceUdid), { executionId: execution.id }, {
+            retryLimit: policy.retryLimit,
+            retryDelay: policy.retryDelaySeconds,
+            retryBackoff: policy.retryBackoff,
+            expireInSeconds: Math.max(900, Math.ceil(definition.estimateDurationMs(execution.payload) / 1000) + 600),
+        });
+        if (!queueJobId) throw new Error(`Queue rejected requeue for ${execution.id}`);
+        await this.connection.db.update(executions).set({
+            queueJobId,
+            error: null,
+            updatedAt: new Date(),
+        }).where(and(eq(executions.id, execution.id), eq(executions.status, 'queued')));
     }
 
     async cleanup(historyDays = Number(process.env.SCHEDULER_HISTORY_DAYS ?? 30)): Promise<number> {

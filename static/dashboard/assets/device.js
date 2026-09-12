@@ -11,6 +11,8 @@ const elements = {
     statusText: element('#status span:last-child'),
     refresh: element('#refresh'),
     toggle: element('#toggle'),
+    recordScreen: element('#record-screen'),
+    recordStatus: element('#record-status'),
     remoteButtons: Array.from(document.querySelectorAll('[data-remote-action]')),
     openPost: element('#open-post'),
     openDoomscroll: element('#open-doomscroll'),
@@ -180,6 +182,168 @@ let pointerStart;
 let trainRecording = false;
 let trainStartedAt = 0;
 let trainEvents = [];
+const SCREEN_RECORD_MAX_MS = 10 * 60_000;
+const SCREEN_RECORD_FPS = 12;
+let screenCapture;
+function pickScreenRecorderMimeType() {
+    const candidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4',
+    ];
+    for (const type of candidates) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type))
+            return type;
+    }
+    return '';
+}
+function formatRecordElapsed(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+function updateRecordUi(recording, message = '') {
+    elements.recordScreen.classList.toggle('recording', recording);
+    elements.recordScreen.textContent = recording ? 'Stop & download' : 'Record screen';
+    elements.recordStatus.hidden = !message;
+    elements.recordStatus.textContent = message;
+}
+function drawScreenCaptureFrame(session) {
+    const image = elements.screen;
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    if (width > 0 && height > 0) {
+        if (session.canvas.width !== width || session.canvas.height !== height) {
+            session.canvas.width = width;
+            session.canvas.height = height;
+        }
+        try {
+            session.context.drawImage(image, 0, 0, width, height);
+        }
+        catch {
+            // Frame may be mid-decode; skip and keep recording.
+        }
+    }
+    session.frameHandle = window.setTimeout(() => drawScreenCaptureFrame(session), Math.round(1000 / SCREEN_RECORD_FPS));
+}
+function downloadScreenCapture(blob, mimeType) {
+    const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const shortUdid = udid.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'device';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `ios-agents-${shortUdid}-${stamp}.${extension}`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+async function stopScreenCapture(reason = 'Recording saved') {
+    const session = screenCapture;
+    if (!session)
+        return;
+    screenCapture = undefined;
+    window.clearTimeout(session.frameHandle);
+    window.clearInterval(session.tickHandle);
+    await new Promise((resolve) => {
+        session.recorder.addEventListener('stop', () => resolve(), { once: true });
+        if (session.recorder.state !== 'inactive')
+            session.recorder.stop();
+        else
+            resolve();
+    });
+    for (const track of session.stream.getTracks())
+        track.stop();
+    const blob = new Blob(session.chunks, { type: session.mimeType || 'video/webm' });
+    if (blob.size > 0) {
+        downloadScreenCapture(blob, blob.type || session.mimeType);
+        updateRecordUi(false, `${reason} · ${(blob.size / (1024 * 1024)).toFixed(1)} MB`);
+    }
+    else {
+        updateRecordUi(false, 'Recording produced an empty file — keep the live stream visible and try again.');
+    }
+}
+async function startScreenCapture() {
+    if (screenCapture)
+        return;
+    if (typeof MediaRecorder === 'undefined') {
+        updateRecordUi(false, 'This browser cannot record canvas video.');
+        return;
+    }
+    if (paused || !elements.screen.getAttribute('src')) {
+        updateRecordUi(false, 'Start the live stream before recording.');
+        return;
+    }
+    const mimeType = pickScreenRecorderMimeType();
+    if (!mimeType) {
+        updateRecordUi(false, 'No supported MediaRecorder codec in this browser.');
+        return;
+    }
+    // Wait briefly for the first MJPEG frame dimensions.
+    const readyAt = Date.now() + 2_500;
+    while (Date.now() < readyAt && (!elements.screen.naturalWidth || !elements.screen.naturalHeight)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    const width = elements.screen.naturalWidth || screenSize?.width || 390;
+    const height = elements.screen.naturalHeight || screenSize?.height || 844;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) {
+        updateRecordUi(false, 'Could not open a drawing surface for recording.');
+        return;
+    }
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(elements.screen, 0, 0, width, height);
+    const stream = canvas.captureStream(SCREEN_RECORD_FPS);
+    const chunks = [];
+    let recorder;
+    try {
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
+    }
+    catch (error) {
+        updateRecordUi(false, errorMessage(error));
+        for (const track of stream.getTracks())
+            track.stop();
+        return;
+    }
+    const session = {
+        recorder,
+        chunks,
+        canvas,
+        context,
+        stream,
+        startedAt: Date.now(),
+        frameHandle: 0,
+        tickHandle: 0,
+        mimeType,
+    };
+    recorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0)
+            chunks.push(event.data);
+    });
+    recorder.addEventListener('error', () => {
+        void stopScreenCapture('Recording stopped after an encoder error');
+    });
+    screenCapture = session;
+    recorder.start(1_000);
+    drawScreenCaptureFrame(session);
+    session.tickHandle = window.setInterval(() => {
+        if (!screenCapture)
+            return;
+        const elapsed = Date.now() - screenCapture.startedAt;
+        updateRecordUi(true, `Recording ${formatRecordElapsed(elapsed)}`);
+        if (elapsed >= SCREEN_RECORD_MAX_MS) {
+            void stopScreenCapture('Auto-stopped at 10 minutes');
+        }
+    }, 500);
+    updateRecordUi(true, 'Recording 0:00');
+}
 function summarizeTrainAction(action) {
     if (action.type === 'tap')
         return `tap (${action.x}, ${action.y})`;
@@ -327,6 +491,17 @@ function startStream() {
         return;
     setStatus('Connecting video stream…');
     elements.screen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
+}
+/** Drop MJPEG during post/upload — Photos + Create + FYP cold-start piles on WDA harder than warmup swipes. */
+function pauseStreamForAutomation(message = 'Video stream paused during post (keeps WDA stable)') {
+    if (paused && !elements.screen.getAttribute('src'))
+        return;
+    paused = true;
+    elements.toggle.textContent = 'Resume stream';
+    if (screenCapture)
+        void stopScreenCapture('Recording stopped — automation started');
+    elements.screen.removeAttribute('src');
+    setStatus(message);
 }
 async function connectRemote() {
     if (paused || connecting || !screenSize)
@@ -532,12 +707,16 @@ elements.screen.addEventListener('error', () => {
     if (paused)
         return;
     elements.screen.removeAttribute('src');
+    if (screenCapture)
+        void stopScreenCapture('Recording stopped — stream disconnected');
     setStatus('Video stream disconnected; checking the phone connection…', 'error');
     void pollConnection();
 });
 elements.refresh.addEventListener('click', async () => {
     elements.refresh.disabled = true;
     window.clearTimeout(connectionPoll);
+    if (screenCapture)
+        await stopScreenCapture('Recording stopped — reconnecting');
     elements.screen.removeAttribute('src');
     setStatus('Restarting the phone connection…');
     try {
@@ -554,12 +733,31 @@ elements.toggle.addEventListener('click', () => {
     paused = !paused;
     elements.toggle.textContent = paused ? 'Resume stream' : 'Pause stream';
     if (paused) {
+        if (screenCapture)
+            void stopScreenCapture('Recording stopped — stream paused');
         elements.screen.removeAttribute('src');
         setStatus('Video stream paused');
     }
     else {
         void connectRemote();
     }
+});
+elements.recordScreen.addEventListener('click', () => {
+    if (screenCapture) {
+        void stopScreenCapture('Recording saved');
+        return;
+    }
+    void startScreenCapture();
+});
+window.addEventListener('beforeunload', () => {
+    if (!screenCapture)
+        return;
+    window.clearTimeout(screenCapture.frameHandle);
+    window.clearInterval(screenCapture.tickHandle);
+    if (screenCapture.recorder.state !== 'inactive')
+        screenCapture.recorder.stop();
+    for (const track of screenCapture.stream.getTracks())
+        track.stop();
 });
 function renderMedia() {
     elements.mediaList.replaceChildren(...orderedMedia.map((file, index) => {
@@ -622,6 +820,7 @@ async function pollPost() {
             ? 'Post automation is running. Follow its live output in the Automation log.'
             : '';
         if (run.status === 'running') {
+            pauseStreamForAutomation();
             postPoll = window.setTimeout(() => void pollPost(), 1000);
         }
         else {
@@ -730,6 +929,10 @@ function renderDeviceSchedules(schedules) {
 function renderDeviceExecutions(executions) {
     const running = executions.filter((execution) => execution.status === 'running').length;
     const queued = executions.filter((execution) => execution.status === 'queued').length;
+    // Warmup/doomscroll is light enough to keep Live Control; post/upload is not.
+    if (executions.some((execution) => execution.status === 'running' && execution.taskType === 'post')) {
+        pauseStreamForAutomation();
+    }
     if (running || queued) {
         elements.deviceQueueStatus.textContent = `Queue: ${running} running · ${queued} waiting`;
         elements.clearDeviceQueue.disabled = false;
@@ -878,6 +1081,9 @@ elements.postForm.addEventListener('submit', async (event) => {
     form.append('runWindowMinutes', elements.postRunWindow.value);
     form.append('recurringPublishConfirmed', String(destination !== 'publish' || elements.confirmPublish.checked));
     elements.submitPost.disabled = true;
+    // Drop MJPEG before media upload / Appium starts — waiting for "running"
+    // still leaves the stream on during the heaviest Photos + FYP window.
+    pauseStreamForAutomation();
     elements.postResult.textContent = 'Uploading media to the automation server…';
     try {
         const result = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/posts`, { method: 'POST', body: form });
@@ -1253,11 +1459,12 @@ document.addEventListener('click', (event) => {
     if (!button)
         return;
     event.preventDefault();
-    const current = button.getAttribute('data-device-name') ?? '';
+    const title = document.querySelector('.device-name')?.textContent ?? '';
+    const current = title.replace(/\s+/g, ' ').trim();
     const next = window.prompt('Rename this phone for the farm grid', current);
     if (next === null)
         return;
-    const name = next.trim();
+    const name = next.replace(/\s+/g, ' ').trim();
     if (!name) {
         window.alert('Name cannot be empty');
         return;
