@@ -245,6 +245,8 @@ function scaleSocial(base: SocialAppCoordinates, sx: number, sy: number): Social
     };
 }
 
+const SX_X = 375 / 375;
+const SY_X = 812 / 667;
 const SX_13 = 390 / 375;
 const SY_13 = 844 / 667;
 const SX_17 = 402 / 375;
@@ -264,6 +266,40 @@ export const DEVICE_COORDINATES = {
         tiktok: IPHONE8_TIKTOK,
         instagram: IPHONE8_INSTAGRAM,
     },
+    // Seeded from iphone8 by scaling 375×667 → 375×812 (iPhone X / XS).
+    // Temporary fleet unit — prefer one shared model long-term. Recalibrate
+    // via the dashboard before relying on automation taps.
+    iphoneX: {
+        displayName: 'iPhone X/XS',
+        productTypes: ['iPhone10,3', 'iPhone10,6', 'iPhone11,2'],
+        screenSize: { width: 375, height: 812 },
+        passcodeKeypad: {
+            columnX: [103, 191, 275],
+            rowY: [268, 422, 517, 616],
+        },
+        tiktok: {
+            ...scaleSocial(IPHONE8_TIKTOK, SX_X, SY_X),
+            homeTab: { x: 38, y: 791 },
+            profileTab: { x: 338, y: 791 },
+            create: { x: 187, y: 780 },
+        },
+        instagram: {
+            ...scaleSocial(IPHONE8_INSTAGRAM, SX_X, SY_X),
+            homeTab: { x: 37, y: 791 },
+            profileTab: { x: 337, y: 791 },
+            reelsTab: { x: 262, y: 791 },
+            searchTab: { x: 112, y: 791 },
+            create: { x: 187, y: 791 },
+            dmCompose: { x: 187, y: 791 },
+            composeNewMessage: { x: 350, y: 67 },
+            searchField: { x: 187, y: 110 },
+            searchFirstResult: { x: 100, y: 268 },
+            dmSearchSubmit: { x: 340, y: 110 },
+            dmComposer: { x: 180, y: 520 },
+            dmSend: { x: 350, y: 520 },
+            dmBack: { x: 22, y: 51 },
+        },
+    },
     // Seeded from iphone8 by scaling 375×667 → 390×844. Instagram chrome for
     // cold DMs is further adjusted from the calibrated iphone17pro map
     // (same floating-pill era UI). Recalibrate via the dashboard before
@@ -276,7 +312,17 @@ export const DEVICE_COORDINATES = {
             columnX: [107, 199, 286],
             rowY: [278, 439, 538, 640],
         },
-        tiktok: scaleSocial(IPHONE8_TIKTOK, SX_13, SY_13),
+        tiktok: {
+            ...scaleSocial(IPHONE8_TIKTOK, SX_13, SY_13),
+            // Naive 8→13 scale lands like/save on avatar/count text. Seed from
+            // the calibrated iphone17pro map scaled 402×874 → 390×844.
+            like: { x: 362, y: 472 },
+            save: { x: 358, y: 596 },
+            comment: { x: 359, y: 533 },
+            followingTab: { x: 158, y: 85 },
+            homeTab: { x: 40, y: 826 },
+            swipe: { x: 126, startY: 696, endY: 190, durationMs: 380 },
+        },
         instagram: {
             ...scaleSocial(IPHONE8_INSTAGRAM, SX_13, SY_13),
             // Floating-pill row (~797) — scaled from calibrated 17 Pro (~825).

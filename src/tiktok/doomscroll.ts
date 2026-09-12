@@ -76,7 +76,9 @@ const accountSwitchCoords = {
 // switchTikTokAccount ends on the Profile tab (it re-checks there to verify
 // the switch). The scroll loop below expects the Home / For You feed.
 const { x: homeTabX, y: homeTabY } = tiktokCoordinates.homeTab;
-const forYouTabX = Math.round(coordinates.screenSize.width * 0.62);
+// For You sits right of Following. 0.62×width was landing on Following on
+// current TikTok headers (false "on Following" recoveries then made it worse).
+const forYouTabX = Math.round(coordinates.screenSize.width * 0.72);
 const forYouTabY = tiktokCoordinates.followingTab.y;
 
 // Fail fast, before unlocking or launching TikTok, if the requested account

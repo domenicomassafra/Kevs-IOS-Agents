@@ -36,6 +36,28 @@ export const DEVICE_COORDINATES = {
             swipe: { x: 187, startY: 550, endY: 180, durationMs: 450 },
         },
     },
+    // Keep in sync with src/devices/coordinates.ts (375×812 seed).
+    iphoneX: {
+        passcodeKeypad: { columnX: [103, 191, 275], rowY: [268, 422, 517, 616] },
+        instagram: {
+            profileTab: { x: 337, y: 791 }, homeTab: { x: 37, y: 791 }, accountSwitcher: { x: 48, y: 88 },
+            create: { x: 187, y: 791 }, postContent: { x: 70, y: 706 }, upload: { x: 70, y: 755 }, selectMultiple: { x: 340, y: 85 },
+            useLayout: { x: 187, y: 633 },
+            picker: { circleX: 62, columnStep: 125, firstY: 219, trayY: 487, rowStep: 152, cellX: 62, cellStep: 125, cellY: 219 },
+            pickerNext: { x: 340, y: 85 }, editorNext: { x: 340, y: 85 }, caption: { x: 100, y: 243 },
+            keyboardBack: { x: 22, y: 51 }, draft: { x: 80, y: 85 }, finish: { x: 340, y: 85 },
+            like: { x: 345, y: 438 }, save: { x: 345, y: 609 },
+            followingTab: { x: 95, y: 95 }, reelsTab: { x: 262, y: 791 },
+            searchTab: { x: 112, y: 791 }, searchField: { x: 187, y: 110 }, searchFirstResult: { x: 100, y: 268 },
+            dmSearchSubmit: { x: 340, y: 110 },
+            profileMessage: { x: 280, y: 511 },
+            dmCompose: { x: 187, y: 791 }, composeNewMessage: { x: 350, y: 67 },
+            dmComposer: { x: 180, y: 520 }, dmSend: { x: 350, y: 520 }, dmBack: { x: 22, y: 51 },
+            comment: { x: 345, y: 523 },
+            commentComposer: { x: 140, y: 730 }, commentSend: { x: 340, y: 730 },
+            swipe: { x: 187, startY: 670, endY: 219, durationMs: 450 },
+        },
+    },
     // Keep in sync with src/devices/coordinates.ts (390×844 seed).
     iphone13: {
         passcodeKeypad: { columnX: [107, 199, 286], rowY: [278, 439, 538, 640] },

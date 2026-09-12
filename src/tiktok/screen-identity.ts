@@ -122,20 +122,22 @@ function looksLikeSpringboard(image: PixelImage): boolean {
  * Following sits left; For You sits center/right.
  */
 export function detectHomeFeedTab(image: PixelImage): 'following' | 'forYou' | 'unknown' {
-    const y0 = image.height * 0.05;
-    const y1 = image.height * 0.135;
-    const isBright = (r: number, g: number, b: number) => (0.299 * r + 0.587 * g + 0.114 * b) > 195;
-    // Calibrated Following center is ~40% width on 17 Pro; For You sits to its right.
-    const following = sampleRegion(image, image.width * 0.22, y0, image.width * 0.48, y1, isBright);
-    const forYou = sampleRegion(image, image.width * 0.50, y0, image.width * 0.78, y1, isBright);
+    const y0 = image.height * 0.055;
+    const y1 = image.height * 0.125;
+    const isBright = (r: number, g: number, b: number) => (0.299 * r + 0.587 * g + 0.114 * b) > 205;
+    // Narrow bands around the labels — wide strips pick up bright video and
+    // false-trigger Following, which then "recovers" with a bad For You tap.
+    // Following ~28–42% width; For You ~58–74% (right of center).
+    const following = sampleRegion(image, image.width * 0.28, y0, image.width * 0.42, y1, isBright);
+    const forYou = sampleRegion(image, image.width * 0.58, y0, image.width * 0.74, y1, isBright);
     if (following.total < 10 || forYou.total < 10) return 'unknown';
     const followingRatio = following.hits / following.total;
     const forYouRatio = forYou.hits / forYou.total;
-    if (followingRatio < 0.008 && forYouRatio < 0.008) return 'unknown';
-    if (followingRatio > forYouRatio * 1.4 && followingRatio > 0.012) return 'following';
-    if (forYouRatio > followingRatio * 1.4 && forYouRatio > 0.012) return 'forYou';
-    if (following.meanLuma > forYou.meanLuma + 18) return 'following';
-    if (forYou.meanLuma > following.meanLuma + 18) return 'forYou';
+    if (followingRatio < 0.01 && forYouRatio < 0.01) return 'unknown';
+    if (followingRatio > forYouRatio * 1.6 && followingRatio > 0.02) return 'following';
+    if (forYouRatio > followingRatio * 1.6 && forYouRatio > 0.02) return 'forYou';
+    if (following.meanLuma > forYou.meanLuma + 28) return 'following';
+    if (forYou.meanLuma > following.meanLuma + 28) return 'forYou';
     return 'unknown';
 }
 
