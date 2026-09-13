@@ -4,9 +4,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type ServiceName = 'appium' | 'wda' | 'worker' | 'web';
+export type ServiceName = 'appium' | 'wda' | 'worker' | 'device-worker' | 'web';
 
-const SERVICES: ServiceName[] = ['appium', 'wda', 'worker', 'web'];
+const SERVICES: ServiceName[] = ['appium', 'wda', 'worker', 'device-worker', 'web'];
+
+export function servicesForRole(role = process.env.PHONE_FARM_ROLE ?? 'standalone'): ServiceName[] {
+    if (role === 'device-worker') return ['appium', 'wda', 'worker', 'device-worker'];
+    if (role === 'standalone') return ['appium', 'wda', 'worker', 'web'];
+    if (role === 'control-plane') return [];
+    throw new Error(`Unknown PHONE_FARM_ROLE: ${role}`);
+}
 
 interface ServiceSpec {
     label: string;
@@ -28,6 +35,7 @@ export function serviceSpecs(root = process.cwd(), node = process.execPath): Rec
         },
         wda: { label: 'com.phone-farm.wda', args: [node, ...common, 'src/devices/wda-service.ts'] },
         worker: { label: 'com.phone-farm.worker', args: [node, ...common, 'src/scheduler/worker.ts'] },
+        'device-worker': { label: 'com.phone-farm.device-worker', args: [node, ...common, 'src/device-worker-server.ts'] },
         web: { label: 'com.phone-farm.web', args: [node, ...common, 'src/api/server.ts'] },
     };
 }
@@ -72,11 +80,19 @@ ${envXml}
 `;
 }
 
-export async function renderLaunchAgents(outputDirectory = path.resolve('.runtime/launchd')): Promise<string[]> {
+export async function renderLaunchAgents(
+    outputDirectory = path.resolve('.runtime/launchd'),
+    services: readonly ServiceName[] = servicesForRole(),
+): Promise<string[]> {
     await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
     await mkdir(path.resolve('.runtime/logs'), { recursive: true, mode: 0o700 });
-    const files: string[] = [];
+    // The render directory is reused across standalone/device-worker roles.
+    // Remove known stale generated plists so its contents match the selected role.
     for (const service of SERVICES) {
+        await rm(path.join(outputDirectory, `${serviceSpecs()[service].label}.plist`), { force: true });
+    }
+    const files: string[] = [];
+    for (const service of services) {
         const file = path.join(outputDirectory, `${serviceSpecs()[service].label}.plist`);
         await writeFile(file, renderLaunchAgent(service), { mode: 0o600 });
         files.push(file);

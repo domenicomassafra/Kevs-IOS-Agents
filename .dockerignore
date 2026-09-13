@@ -1,0 +1,12 @@
+.git
+.appium2
+.appium-next
+.runtime
+.scheduler-data
+.wda
+node_modules
+devices.json
+.env*
+logs
+data/hinge
+data/leads/state

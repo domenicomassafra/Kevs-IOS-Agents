@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "setup-minipc.sh is for the Linux control-plane host." >&2
+  exit 1
+fi
+command -v docker >/dev/null || { echo "Docker is required." >&2; exit 1; }
+docker compose version >/dev/null
+
+if [[ ! -f .env.minipc ]]; then
+  cp .env.minipc.example .env.minipc
+  password="$(openssl rand -hex 24)"
+  worker_token="$(openssl rand -hex 32)"
+  internal_token="$(openssl rand -hex 32)"
+  stream_secret="$(openssl rand -hex 32)"
+  sed -i \
+    -e "s/replace-with-a-long-random-password/${password}/" \
+    -e "s/replace-with-a-long-random-token/${worker_token}/" \
+    -e "s/replace-with-a-different-long-random-token/${internal_token}/" \
+    -e "s/replace-with-at-least-32-random-bytes/${stream_secret}/" \
+    -e "s/^PHONE_FARM_UID=.*/PHONE_FARM_UID=$(id -u)/" \
+    -e "s/^PHONE_FARM_GID=.*/PHONE_FARM_GID=$(id -g)/" \
+    .env.minipc
+  chmod 600 .env.minipc
+  if command -v tailscale >/dev/null 2>&1; then
+    tailscale_ip="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+    if [[ -n "$tailscale_ip" ]]; then
+      sed -i -e "s/^POSTGRES_LISTEN_ADDRESSES=.*/POSTGRES_LISTEN_ADDRESSES=127.0.0.1,${tailscale_ip}/" .env.minipc
+    fi
+  fi
+  echo "Created .env.minipc with private runtime secrets. Review PHONE_FARM_DEVICE_WORKERS before adding more Mac workers."
+fi
+
+mkdir -p .runtime/minipc
+chmod 700 .runtime/minipc
+
+docker compose --env-file .env.minipc -f docker-compose.production.yml up -d --build
+docker compose --env-file .env.minipc -f docker-compose.production.yml ps
+
+set -a
+source .env.minipc
+set +a
+curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT:-3000}/health"
+echo
+if command -v tailscale >/dev/null 2>&1; then
+  tailscale serve --bg --yes "${WEB_PORT:-3000}"
+  echo "Tailscale Serve status:"
+  tailscale serve status || true
+else
+  echo "Tailscale is unavailable; use an SSH tunnel to reach the loopback-only dashboard."
+fi
+echo "MiniPC control plane is up. The dashboard process itself remains loopback-only."

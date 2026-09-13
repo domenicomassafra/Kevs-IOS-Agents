@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-phone_farm}
+      POSTGRES_USER: ${POSTGRES_USER:-phone_farm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.minipc}
+      PGPORT: ${POSTGRES_PORT:-5432}
+    command: ["postgres", "-p", "${POSTGRES_PORT:-5432}", "-c", "listen_addresses=${POSTGRES_LISTEN_ADDRESSES:-127.0.0.1}"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${POSTGRES_PORT:-5432} -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - phone-farm-postgres:/var/lib/postgresql/data
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile.control-plane
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.minipc
+    environment:
+      PHONE_FARM_ROLE: control-plane
+      PHONE_FARM_CONTAINER: "true"
+      WEB_HOST: 127.0.0.1
+      WEB_PORT: ${WEB_PORT:-3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-phone_farm}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-phone_farm}
+      DEVICES_CONFIG_PATH: /data/devices.json
+      SCHEDULER_DATA_DIR: /data/scheduler
+      PHONE_FARM_RELEASE_FILE: /data/RELEASED
+      PHONE_FARM_REQUIRE_STREAM_TOKEN: ${PHONE_FARM_REQUIRE_STREAM_TOKEN:-true}
+    user: "${PHONE_FARM_UID:-1000}:${PHONE_FARM_GID:-1000}"
+    volumes:
+      - ${PHONE_FARM_DATA_DIR:-./.runtime/minipc}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.WEB_PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  phone-farm-postgres:

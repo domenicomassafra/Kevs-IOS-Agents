@@ -10,6 +10,8 @@ export interface DeviceIdentity {
 }
 
 export interface RegisteredDevice extends DeviceIdentity {
+    /** Execution node that owns this physical iPhone in distributed deployments. */
+    workerId?: string;
     wdaLocalPort?: number;
     mjpegLocalPort?: number;
     /** Compiled tap-layout key; canonical here, not in pluginData. */

@@ -13,8 +13,10 @@ export interface DoctorCheck {
 }
 
 export interface DoctorReport {
+    role: 'standalone' | 'control-plane' | 'device-worker';
     ok: boolean;
     sourceReady: boolean;
+    runtimeReady: boolean;
     realDeviceReady: boolean;
     checks: DoctorCheck[];
 }
@@ -62,69 +64,114 @@ export function collectDoctorReport(
     cwd = process.cwd(),
 ): DoctorReport {
     const checks: DoctorCheck[] = [];
+    const role = (env.PHONE_FARM_ROLE ?? 'standalone') as DoctorReport['role'];
+    if (!['standalone', 'control-plane', 'device-worker'].includes(role)) {
+        checks.push({ id: 'role', status: 'fail', summary: `Unknown PHONE_FARM_ROLE: ${role}` });
+    } else {
+        checks.push({ id: 'role', status: 'pass', summary: `Runtime role: ${role}` });
+    }
 
     const nodeVersion = process.version;
     checks.push(major(nodeVersion) >= 22
         ? { id: 'node', status: 'pass', summary: `Node ${nodeVersion}` }
         : { id: 'node', status: 'fail', summary: `Node ${nodeVersion}`, detail: 'Node 22 or newer is required.' });
 
-    const xcodeSelect = command(runner, 'xcode-select', ['-p']);
-    const developerDir = xcodeSelect.stdout.trim();
-    const fullXcode = xcodeSelect.status === 0 && /Xcode\.app\/Contents\/Developer$/.test(developerDir);
-    if (!fullXcode) {
-        checks.push({
-            id: 'xcode', status: 'fail', summary: 'Full Xcode is not selected',
-            detail: developerDir
-                ? `xcode-select points to ${developerDir}; select /Applications/Xcode.app/Contents/Developer.`
-                : (xcodeSelect.stderr.trim() || 'Install and select full Xcode.'),
-        });
-    } else {
-        const xcodebuild = command(runner, 'xcodebuild', ['-version']);
-        checks.push(xcodebuild.status === 0
-            ? { id: 'xcode', status: 'pass', summary: xcodebuild.stdout.trim().replace(/\n/g, ' · ') }
-            : { id: 'xcode', status: 'fail', summary: 'xcodebuild is unavailable', detail: xcodebuild.stderr.trim() });
+    let fullXcode = false;
+    if (role !== 'control-plane') {
+        const xcodeSelect = command(runner, 'xcode-select', ['-p']);
+        const developerDir = xcodeSelect.stdout.trim();
+        fullXcode = xcodeSelect.status === 0 && /Xcode\.app\/Contents\/Developer$/.test(developerDir);
+        if (!fullXcode) {
+            checks.push({
+                id: 'xcode', status: 'fail', summary: 'Full Xcode is not selected',
+                detail: developerDir
+                    ? `xcode-select points to ${developerDir}; select /Applications/Xcode.app/Contents/Developer.`
+                    : (xcodeSelect.stderr.trim() || 'Install and select full Xcode.'),
+            });
+        } else {
+            const xcodebuild = command(runner, 'xcodebuild', ['-version']);
+            checks.push(xcodebuild.status === 0
+                ? { id: 'xcode', status: 'pass', summary: xcodebuild.stdout.trim().replace(/\n/g, ' · ') }
+                : { id: 'xcode', status: 'fail', summary: 'xcodebuild is unavailable', detail: xcodebuild.stderr.trim() });
+        }
+
+        const appiumPath = path.resolve(cwd, 'node_modules/appium/index.js');
+        checks.push(existsSync(appiumPath)
+            ? { id: 'appium', status: 'pass', summary: 'Local Appium package is installed' }
+            : { id: 'appium', status: 'fail', summary: 'Local Appium package is missing', detail: 'Run npm ci.' });
+
+        const xcuitestPath = path.resolve(cwd, '.appium2/node_modules/appium-xcuitest-driver');
+        checks.push(existsSync(xcuitestPath)
+            ? { id: 'xcuitest', status: 'pass', summary: 'Pinned XCUITest driver is installed' }
+            : { id: 'xcuitest', status: 'warn', summary: 'XCUITest driver is not prepared', detail: 'Run npm run appium:install-driver.' });
     }
 
-    const appiumPath = path.resolve(cwd, 'node_modules/appium/index.js');
-    checks.push(existsSync(appiumPath)
-        ? { id: 'appium', status: 'pass', summary: 'Local Appium package is installed' }
-        : { id: 'appium', status: 'fail', summary: 'Local Appium package is missing', detail: 'Run npm ci.' });
+    const insideControlPlaneContainer = role === 'control-plane' && env.PHONE_FARM_CONTAINER === 'true';
+    const docker = insideControlPlaneContainer
+        ? { status: 0, stdout: 'Container runtime supplied by host', stderr: '' }
+        : command(runner, 'docker', ['--version']);
+    if (role !== 'device-worker') {
+        checks.push(docker.status === 0
+            ? { id: 'database-runtime', status: 'pass', summary: docker.stdout.trim() || 'Docker is available' }
+            : {
+                id: 'database-runtime', status: role === 'control-plane' ? 'fail' : 'warn',
+                summary: 'Docker is unavailable',
+                detail: 'The bundled PostgreSQL/control plane cannot start; install Docker or provide an external deployment.',
+            });
+    }
 
-    const xcuitestPath = path.resolve(cwd, '.appium2/node_modules/appium-xcuitest-driver');
-    checks.push(existsSync(xcuitestPath)
-        ? { id: 'xcuitest', status: 'pass', summary: 'Pinned XCUITest driver is installed' }
-        : { id: 'xcuitest', status: 'warn', summary: 'XCUITest driver is not prepared', detail: 'Run npm run appium:install-driver.' });
+    if (role === 'control-plane') {
+        checks.push(env.DATABASE_URL && !env.DATABASE_URL.includes('CHANGE_ME')
+            ? { id: 'database-url', status: 'pass', summary: 'DATABASE_URL is configured' }
+            : { id: 'database-url', status: 'fail', summary: 'DATABASE_URL is not configured for the control plane' });
+        checks.push(env.PHONE_FARM_DEVICE_WORKERS?.trim()
+            ? { id: 'device-workers', status: 'pass', summary: 'At least one remote device worker is configured' }
+            : { id: 'device-workers', status: 'warn', summary: 'No remote device workers are configured yet' });
+        if (env.PHONE_FARM_DEVICE_WORKERS?.trim()) {
+            checks.push(env.PHONE_FARM_DEVICE_WORKER_TOKEN
+                ? { id: 'worker-token', status: 'pass', summary: 'Device-worker bearer token is configured' }
+                : { id: 'worker-token', status: 'fail', summary: 'PHONE_FARM_DEVICE_WORKER_TOKEN is required for remote workers' });
+            checks.push(env.PHONE_FARM_INTERNAL_TOKEN
+                ? { id: 'internal-token', status: 'pass', summary: 'Internal worker asset/config token is configured' }
+                : { id: 'internal-token', status: 'fail', summary: 'PHONE_FARM_INTERNAL_TOKEN is required for distributed execution' });
+        }
+    }
 
-    const docker = command(runner, 'docker', ['--version']);
-    checks.push(docker.status === 0
-        ? { id: 'database-runtime', status: 'pass', summary: docker.stdout.trim() || 'Docker is available' }
-        : {
-            id: 'database-runtime', status: env.DATABASE_URL && !env.DATABASE_URL.includes('CHANGE_ME') ? 'warn' : 'warn',
-            summary: 'Docker is unavailable',
-            detail: 'The bundled PostgreSQL cannot start; configure an external DATABASE_URL or install Docker.',
-        });
+    if (role === 'device-worker') {
+        checks.push(env.DATABASE_URL && !env.DATABASE_URL.includes('CHANGE_ME')
+            ? { id: 'control-database', status: 'pass', summary: 'Control-plane PostgreSQL URL is configured' }
+            : { id: 'control-database', status: 'fail', summary: 'DATABASE_URL must point at the MiniPC PostgreSQL instance' });
+        checks.push(env.PHONE_FARM_WORKER_ID?.trim()
+            ? { id: 'worker-id', status: 'pass', summary: `Worker id: ${env.PHONE_FARM_WORKER_ID}` }
+            : { id: 'worker-id', status: 'warn', summary: 'PHONE_FARM_WORKER_ID is not set; mac-worker will be used' });
+    }
 
     const envPath = path.resolve(cwd, '.env');
     checks.push(existsSync(envPath)
         ? { id: 'configuration', status: 'pass', summary: '.env exists' }
         : { id: 'configuration', status: 'warn', summary: '.env is not configured', detail: 'Copy .env.example to .env before a live run.' });
 
-    if (fullXcode) {
+    if (role !== 'control-plane' && fullXcode) {
         const devices = command(runner, 'xcrun', ['xctrace', 'list', 'devices']);
         const physical = devices.status === 0 ? physicalDeviceLines(devices.stdout) : [];
         checks.push(physical.length
             ? { id: 'iphone', status: 'pass', summary: `${physical.length} physical iOS device${physical.length === 1 ? '' : 's'} visible`, detail: physical.join(' · ') }
             : { id: 'iphone', status: 'fail', summary: 'No physical iPhone is visible', detail: devices.stderr.trim() || 'Connect, unlock, trust, and enable Developer Mode on an iPhone.' });
-    } else {
+    } else if (role !== 'control-plane') {
         checks.push({ id: 'iphone', status: 'fail', summary: 'iPhone discovery is blocked by the Xcode prerequisite' });
     }
 
-    const sourceRequired = ['node', 'appium'];
-    const realDeviceRequired = ['node', 'appium', 'xcode', 'iphone'];
+    const sourceRequired = role === 'control-plane' ? ['node'] : ['node', 'appium'];
+    const runtimeRequired = role === 'control-plane'
+        ? ['node', 'database-runtime', 'database-url', ...(env.PHONE_FARM_DEVICE_WORKERS?.trim() ? ['worker-token', 'internal-token'] : [])]
+        : ['node', 'appium', 'xcode', 'iphone', ...(role === 'device-worker' ? ['control-database'] : [])];
+    const realDeviceRequired = role === 'control-plane' ? [] : ['node', 'appium', 'xcode', 'iphone'];
     const failed = (ids: string[]) => checks.some((check) => ids.includes(check.id) && check.status === 'fail');
     return {
+        role,
         ok: !checks.some((check) => check.status === 'fail'),
         sourceReady: !failed(sourceRequired),
+        runtimeReady: !failed(runtimeRequired),
         realDeviceReady: !failed(realDeviceRequired),
         checks,
     };
@@ -133,8 +180,10 @@ export function collectDoctorReport(
 function renderHuman(report: DoctorReport): string {
     const icon: Record<DoctorStatus, string> = { pass: '✓', warn: '!', fail: '✗' };
     const lines = report.checks.map((check) => `${icon[check.status]} ${check.summary}${check.detail ? `\n  ${check.detail}` : ''}`);
-    lines.push('', `Source readiness: ${report.sourceReady ? 'ready' : 'blocked'}`);
-    lines.push(`Real-device readiness: ${report.realDeviceReady ? 'ready' : 'blocked'}`);
+    lines.push('', `Role: ${report.role}`);
+    lines.push(`Source readiness: ${report.sourceReady ? 'ready' : 'blocked'}`);
+    lines.push(`Runtime readiness: ${report.runtimeReady ? 'ready' : 'blocked'}`);
+    if (report.role !== 'control-plane') lines.push(`Real-device readiness: ${report.realDeviceReady ? 'ready' : 'blocked'}`);
     return lines.join('\n');
 }
 
@@ -142,7 +191,7 @@ async function main(): Promise<void> {
     const report = collectDoctorReport();
     if (process.argv.includes('--json')) console.log(JSON.stringify(report, null, 2));
     else console.log(renderHuman(report));
-    process.exitCode = report.realDeviceReady ? 0 : 1;
+    process.exitCode = report.runtimeReady ? 0 : 1;
 }
 
 const entrypoint = process.argv[1] ? path.resolve(process.argv[1]) : '';

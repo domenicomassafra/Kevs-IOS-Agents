@@ -1,7 +1,11 @@
 import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { access, rm } from 'node:fs/promises';
+import crypto from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { access, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 import type { DatabaseConnection } from '../database/client.js';
 import {
@@ -40,12 +44,80 @@ function taskEnvelope(row: Pick<ScheduleRow, 'pluginId' | 'taskType' | 'taskVers
     return { pluginId: row.pluginId, taskType: row.taskType, taskVersion: row.taskVersion, payload: row.payload };
 }
 
+function controlPlaneWorkerUrl(pathname: string): URL | undefined {
+    const base = process.env.PHONE_FARM_CONTROL_PLANE_URL?.trim();
+    if (!base) return;
+    return new URL(pathname.replace(/^\//, ''), base.endsWith('/') ? base : `${base}/`);
+}
+
+function internalWorkerHeaders(): Headers {
+    const token = process.env.PHONE_FARM_INTERNAL_TOKEN;
+    if (!token) throw new Error('PHONE_FARM_INTERNAL_TOKEN is required for distributed worker asset access');
+    return new Headers({ authorization: `Bearer ${token}` });
+}
+
 export class SchedulerRepository {
     constructor(
         readonly connection: DatabaseConnection,
         readonly boss: PgBoss,
         readonly plugins: PluginRegistry,
     ) {}
+
+    private async materializeAssetFile(asset: {
+        id: string;
+        relativePath: string;
+        originalName: string;
+        size: number;
+        sha256: string;
+    }): Promise<string> {
+        const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
+        const localPath = path.resolve(root, asset.relativePath);
+        try {
+            await access(localPath);
+            return localPath;
+        } catch { /* distributed workers may need to fetch the canonical MiniPC copy */ }
+
+        const url = controlPlaneWorkerUrl(`/api/internal/worker/assets/${encodeURIComponent(asset.id)}`);
+        if (!url) throw new Error(`Asset file is missing on this execution node (${asset.originalName})`);
+        const cacheDirectory = path.join(root, 'remote-cache');
+        const target = path.join(cacheDirectory, asset.id);
+        try {
+            await access(target);
+            return target;
+        } catch { /* fetch the canonical copy below */ }
+        const response = await fetch(url, { headers: internalWorkerHeaders(), signal: AbortSignal.timeout(120_000) });
+        if (!response.ok || !response.body) {
+            throw new Error(`Unable to fetch asset ${asset.originalName} from control plane (${response.status})`);
+        }
+
+        await mkdir(cacheDirectory, { recursive: true, mode: 0o700 });
+        const temporary = `${target}.${process.pid}.tmp`;
+        const hash = crypto.createHash('sha256');
+        let size = 0;
+        const verifier = new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+                size += chunk.length;
+                hash.update(chunk);
+                callback(null, chunk);
+            },
+        });
+        try {
+            await pipeline(
+                Readable.from(response.body as AsyncIterable<Uint8Array>),
+                verifier,
+                createWriteStream(temporary, { flags: 'wx', mode: 0o600 }),
+            );
+            const digest = hash.digest('hex');
+            if (size !== asset.size || digest !== asset.sha256) {
+                throw new Error(`Asset integrity check failed for ${asset.originalName}`);
+            }
+            await import('node:fs/promises').then(({ rename }) => rename(temporary, target));
+            return target;
+        } catch (error) {
+            await rm(temporary, { force: true });
+            throw error;
+        }
+    }
 
     async createTask(
         input: CreateTaskInput,
@@ -238,11 +310,27 @@ export class SchedulerRepository {
             ...(execution.scheduleId ? [eq(assets.scheduleId, execution.scheduleId)] : []),
             ...(execution.campaignId ? [eq(assets.campaignId, execution.campaignId)] : []),
         ));
-        const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
-        return rows.map((asset) => ({
-            id: asset.id, path: path.resolve(root, asset.relativePath), name: asset.originalName,
+        return Promise.all(rows.map(async (asset) => ({
+            id: asset.id, path: await this.materializeAssetFile(asset), name: asset.originalName,
             mimeType: asset.mimeType, size: asset.size, sha256: asset.sha256,
-        }));
+        })));
+    }
+
+    async assetFile(id: string): Promise<StoredAsset | null> {
+        const [asset] = await this.connection.db.select().from(assets).where(eq(assets.id, id)).limit(1);
+        if (!asset) return null;
+        const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
+        const filePath = path.resolve(root, asset.relativePath);
+        if (!filePath.startsWith(`${root}${path.sep}`)) throw new Error('Asset path escapes scheduler data root');
+        try { await access(filePath); } catch { return null; }
+        return {
+            id: asset.id,
+            path: filePath,
+            name: asset.originalName,
+            mimeType: asset.mimeType,
+            size: asset.size,
+            sha256: asset.sha256,
+        };
     }
 
     async activeExecution(deviceUdid: string): Promise<ExecutionRow | null> {
@@ -733,26 +821,24 @@ export class SchedulerRepository {
             await this.failPipelineItem(claimed.id, `Pipeline media asset ${claimed.asset_id} is missing`);
             return null;
         }
-        const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
-        const filePath = path.resolve(root, assetRow.relativePath);
         try {
-            await access(filePath);
+            const filePath = await this.materializeAssetFile(assetRow);
+            return {
+                id: claimed.id,
+                caption: claimed.caption,
+                asset: {
+                    id: assetRow.id,
+                    path: filePath,
+                    name: assetRow.originalName,
+                    mimeType: assetRow.mimeType,
+                    size: assetRow.size,
+                    sha256: assetRow.sha256,
+                },
+            };
         } catch {
             await this.failPipelineItem(claimed.id, `Pipeline media file is missing on disk (${assetRow.originalName})`);
             return null;
         }
-        return {
-            id: claimed.id,
-            caption: claimed.caption,
-            asset: {
-                id: assetRow.id,
-                path: filePath,
-                name: assetRow.originalName,
-                mimeType: assetRow.mimeType,
-                size: assetRow.size,
-                sha256: assetRow.sha256,
-            },
-        };
     }
 
     async completePipelineItem(id: string): Promise<void> {
@@ -794,6 +880,18 @@ export class SchedulerRepository {
     private async purgeAssetIds(ids: string[]): Promise<void> {
         if (!ids.length) return;
         const rows = await this.connection.db.select().from(assets).where(inArray(assets.id, ids));
+        if ((process.env.PHONE_FARM_ROLE ?? 'standalone') === 'device-worker' && process.env.PHONE_FARM_CONTROL_PLANE_URL) {
+            const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
+            for (const asset of rows) {
+                const url = controlPlaneWorkerUrl(`/api/internal/worker/assets/${encodeURIComponent(asset.id)}`)!;
+                const response = await fetch(url, { method: 'DELETE', headers: internalWorkerHeaders(), signal: AbortSignal.timeout(30_000) });
+                if (!response.ok && response.status !== 404) {
+                    throw new Error(`Control plane refused asset cleanup for ${asset.id} (${response.status})`);
+                }
+                await rm(path.join(root, 'remote-cache', asset.id), { force: true });
+            }
+            return;
+        }
         const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
         for (const asset of rows) {
             const file = path.resolve(root, asset.relativePath);

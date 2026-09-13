@@ -12,6 +12,7 @@ It runs locally as-is; authentication is optional on a loopback bind. Harden it 
 - [docs/architecture.md](docs/architecture.md) — the four processes, data stores, task model, source map
 - [docs/plugins.md](docs/plugins.md) — write a plugin: tasks, execution context, versioning, panels, routes
 - [docs/coordinates.md](docs/coordinates.md) — tap-layout profiles and how to add one
+- [docs/deployment/distributed-minipc.md](docs/deployment/distributed-minipc.md) — recommended production topology: Linux MiniPC control plane + macOS iPhone workers
 - [PLUGIN_DEVELOPMENT.md](PLUGIN_DEVELOPMENT.md) — plugin trust and compatibility rules
 - [SECURITY.md](SECURITY.md) — before exposing the dashboard beyond loopback
 
@@ -38,6 +39,23 @@ npm run web
 ```
 
 TikTok and Instagram support are enabled by default. Set `PHONE_FARM_PLUGINS` to comma-separated ESM package names to add more task plugins. Set `PHONE_FARM_AUTH_PLUGIN` to an ESM authentication provider before binding `WEB_HOST` outside loopback; startup deliberately fails otherwise.
+
+## Recommended production topology
+
+For an always-on installation, keep the **Linux MiniPC as the authoritative control plane** and use one or more Macs only as physical-iPhone execution nodes. The MiniPC runs PostgreSQL, the API/dashboard, schedules, campaigns, policy and canonical media under `docker-compose.production.yml`. Each Mac keeps Xcode/Appium/WDA and its USB iPhones local, runs the per-device pg-boss worker, and exposes only the authenticated device-worker gateway to the private network.
+
+```sh
+# Linux MiniPC
+cp .env.minipc.example .env.minipc
+./deploy/setup-minipc.sh
+
+# macOS execution node
+cp .env.device-worker.example .env
+# configure MiniPC URLs/tokens and Apple signing
+./deploy/setup-device-worker.sh
+```
+
+The dashboard can remain bound to MiniPC loopback and be used from another computer through Tailscale Serve or an SSH tunnel. Appium and WDA remain loopback-only on each Mac. See the distributed deployment document for the network and authority model.
 
 ## Plugin contract
 

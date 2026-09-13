@@ -14,6 +14,7 @@ export * from './semantic/controller.js';
 export * from './agent/client.js';
 export * from './campaigns.js';
 export * from './analytics.js';
+export * from './device-workers.js';
 export * from './security/stream-token.js';
 export * from './tiktok-plugin.js';
 export * from './instagram-plugin.js';

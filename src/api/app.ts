@@ -3,12 +3,13 @@ import formbody from '@fastify/formbody';
 import multipart from '@fastify/multipart';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import crypto from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, open, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 
-import { discoverConnectedDevices } from '../devices/discovery.js';
+import { discoverConnectedDevices, type Device } from '../devices/discovery.js';
 import { loadRegisteredDevices, mutateRegisteredDevices, saveRegisteredDevices, redactDevice, PASSCODE_PATTERN, type RegisteredDevice } from '../devices/registry.js';
 import {
     CALIBRATABLE_POINTS, labelsForApp, coordinatesForProfile, resolveDeviceCoordinates,
@@ -45,6 +46,11 @@ export interface CreateAppOptions {
     semanticTraceRoot?: string;
     requireStreamToken?: boolean;
     streamTokenSecret?: string;
+    /** Physical discovery source. Control-plane deployments point this at remote Mac workers. */
+    discoverDevices?: () => Promise<Device[]>;
+    connectionStatus?: (udid: string) => Promise<DeviceConnectionStatus | undefined>;
+    reconnectDevice?: (udid: string) => Promise<DeviceConnectionStatus | undefined>;
+    syncDeviceConfiguration?: (device: RegisteredDevice) => Promise<void>;
 }
 
 export interface DashboardTheme {
@@ -81,6 +87,17 @@ function csrfBlocked(reply: FastifyReply): FastifyReply {
         error: 'Cross-origin write blocked. Send an Authorization: Bearer token for API clients, '
             + 'or add the origin to PHONE_FARM_TRUSTED_ORIGINS.',
     });
+}
+
+function internalWorkerAuthorized(request: FastifyRequest): boolean {
+    const expected = process.env.PHONE_FARM_INTERNAL_TOKEN;
+    if (!expected) return false;
+    const header = request.headers.authorization;
+    if (!header?.startsWith('Bearer ')) return false;
+    const supplied = header.slice('Bearer '.length);
+    const a = Buffer.from(expected);
+    const b = Buffer.from(supplied);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 /** Farm-facing label stored in devices.json — independent of the iOS device name. */
@@ -150,8 +167,8 @@ function page(title: string, body: string, logoutPath?: string, navLinks: readon
 <body><nav><a href="/">Devices</a><a href="/automations">Automations</a><a href="/tasks">Tasks</a><a href="/docs">API</a>${extra}${logout}</nav><main>${body}</main><footer style="max-width:1100px;margin:24px auto;padding:16px 20px;color:#5c5c66;font-size:12px">${FOOTER_HTML}</footer></body></html>`;
 }
 
-async function registeredWithStatus() {
-    const [registered, connected] = await Promise.all([loadRegisteredDevices(), discoverConnectedDevices()]);
+async function registeredWithStatus(discoverDevices: () => Promise<Device[]> = discoverConnectedDevices) {
+    const [registered, connected] = await Promise.all([loadRegisteredDevices(), discoverDevices()]);
     const online = new Map(connected.map((device) => [device.udid, device]));
     return registered.map((device) => ({
         ...redactDevice(device),
@@ -205,6 +222,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     if (options.authProvider) {
         await options.authProvider.registerRoutes(app);
         app.addHook('onRequest', async (request, reply) => {
+            if (request.url.startsWith('/api/internal/worker/') && internalWorkerAuthorized(request)) return;
             if (options.authProvider?.isPublicPath(request.url.split('?')[0] ?? request.url)) return;
             const user = await options.authProvider?.authenticate(request, reply);
             if (!user && !reply.sent) await reply.code(401).send({ error: 'Authentication required' });
@@ -212,6 +230,20 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     }
 
     const remote = options.remote ?? new RegistryWdaRemoteControl();
+    const discoverDevices = options.discoverDevices ?? discoverConnectedDevices;
+    const mutateDevices = async <T>(mutate: (devices: RegisteredDevice[]) => T | Promise<T>): Promise<T> => {
+        const result = await mutateRegisteredDevices(mutate);
+        if (options.syncDeviceConfiguration) {
+            const devices = await loadRegisteredDevices();
+            const outcomes = await Promise.allSettled(devices
+                .filter(({ workerId }) => Boolean(workerId))
+                .map((device) => options.syncDeviceConfiguration!(device)));
+            outcomes.forEach((outcome) => {
+                if (outcome.status === 'rejected') console.warn('Device-worker config sync failed:', errorMessage(outcome.reason));
+            });
+        }
+        return result;
+    };
     const semantic = new SemanticController(remote, options.semanticTraceRoot);
     const streamTokens = new StreamTokenService(options.streamTokenSecret ?? process.env.PHONE_FARM_STREAM_SECRET ?? crypto.randomBytes(32));
     const logoutPath = options.authProvider?.logoutPath;
@@ -318,11 +350,11 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         id: plugin.id, version: plugin.version, displayName: plugin.displayName,
         tasks: plugin.tasks.map(({ type, version, displayName }) => ({ type, version, displayName })),
     })));
-    app.get('/api/devices', async () => registeredWithStatus());
+    app.get('/api/devices', async () => registeredWithStatus(discoverDevices));
     app.get('/api/accounts', async () => ({ accounts: listFleetAccounts(await loadRegisteredDevices()) }));
     app.get('/api/fleet/health', async () => {
         const [devices, registered, schedules, executions] = await Promise.all([
-            registeredWithStatus(),
+            registeredWithStatus(discoverDevices),
             loadRegisteredDevices(),
             options.scheduler.listSchedules(500),
             options.scheduler.listExecutions(500),
@@ -349,7 +381,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         }
         const pluginId = pluginIdForPlatform(platform);
         let updated = false;
-        await mutateRegisteredDevices((devices) => {
+        await mutateDevices((devices) => {
             const device = devices.find(({ udid }) => udid === request.params.udid);
             if (!device) return;
             const data = device.pluginData[pluginId] ?? {};
@@ -369,7 +401,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         ));
         return { account };
     });
-    app.get('/api/devices/discovered', async () => discoverConnectedDevices());
+    app.get('/api/devices/discovered', async () => discoverDevices());
     app.get('/api/device-registrations/candidates', async (_request, reply) => {
         if (!options.registrations) return reply.code(503).send({ error: 'Device registration is not configured' });
         return { devices: await options.registrations.candidates() };
@@ -411,7 +443,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             if (passcode !== undefined && !PASSCODE_PATTERN.test(passcode)) {
                 return reply.code(400).send({ error: 'Device passcode must contain at least four digits' });
             }
-            const created = await mutateRegisteredDevices((devices) => {
+            const created = await mutateDevices((devices) => {
                 if (devices.some((device) => device.udid === udid)) throw httpError(409, 'A device with this UDID is already registered');
                 // Explicit whitelist — never mass-assign arbitrary body keys into devices.json.
                 const device: RegisteredDevice = {
@@ -436,7 +468,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             if (disabled === true && await options.scheduler.activeExecution(request.params.udid)) {
                 return reply.code(409).send({ error: 'Stop the running automation before disconnecting this device' });
             }
-            const updated = await mutateRegisteredDevices((devices) => {
+            const updated = await mutateDevices((devices) => {
                 const device = devices.find((entry) => entry.udid === request.params.udid);
                 if (!device) throw httpError(404, 'Device not found');
                 if (name !== undefined) device.name = normalizeDeviceName(name);
@@ -504,7 +536,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 await options.scheduler.setScheduleStatus(schedule.id, 'cancelled');
             }
         }
-        await mutateRegisteredDevices((devices) => {
+        await mutateDevices((devices) => {
             const index = devices.findIndex(({ udid }) => udid === request.params.udid);
             if (index >= 0) devices.splice(index, 1);
         });
@@ -514,7 +546,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     app.post<{ Params: { udid: string } }>('/api/devices/:udid/checks', async (request, reply) => {
         const device = (await loadRegisteredDevices()).find(({ udid }) => udid === request.params.udid);
         if (!device) return reply.code(404).send({ error: 'Device not found' });
-        const identity = (await discoverConnectedDevices()).find(({ udid }) => udid === device.udid) ?? device;
+        const identity = (await discoverDevices()).find(({ udid }) => udid === device.udid) ?? device;
         const results = [];
         for (const plugin of options.plugins.list()) {
             for (const check of plugin.registrationChecks ?? []) {
@@ -529,7 +561,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     // per-device client. The old unprefixed /screenshot and /actions twins
     // that bypassed both were removed.
     app.get<{ Params: { udid: string } }>('/api/devices/:udid/remote/info', async (request, reply) => {
-        const device = (await discoverConnectedDevices()).find(({ udid }) => udid === request.params.udid);
+        const device = (await discoverDevices()).find(({ udid }) => udid === request.params.udid);
         if (!device) return reply.code(404).send({ error: 'Device is not connected' });
         return { device, screen: await remote.getScreenInfo(device.udid) };
     });
@@ -612,6 +644,10 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     app.get<{ Params: { udid: string } }>('/api/devices/:udid/connection', async (request, reply) => {
         const registered = (await loadRegisteredDevices()).find(({ udid }) => udid === request.params.udid);
         if (!registered) return reply.code(404).send({ error: 'Device is not registered' });
+        if (options.connectionStatus) {
+            const status = await options.connectionStatus(registered.udid);
+            return status ?? reply.code(503).send({ error: 'Owning device worker is unavailable' });
+        }
         // Prefer the real per-device state the wda-service supervisor tracks
         // (physical, wda, appium, retryCount, message).
         try {
@@ -622,7 +658,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 if (status) return status;
             }
         } catch { /* supervisor socket unavailable — fall back to a probe */ }
-        const connected = (await discoverConnectedDevices()).some(({ udid }) => udid === registered.udid);
+        const connected = (await discoverDevices()).some(({ udid }) => udid === registered.udid);
         let wda = false;
         try {
             wda = (await fetch(`http://127.0.0.1:${registered.wdaLocalPort ?? 8100}/status`, { signal: AbortSignal.timeout(2_000) })).ok;
@@ -640,6 +676,10 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.code(409).send({ error: 'Cannot reconnect while automation is running' });
         }
         remote.forget?.(request.params.udid);
+        if (options.reconnectDevice) {
+            const status = await options.reconnectDevice(request.params.udid);
+            return reply.code(202).send(status ?? { ok: true, message: 'Reconnect requested on device worker' });
+        }
         return reply.code(202).send({ ok: true, message: 'The shared WDA supervisor will reconnect automatically' });
     });
 
@@ -803,10 +843,30 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         return reply.code(204).send();
     });
 
+    app.get<{ Params: { udid: string } }>('/api/internal/worker/devices/:udid', async (request, reply) => {
+        if (!internalWorkerAuthorized(request)) return reply.code(401).send({ error: 'Internal worker token required' });
+        const device = (await loadRegisteredDevices()).find(({ udid }) => udid === request.params.udid);
+        return device ? redactDevice(device) : reply.code(404).send({ error: 'Device not found' });
+    });
+    app.get<{ Params: { id: string } }>('/api/internal/worker/assets/:id', async (request, reply) => {
+        if (!internalWorkerAuthorized(request)) return reply.code(401).send({ error: 'Internal worker token required' });
+        const asset = await options.scheduler.assetFile(request.params.id);
+        if (!asset) return reply.code(404).send({ error: 'Asset not found' });
+        reply.header('content-length', String(asset.size));
+        reply.header('x-content-sha256', asset.sha256);
+        reply.header('cache-control', 'private, no-store');
+        return reply.type(asset.mimeType).send(createReadStream(asset.path));
+    });
+    app.delete<{ Params: { id: string } }>('/api/internal/worker/assets/:id', async (request, reply) => {
+        if (!internalWorkerAuthorized(request)) return reply.code(401).send({ error: 'Internal worker token required' });
+        await options.scheduler.deleteAssets([request.params.id]);
+        return reply.code(204).send();
+    });
+
     for (const plugin of options.plugins.list()) {
         if (plugin.registerRoutes) await plugin.registerRoutes({
             app, routePrefix: `/plugins/${plugin.id}`, scheduler: options.scheduler, remote,
-            loadDevices: loadRegisteredDevices, saveDevices: saveRegisteredDevices, mutateDevices: mutateRegisteredDevices, renderActivity,
+            loadDevices: loadRegisteredDevices, saveDevices: saveRegisteredDevices, mutateDevices, renderActivity,
         });
     }
 
@@ -896,7 +956,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/summary', async (request, reply) => {
             const [registered, connected] = await Promise.all([
                 loadRegisteredDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
-                discoverConnectedDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
+                discoverDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
             ]);
             if (!connected) {
                 if (!registered) {
@@ -917,7 +977,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         if (themed) return reply.type('text/html').send(themed.indexHtml);
         const devices = await registeredWithStatus();
         const cards = devices.map((device) => `<div class="card"><h2>${escapeHtml(device.name)}</h2><p class="muted"><code>${escapeHtml(device.udid)}</code></p><p>${device.disabled ? 'Disconnected' : device.connected ? `Online · iOS ${escapeHtml(device.connected.osVersion)}` : 'Offline'}</p><a class="button" href="/devices/${encodeURIComponent(device.udid)}">Open device</a></div>`).join('');
-        const connected = await discoverConnectedDevices();
+        const connected = await discoverDevices();
         const registeredIds = new Set(devices.map(({ udid }) => udid));
         const candidates = connected.filter(({ udid }) => !registeredIds.has(udid)).map((device) => `<option value="${escapeHtml(device.udid)}" data-name="${escapeHtml(device.name)}">${escapeHtml(device.name)} · ${escapeHtml(device.osVersion)}</option>`).join('');
         const registration = candidates ? `<section class="card"><h2>Register connected device</h2><form id="register-device"><select name="udid">${candidates}</select> <button>Register</button></form><p id="register-result" class="muted"></p><script>document.getElementById('register-device').addEventListener('submit',async function(e){e.preventDefault();var s=e.currentTarget.udid;var o=s.options[s.selectedIndex];var r=await fetch('/api/devices',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({udid:o.value,name:o.dataset.name,pluginData:{}})});document.getElementById('register-result').textContent=r.ok?'Registered. Reloading…':(await r.json()).error;if(r.ok)setTimeout(function(){location.reload()},500)});</script></section>` : '';

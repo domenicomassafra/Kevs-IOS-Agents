@@ -15,7 +15,8 @@
 - [x] FARM-011 Campaign/content control plane.
 - [x] FARM-012 Health/analytics.
 - [x] FARM-014 Signed expiring remote stream/session capabilities.
-- [x] Source regression gate: `npm run check` => 98/98 tests + TypeScript green (2026-09-13).
+- [x] FARM-018 Distributed Linux MiniPC control plane + macOS device-worker architecture (source implementation).
+- [x] FARM-018 source regression gate: `npm run check` => 102/102 tests + TypeScript green (2026-09-13).
 
 ## Live-gated
 
@@ -23,9 +24,10 @@
 - [ ] FARM-015 launchd production supervision: generators/lifecycle implemented and plist syntax validated; install/restart proof waits for a live-ready host.
 - [ ] FARM-016 Physical-iPhone end-to-end acceptance: receipt-producing harness implemented; execution waits for full Xcode + PostgreSQL + physical iPhone.
 - [ ] FARM-017 Dependency remediation: triaged; current advisories require an Appium/Webdriver compatibility move that must be live-regression-tested rather than force-applied.
+- [ ] FARM-018 deployment proof: run production Compose on the actual Linux MiniPC, Mac worker launchd on a live-ready Mac, then execute the physical-iPhone acceptance receipt through the distributed path.
 
 ## Git closeout
 
-- [ ] Review final diff for generated/runtime artifacts and secrets.
-- [ ] Commit `feat/farming-control-plane-v1`.
-- [ ] Push branch to `origin`.
+- [ ] Review FARM-018 diff for generated/runtime artifacts and secrets.
+- [ ] Commit FARM-018 on `feat/farming-control-plane-v1`.
+- [ ] Push updated branch to `origin`.

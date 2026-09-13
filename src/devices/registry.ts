@@ -7,6 +7,8 @@ import type { JsonObject } from '../types.js';
 export interface RegisteredDevice {
     name: string;
     udid: string;
+    /** Execution node that owns the physical USB/WDA connection. Omitted in standalone mode. */
+    workerId?: string;
     coordinateProfile?: DeviceProfileName;
     wdaLocalPort?: number;
     mjpegLocalPort?: number;

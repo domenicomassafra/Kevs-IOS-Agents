@@ -31,3 +31,19 @@ test('doctor recognizes full Xcode and a visible physical device', () => {
     assert.equal(report.realDeviceReady, true);
     assert.match(report.checks.find(({ id }) => id === 'iphone')?.summary ?? '', /1 physical/);
 });
+
+test('control-plane doctor does not require Xcode and requires Docker/database configuration', () => {
+    const report = collectDoctorReport(runner({
+        'docker --version': { stdout: 'Docker version 28.0.0' },
+    }), {
+        PHONE_FARM_ROLE: 'control-plane',
+        DATABASE_URL: 'postgresql://phone_farm:secret@127.0.0.1:5432/phone_farm',
+        PHONE_FARM_DEVICE_WORKERS: 'macstudio=http://macstudio:3010',
+        PHONE_FARM_DEVICE_WORKER_TOKEN: 'worker-secret',
+        PHONE_FARM_INTERNAL_TOKEN: 'internal-secret',
+    }, process.cwd());
+    assert.equal(report.runtimeReady, true);
+    assert.equal(report.realDeviceReady, true);
+    assert.equal(report.checks.some(({ id }) => id === 'xcode'), false);
+    assert.equal(report.checks.find(({ id }) => id === 'database-runtime')?.status, 'pass');
+});

@@ -9,6 +9,7 @@ import { createTikTokPlugin } from '../tiktok-plugin.js';
 import { createInstagramPlugin } from '../instagram-plugin.js';
 import { defaultDashboardTheme } from '../dashboard-theme.js';
 import { DeviceRegistrationService } from '../devices/registration.js';
+import { configuredDeviceWorkers, DeviceWorkerFleet } from '../device-workers.js';
 import { createApp, type DashboardTheme } from './app.js';
 
 export interface StartServerOptions {
@@ -37,19 +38,41 @@ export async function startServer(options: StartServerOptions = {}) {
     assertSafeBind(host, authProvider);
     const plugins = new PluginRegistry(loadedPlugins);
     const scheduler = await createSchedulerRuntime(plugins);
-    const registrations = new DeviceRegistrationService();
-    await registrations.start();
+    const role = process.env.PHONE_FARM_ROLE ?? 'standalone';
+    if (!['standalone', 'control-plane'].includes(role)) {
+        throw new Error(`PHONE_FARM_ROLE must be standalone or control-plane for the web process; received ${role}`);
+    }
+    const registrations = role === 'standalone' ? new DeviceRegistrationService() : undefined;
+    await registrations?.start();
+    const workerFleet = role === 'control-plane' ? new DeviceWorkerFleet(configuredDeviceWorkers()) : undefined;
+    if (workerFleet) await workerFleet.refresh();
+    const refreshMs = Math.max(2_000, Number(process.env.PHONE_FARM_WORKER_REFRESH_MS ?? 10_000));
+    const workerRefreshTimer = workerFleet
+        ? setInterval(() => void workerFleet.refresh().catch((error) => console.error('Device worker refresh failed:', error)), refreshMs)
+        : undefined;
     const app = await createApp({
         plugins, scheduler: scheduler.repository, authProvider,
         dashboardTheme: options.dashboardTheme ?? defaultDashboardTheme, registrations, logger: true,
-        requireStreamToken: !isLoopbackHost(host),
+        requireStreamToken: process.env.PHONE_FARM_REQUIRE_STREAM_TOKEN === 'true' || !isLoopbackHost(host),
+        ...(workerFleet ? {
+            remote: workerFleet,
+            discoverDevices: () => workerFleet.discoverDevices(),
+            connectionStatus: (udid: string) => workerFleet.connectionStatus(udid),
+            reconnectDevice: (udid: string) => workerFleet.reconnectDevice(udid),
+            syncDeviceConfiguration: (device) => workerFleet.syncDeviceConfiguration(device),
+        } : {}),
     });
     await app.listen({ host, port });
     const address = app.server.address() as AddressInfo;
     console.log(`Phone Farm listening on http://${host}:${address.port}`);
     return {
         app, plugins,
-        async close() { await app.close(); await registrations.close(); await scheduler.close(); },
+        async close() {
+            if (workerRefreshTimer) clearInterval(workerRefreshTimer);
+            await app.close();
+            await registrations?.close();
+            await scheduler.close();
+        },
     };
 }
 
