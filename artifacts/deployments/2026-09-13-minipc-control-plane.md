@@ -1,12 +1,13 @@
-# MiniPC control-plane deployment receipt — 2026-09-13
+# MiniPC control-plane deployment receipt — 2026-09-13/14
 
 ## Deployed host
 
 - Host: `minipc-ubuntu` / Linux x86_64
 - Docker: 29.1.3
 - Docker Compose: 5.3.0
-- Source branch: `feat/farming-control-plane-v1`
-- Production source lineage: `a666806` (distributed topology), `95295f7` (dedicated MiniPC ports), `5de126a` (Linux native-install isolation), `c7004c2` (immutable dashboard assets)
+- Source branch: `main`
+- Current production source: `4155cfa` (`main`), after the completed control-plane feature line was fast-forwarded and the merged feature branch removed.
+- Production source lineage includes `a666806` (distributed topology), `95295f7` (dedicated MiniPC ports), `5de126a` (Linux native-install isolation), `c7004c2` (immutable dashboard assets), `c6e6797` (versioned flow library/fleet operations), `fce3b06` (capability-aware flow scheduling), and `362bf13` (device pools/tags/host observability).
 
 ## Runtime proof
 
@@ -21,6 +22,9 @@
 - Health requested from the Mac over tailnet HTTPS: HTTP 200 with `ok=true`.
 - Dashboard requested from the Mac over tailnet HTTPS: HTTP 200 (`Devices · IOS AGENTS`).
 - `/api/devices` requested from the Mac: reachable and currently empty because no Mac device worker is installed yet.
+- `scheduler.device_pools` migration applied on the real PostgreSQL instance.
+- Live CRUD smoke for a temporary device + normalized tags and a named device pool passed over tailnet HTTPS; the smoke pool/device were both deleted and production returned to zero temporary fixtures.
+- Configured worker `macstudio` remains visible as `offline` instead of disappearing when its gateway is unavailable.
 - PostgreSQL TCP `55432` requested from the Mac over Tailscale: reachable.
 - Mac gateway network smoke: a temporary non-production gateway bound only to the Mac Studio Tailscale address on port `3010`; the MiniPC reached that TCP listener successfully.
 - Gateway auth smoke: an unauthenticated HTTP request was rejected with `401`. Production shared-token pairing was not copied by the automation tool and remains a protected deployment step.

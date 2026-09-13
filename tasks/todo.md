@@ -50,4 +50,4 @@
 - [x] Review FARM-018 diff for generated/runtime artifacts and secrets.
 - [x] Commit FARM-018 on `feat/farming-control-plane-v1`.
 - [x] Push updated branch to `origin`.
-- [ ] Merge the completed control-plane feature branch to `main`, push `origin/main`, then delete the merged feature branch/worktree debris.
+- [x] Merge the completed control-plane feature branch to `main`, push `origin/main`, then delete the merged feature branch/worktree debris.
