@@ -147,9 +147,13 @@ export function collectDoctorReport(
     }
 
     const envPath = path.resolve(cwd, '.env');
-    checks.push(existsSync(envPath)
-        ? { id: 'configuration', status: 'pass', summary: '.env exists' }
-        : { id: 'configuration', status: 'warn', summary: '.env is not configured', detail: 'Copy .env.example to .env before a live run.' });
+    if (insideControlPlaneContainer) {
+        checks.push({ id: 'configuration', status: 'pass', summary: 'Configuration is injected by the container environment' });
+    } else {
+        checks.push(existsSync(envPath)
+            ? { id: 'configuration', status: 'pass', summary: '.env exists' }
+            : { id: 'configuration', status: 'warn', summary: '.env is not configured', detail: 'Copy the role-appropriate env example before a live run.' });
+    }
 
     if (role !== 'control-plane' && fullXcode) {
         const devices = command(runner, 'xcrun', ['xctrace', 'list', 'devices']);
@@ -172,7 +176,9 @@ export function collectDoctorReport(
         ok: !checks.some((check) => check.status === 'fail'),
         sourceReady: !failed(sourceRequired),
         runtimeReady: !failed(runtimeRequired),
-        realDeviceReady: !failed(realDeviceRequired),
+        // A control-plane host never owns a physical iPhone itself; consumers
+        // should use runtimeReady plus fleet/device health for that role.
+        realDeviceReady: role === 'control-plane' ? false : !failed(realDeviceRequired),
         checks,
     };
 }

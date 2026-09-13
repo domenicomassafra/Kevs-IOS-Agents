@@ -43,7 +43,7 @@ test('control-plane doctor does not require Xcode and requires Docker/database c
         PHONE_FARM_INTERNAL_TOKEN: 'internal-secret',
     }, process.cwd());
     assert.equal(report.runtimeReady, true);
-    assert.equal(report.realDeviceReady, true);
+    assert.equal(report.realDeviceReady, false);
     assert.equal(report.checks.some(({ id }) => id === 'xcode'), false);
     assert.equal(report.checks.find(({ id }) => id === 'database-runtime')?.status, 'pass');
 });

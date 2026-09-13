@@ -24,11 +24,25 @@ set -a
 source .env
 set +a
 
+require_configured() {
+  local name="$1"
+  local value="$2"
+  if [[ -z "$value" || "$value" == *replace-* || "$value" == *CHANGE_ME* ]]; then
+    echo "$name must be configured with a real value in .env" >&2
+    exit 1
+  fi
+}
+
 [[ "${PHONE_FARM_ROLE:-}" == "device-worker" ]] || { echo "PHONE_FARM_ROLE=device-worker is required in .env" >&2; exit 1; }
-[[ -n "${PHONE_FARM_DEVICE_WORKER_TOKEN:-}" ]] || { echo "PHONE_FARM_DEVICE_WORKER_TOKEN is required" >&2; exit 1; }
-[[ -n "${PHONE_FARM_INTERNAL_TOKEN:-}" ]] || { echo "PHONE_FARM_INTERNAL_TOKEN is required" >&2; exit 1; }
-[[ -n "${PHONE_FARM_CONTROL_PLANE_URL:-}" ]] || { echo "PHONE_FARM_CONTROL_PLANE_URL is required" >&2; exit 1; }
-[[ -n "${DATABASE_URL:-}" ]] || { echo "DATABASE_URL must point to MiniPC PostgreSQL" >&2; exit 1; }
+require_configured PHONE_FARM_DEVICE_WORKER_TOKEN "${PHONE_FARM_DEVICE_WORKER_TOKEN:-}"
+require_configured PHONE_FARM_INTERNAL_TOKEN "${PHONE_FARM_INTERNAL_TOKEN:-}"
+require_configured PHONE_FARM_CONTROL_PLANE_URL "${PHONE_FARM_CONTROL_PLANE_URL:-}"
+require_configured DATABASE_URL "${DATABASE_URL:-}"
+require_configured XCODE_ORG_ID "${XCODE_ORG_ID:-}"
+if [[ "${WDA_BUNDLE_ID:-}" == "com.example.WebDriverAgentRunner" || -z "${WDA_BUNDLE_ID:-}" ]]; then
+  echo "WDA_BUNDLE_ID must be changed from the example value before installation" >&2
+  exit 1
+fi
 
 npm ci
 [[ -d .appium2/node_modules/appium-xcuitest-driver ]] || npm run appium:install-driver

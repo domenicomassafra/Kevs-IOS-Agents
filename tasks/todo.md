@@ -20,14 +20,15 @@
 
 ## Live-gated
 
+- [x] FARM-018 MiniPC half: production Compose deployed on actual `minipc-ubuntu`; DB/control plane healthy; tailnet dashboard/API and DB reachability proven; Mac gateway TCP + unauthenticated rejection smoke proven.
 - [ ] FARM-013 Video benchmark: harness implemented; measurements require a physical iPhone and optional qvh endpoint.
 - [ ] FARM-015 launchd production supervision: generators/lifecycle implemented and plist syntax validated; install/restart proof waits for a live-ready host.
 - [ ] FARM-016 Physical-iPhone end-to-end acceptance: receipt-producing harness implemented; execution waits for full Xcode + PostgreSQL + physical iPhone.
 - [ ] FARM-017 Dependency remediation: triaged; current advisories require an Appium/Webdriver compatibility move that must be live-regression-tested rather than force-applied.
-- [ ] FARM-018 deployment proof: run production Compose on the actual Linux MiniPC, Mac worker launchd on a live-ready Mac, then execute the physical-iPhone acceptance receipt through the distributed path.
+- [ ] FARM-018 device half: production secret pairing + Mac worker launchd + signed WDA/iPhone acceptance after full Xcode and device registration exist.
 
 ## Git closeout
 
-- [ ] Review FARM-018 diff for generated/runtime artifacts and secrets.
-- [ ] Commit FARM-018 on `feat/farming-control-plane-v1`.
-- [ ] Push updated branch to `origin`.
+- [x] Review FARM-018 diff for generated/runtime artifacts and secrets.
+- [x] Commit FARM-018 on `feat/farming-control-plane-v1`.
+- [x] Push updated branch to `origin`.
