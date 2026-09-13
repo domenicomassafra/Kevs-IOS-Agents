@@ -18,13 +18,21 @@ import { RegistryWdaRemoteControl } from '../devices/registry-remote.js';
 import type {
     DeviceRegistrationManager, RegistrationAction, RegistrationUpdate,
 } from '../devices/registration.js';
-import { type RemoteAction } from '../devices/wda-remote.js';
+import { type RemoteAction, type RemoteControl } from '../devices/wda-remote.js';
 import { requestWdaService } from '../devices/wda-service-client.js';
 import type { DeviceConnectionStatus } from '../devices/connection-manager.js';
 import type { AuthProvider, PluginNavLink } from '../plugin.js';
 import type { PluginRegistry } from '../registry.js';
 import type { CreateTaskInput, JsonObject, ScheduleTiming } from '../types.js';
 import { ScheduleTransitionError, type SchedulerRepository } from '../scheduler/repository.js';
+import {
+    listFleetAccounts, pluginIdForPlatform, SOCIAL_ACCOUNT_PLATFORMS, withAccountPolicy,
+    type AccountAutomationPolicy, type SocialAccountPlatform,
+} from '../accounts.js';
+import { SemanticController } from '../semantic/controller.js';
+import { planCampaign, type CreateCampaignInput } from '../campaigns.js';
+import { buildFleetHealth } from '../analytics.js';
+import { StreamTokenService } from '../security/stream-token.js';
 
 export interface CreateAppOptions {
     plugins: PluginRegistry;
@@ -33,6 +41,10 @@ export interface CreateAppOptions {
     dashboardTheme?: DashboardTheme;
     registrations?: DeviceRegistrationManager;
     logger?: boolean;
+    remote?: RemoteControl;
+    semanticTraceRoot?: string;
+    requireStreamToken?: boolean;
+    streamTokenSecret?: string;
 }
 
 export interface DashboardTheme {
@@ -199,7 +211,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         });
     }
 
-    const remote = new RegistryWdaRemoteControl();
+    const remote = options.remote ?? new RegistryWdaRemoteControl();
+    const semantic = new SemanticController(remote, options.semanticTraceRoot);
+    const streamTokens = new StreamTokenService(options.streamTokenSecret ?? process.env.PHONE_FARM_STREAM_SECRET ?? crypto.randomBytes(32));
     const logoutPath = options.authProvider?.logoutPath;
     const authNavHtml = logoutPath
         ? `<a class="button secondary app-logout" href="${escapeHtml(logoutPath)}">Log out</a>` : '';
@@ -305,6 +319,56 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         tasks: plugin.tasks.map(({ type, version, displayName }) => ({ type, version, displayName })),
     })));
     app.get('/api/devices', async () => registeredWithStatus());
+    app.get('/api/accounts', async () => ({ accounts: listFleetAccounts(await loadRegisteredDevices()) }));
+    app.get('/api/fleet/health', async () => {
+        const [devices, registered, schedules, executions] = await Promise.all([
+            registeredWithStatus(),
+            loadRegisteredDevices(),
+            options.scheduler.listSchedules(500),
+            options.scheduler.listExecutions(500),
+        ]);
+        return buildFleetHealth(devices, listFleetAccounts(registered), schedules, executions);
+    });
+    app.patch<{
+        Params: { udid: string; platform: string; handle: string };
+        Body: AccountAutomationPolicy;
+    }>('/api/devices/:udid/accounts/:platform/:handle/policy', async (request, reply) => {
+        if (!(SOCIAL_ACCOUNT_PLATFORMS as readonly string[]).includes(request.params.platform)) {
+            return reply.code(400).send({ error: 'Unsupported account platform' });
+        }
+        const platform = request.params.platform as SocialAccountPlatform;
+        if (request.body.paused !== undefined && typeof request.body.paused !== 'boolean') {
+            return reply.code(400).send({ error: 'paused must be boolean' });
+        }
+        if (request.body.allowedTaskTypes !== undefined && (!Array.isArray(request.body.allowedTaskTypes)
+            || request.body.allowedTaskTypes.some((value) => typeof value !== 'string' || !/^[a-z][a-z0-9.-]*$/.test(value)))) {
+            return reply.code(400).send({ error: 'allowedTaskTypes must contain task identifiers' });
+        }
+        if (request.body.note !== undefined && (typeof request.body.note !== 'string' || request.body.note.length > 240)) {
+            return reply.code(400).send({ error: 'note must be at most 240 characters' });
+        }
+        const pluginId = pluginIdForPlatform(platform);
+        let updated = false;
+        await mutateRegisteredDevices((devices) => {
+            const device = devices.find(({ udid }) => udid === request.params.udid);
+            if (!device) return;
+            const data = device.pluginData[pluginId] ?? {};
+            const accounts = Array.isArray(data.accounts) ? data.accounts.filter((value): value is string => typeof value === 'string') : [];
+            const normalized = request.params.handle.startsWith('@') ? request.params.handle : `@${request.params.handle}`;
+            if (!accounts.some((value) => (value.startsWith('@') ? value : `@${value}`) === normalized)) return;
+            device.pluginData = {
+                ...device.pluginData,
+                [pluginId]: withAccountPolicy(data, normalized, platform, request.body),
+            };
+            updated = true;
+        });
+        if (!updated) return reply.code(404).send({ error: 'Configured account not found on this device' });
+        const account = listFleetAccounts(await loadRegisteredDevices()).find((candidate) => (
+            candidate.deviceUdid === request.params.udid && candidate.platform === platform
+            && candidate.handle === (request.params.handle.startsWith('@') ? request.params.handle : `@${request.params.handle}`)
+        ));
+        return { account };
+    });
     app.get('/api/devices/discovered', async () => discoverConnectedDevices());
     app.get('/api/device-registrations/candidates', async (_request, reply) => {
         if (!options.registrations) return reply.code(503).send({ error: 'Device registration is not configured' });
@@ -406,7 +470,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 }
                 return device;
             });
-            remote.forget(request.params.udid);
+            remote.forget?.(request.params.udid);
             return redactDevice(updated);
         },
     );
@@ -444,7 +508,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const index = devices.findIndex(({ udid }) => udid === request.params.udid);
             if (index >= 0) devices.splice(index, 1);
         });
-        remote.forget(request.params.udid);
+        remote.forget?.(request.params.udid);
         return reply.code(204).send();
     });
     app.post<{ Params: { udid: string } }>('/api/devices/:udid/checks', async (request, reply) => {
@@ -477,7 +541,24 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.code(503).header('cache-control', 'no-store').send();
         }
     });
-    app.get<{ Params: { udid: string } }>('/api/devices/:udid/remote/stream', async (request, reply) => {
+    app.post<{ Params: { udid: string } }>('/api/devices/:udid/remote/stream-token', async (request) => {
+        const base = `/api/devices/${encodeURIComponent(request.params.udid)}/remote/stream`;
+        if (!options.requireStreamToken) return { url: `${base}?t=${Date.now()}`, expiresAt: null };
+        const capability = streamTokens.issue(request.params.udid);
+        const query = new URLSearchParams({ exp: String(capability.expiresAt), sig: capability.signature });
+        return { url: `${base}?${query}`, expiresAt: new Date(capability.expiresAt).toISOString() };
+    });
+    app.get<{
+        Params: { udid: string };
+        Querystring: { exp?: string; sig?: string };
+    }>('/api/devices/:udid/remote/stream', async (request, reply) => {
+        if (options.requireStreamToken) {
+            const expiresAt = Number(request.query.exp);
+            const signature = request.query.sig ?? '';
+            if (!streamTokens.verify(request.params.udid, expiresAt, signature)) {
+                return reply.code(403).send({ error: 'Stream capability is missing, invalid, or expired' });
+            }
+        }
         // Close the upstream device stream the moment the browser goes away —
         // otherwise every HTMX fragment swap leaks a live MJPEG connection.
         const abort = new AbortController();
@@ -495,6 +576,39 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         await remote.performAction(request.params.udid, request.body);
         return { ok: true };
     });
+    app.get<{
+        Params: { udid: string };
+        Querystring: { query?: string; maxNodes?: string };
+    }>('/api/devices/:udid/semantic/snapshot', async (request) => semantic.snapshot(request.params.udid, {
+        ...(request.query.query ? { query: request.query.query } : {}),
+        ...(request.query.maxNodes ? { maxNodes: Number(request.query.maxNodes) } : {}),
+    }));
+    app.post<{
+        Params: { udid: string };
+        Body: { generation: number; ref: string };
+    }>('/api/devices/:udid/semantic/tap', async (request, reply) => {
+        if (await options.scheduler.activeExecution(request.params.udid)) {
+            return reply.code(409).send({ error: 'Semantic input is disabled while automation is running' });
+        }
+        return semantic.tapRef(request.params.udid, request.body.generation, request.body.ref);
+    });
+    app.post<{
+        Params: { udid: string };
+        Body: { text: string };
+    }>('/api/devices/:udid/semantic/type', async (request, reply) => {
+        if (await options.scheduler.activeExecution(request.params.udid)) {
+            return reply.code(409).send({ error: 'Semantic input is disabled while automation is running' });
+        }
+        return semantic.typeText(request.params.udid, request.body.text);
+    });
+    app.post<{
+        Params: { udid: string };
+        Body: { text: string; type?: string; timeoutMs?: number; pollMs?: number };
+    }>('/api/devices/:udid/semantic/wait', async (request) => semantic.waitForText(request.params.udid, request.body.text, {
+        ...(request.body.type ? { type: request.body.type } : {}),
+        ...(request.body.timeoutMs !== undefined ? { timeoutMs: request.body.timeoutMs } : {}),
+        ...(request.body.pollMs !== undefined ? { pollMs: request.body.pollMs } : {}),
+    }));
     app.get<{ Params: { udid: string } }>('/api/devices/:udid/connection', async (request, reply) => {
         const registered = (await loadRegisteredDevices()).find(({ udid }) => udid === request.params.udid);
         if (!registered) return reply.code(404).send({ error: 'Device is not registered' });
@@ -525,13 +639,63 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         if (await options.scheduler.activeExecution(request.params.udid)) {
             return reply.code(409).send({ error: 'Cannot reconnect while automation is running' });
         }
-        remote.forget(request.params.udid);
+        remote.forget?.(request.params.udid);
         return reply.code(202).send({ ok: true, message: 'The shared WDA supervisor will reconnect automatically' });
     });
 
     app.get<{ Querystring: { deviceUdid?: string } }>('/api/schedules', async (request) => ({
         schedules: await options.scheduler.listSchedules(200, request.query.deviceUdid),
     }));
+    app.get('/api/campaigns', async () => ({ campaigns: await options.scheduler.listCampaigns(200) }));
+    app.post<{ Body: CreateCampaignInput }>('/api/campaigns', async (request, reply) => {
+        const devices = await loadRegisteredDevices();
+        const pluginDataByDevice = new Map(devices.map((device) => [
+            device.udid, device.pluginData[request.body.task.pluginId] ?? {},
+        ]));
+        const plan = planCampaign(options.plugins, request.body, pluginDataByDevice);
+        if (plan.targets.some((target) => devices.find(({ udid }) => udid === target.deviceUdid)?.disabled)) {
+            return reply.code(409).send({ error: 'Campaign targets include a disabled device' });
+        }
+        const campaign = await options.scheduler.createCampaign(plan);
+        return reply.code(201).send({ campaign, plan: {
+            targetCount: plan.targets.length,
+            requiresFanOutConfirmation: plan.requiresFanOutConfirmation,
+            requiresPublicActionConfirmation: plan.requiresPublicActionConfirmation,
+        } });
+    });
+    app.post<{
+        Params: { id: string };
+        Body: { confirmFanOut?: boolean; confirmPublicActions?: boolean };
+    }>('/api/campaigns/:id/launch', async (request, reply) => {
+        const campaign = await options.scheduler.campaign(request.params.id);
+        if (!campaign) return reply.code(404).send({ error: 'Campaign not found' });
+        const devices = await loadRegisteredDevices();
+        const pluginDataByDevice = new Map(devices.map((device) => [
+            device.udid, device.pluginData[campaign.task.pluginId] ?? {},
+        ]));
+        const plan = planCampaign(options.plugins, {
+            name: campaign.name,
+            task: campaign.task,
+            timing: campaign.timing,
+            runWindowMinutes: campaign.runWindowMinutes,
+            targets: campaign.targets,
+        }, pluginDataByDevice);
+        if (plan.targets.some((target) => devices.find(({ udid }) => udid === target.deviceUdid)?.disabled)) {
+            return reply.code(409).send({ error: 'Campaign targets include a disabled device' });
+        }
+        try {
+            return await options.scheduler.launchCampaign(request.params.id, plan, {
+                fanOut: request.body.confirmFanOut,
+                publicActions: request.body.confirmPublicActions,
+            });
+        } catch (error) {
+            return reply.code(409).send({ error: errorMessage(error) });
+        }
+    });
+    app.post<{ Params: { id: string } }>('/api/campaigns/:id/cancel', async (request, reply) => {
+        const campaign = await options.scheduler.cancelCampaign(request.params.id);
+        return campaign ?? reply.code(404).send({ error: 'Campaign not found' });
+    });
     app.get<{ Querystring: { deviceUdid?: string } }>('/api/executions', async (request) => ({
         executions: await options.scheduler.listExecutions(200, request.query.deviceUdid),
     }));
@@ -692,6 +856,42 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 : '';
             const deviceListScript = `<script>if(!window.__deviceListActions){window.__deviceListActions=1;document.addEventListener('click',async function(e){var rename=e.target.closest('[data-rename-device]');if(rename){e.preventDefault();var root=rename.closest('.device-card,li')||rename.parentElement;var title=root&&root.querySelector('.device-name');var current=(title&&title.textContent||'').replace(/\\s+/g,' ').trim();var next=window.prompt('Rename this phone for the farm grid',current);if(next===null)return;next=next.replace(/\\s+/g,' ').trim();if(!next){alert('Name cannot be empty');return}rename.disabled=true;var rr=await fetch('/api/devices/'+rename.dataset.renameDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name:next})});if(rr.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{rename.disabled=false;var err=((await rr.json().catch(function(){return{}}))||{}).error||('Rename failed ('+rr.status+')');alert(err)}return}var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
             return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${deviceListScript}</section>`);
+        });
+        app.get('/api/fragments/fleet-health', async (_request, reply) => {
+            const [devices, registered, schedules, executions, campaignRows] = await Promise.all([
+                registeredWithStatus(),
+                loadRegisteredDevices(),
+                options.scheduler.listSchedules(500),
+                options.scheduler.listExecutions(500),
+                options.scheduler.listCampaigns(100),
+            ]);
+            const accounts = listFleetAccounts(registered);
+            const health = buildFleetHealth(devices, accounts, schedules, executions);
+            const rate = health.summary.recentSuccessRate === null
+                ? '—' : `${Math.round(health.summary.recentSuccessRate * 100)}%`;
+            const latency = health.summary.averageQueueLatencyMs === null
+                ? '—' : health.summary.averageQueueLatencyMs < 1000
+                    ? `${health.summary.averageQueueLatencyMs}ms`
+                    : `${(health.summary.averageQueueLatencyMs / 1000).toFixed(1)}s`;
+            const activeCampaigns = campaignRows.filter(({ status }) => status === 'active').length;
+            const drafts = campaignRows.filter(({ status }) => status === 'draft').length;
+            const kpis = [
+                [`${health.summary.readyDevices}/${health.summary.devices}`, 'devices ready'],
+                [String(health.summary.accounts), `${health.summary.pausedAccounts} accounts paused`],
+                [String(health.summary.activeSchedules), 'active schedules'],
+                [String(health.summary.queuedExecutions + health.summary.runningExecutions), 'queued + running'],
+                [rate, 'recent success'],
+                [latency, 'avg queue latency'],
+                [`${activeCampaigns}/${drafts}`, 'active / draft campaigns'],
+            ].map(([value, label]) => `<div class="fleet-kpi"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join('');
+            const chips = accounts.map((account) => {
+                const device = devices.find(({ udid }) => udid === account.deviceUdid);
+                const classes = ['fleet-account-chip'];
+                if (account.policy?.paused) classes.push('paused');
+                if (!device?.connected || device.disabled) classes.push('offline');
+                return `<span class="${classes.join(' ')}" title="${escapeHtml(account.deviceName)}">${escapeHtml(account.platform)} · ${escapeHtml(account.handle)}</span>`;
+            }).join('');
+            return reply.type('text/html').send(`<section id="fleet-health" class="fleet-health-panel" hx-get="/api/fragments/fleet-health" hx-trigger="every 10s" hx-swap="outerHTML" aria-live="polite"><div class="fleet-health-head"><h2>Control plane</h2><p>${escapeHtml(health.generatedAt)}</p></div><div class="fleet-kpis">${kpis}</div>${chips ? `<div class="fleet-account-strip">${chips}</div>` : ''}</section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/summary', async (request, reply) => {
             const [registered, connected] = await Promise.all([

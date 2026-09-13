@@ -15,6 +15,7 @@ export interface ScreenInfo {
 
 export type RemoteAction =
     | { type: 'tap'; x: number; y: number }
+    | { type: 'type'; text: string }
     | { type: 'home' }
     | { type: 'lock' }
     | { type: 'wake' }
@@ -72,6 +73,7 @@ interface W3cPointerSource {
 
 export interface RemoteControl {
     getScreenInfo(udid: string): Promise<ScreenInfo>;
+    getAccessibilityTree(udid: string): Promise<unknown>;
     getScreenshot(udid: string): Promise<Buffer>;
     /** `signal` should be tied to the client request so the upstream device stream closes when the viewer leaves. */
     getMjpegStream(udid: string, signal?: AbortSignal): Promise<Response>;
@@ -125,12 +127,12 @@ export class WdaRemoteControl {
         }
     }
 
-    async request(pathname: string, options: RequestInit = {}): Promise<Response> {
+    async request(pathname: string, options: RequestInit = {}, timeoutMs = this.timeoutMs): Promise<Response> {
         let response: Response;
         try {
             response = await this.fetch(`${this.wdaUrl}${pathname}`, {
                 ...options,
-                signal: AbortSignal.timeout(this.timeoutMs),
+                signal: AbortSignal.timeout(timeoutMs),
             });
         } catch (error) {
             throw new RemoteDeviceError(`WebDriverAgent is unavailable: ${errorMessage(error)}`);
@@ -147,6 +149,13 @@ export class WdaRemoteControl {
         const response = await this.request('/wda/screen');
         const payload = await response.json() as WdaPayload<ScreenInfo>;
         this.cachedScreenInfo = payload.value;
+        return payload.value;
+    }
+
+    async getAccessibilityTree(udid: string): Promise<unknown> {
+        this.assertTarget(udid);
+        const response = await this.request('/source?format=json', {}, Math.max(this.timeoutMs, 45_000));
+        const payload = await response.json() as WdaPayload<unknown>;
         return payload.value;
     }
 
@@ -224,6 +233,13 @@ export class WdaRemoteControl {
 
     async performAction(udid: string, action: RemoteAction): Promise<void> {
         this.assertTarget(udid);
+        if (action.type === 'type') {
+            if (!action.text || action.text.length > 4000) throw new RemoteDeviceError('Text input must contain 1 to 4000 characters');
+            await this.request('/wda/keys', {
+                method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: [action.text] }),
+            });
+            return;
+        }
         if (action.type === 'home') {
             await this.request('/wda/homescreen', { method: 'POST' });
             return;

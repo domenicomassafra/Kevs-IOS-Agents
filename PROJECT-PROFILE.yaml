@@ -1,0 +1,27 @@
+project: farming-control-plane
+repository: domenicomassafra/Kevs-IOS-Agents
+upstream: kevinbadi/Kevs-IOS-Agents
+base_lineage: Git-Agni/prod-FARM-IOS-Core
+status: active-build
+primary_host: macOS
+primary_device: physical-iPhone
+runtime:
+  node: ">=22"
+  database: PostgreSQL
+  ios_control: WebDriverAgent/Appium-XCUITest
+  scheduler: pg-boss
+principles:
+  - donor-first
+  - deterministic-workflows-before-LLM
+  - agent-layer-is-an-adapter-not-the-core
+  - one-device-one-serialized-queue
+  - owner-controlled-accounts-only
+  - explicit-high-impact-actions
+  - local-first
+  - evidence-before-runtime-claims
+source_gate: npm run check
+real_device_gate: npm run doctor && live acceptance matrix
+current_host_blockers:
+  - full Xcode is not selected; xcode-select points to CommandLineTools
+  - Docker is unavailable; external PostgreSQL remains an option
+  - no physical iPhone can be proven reachable on this host yet

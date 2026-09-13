@@ -31,6 +31,9 @@
                 <p>Pick a connected iPhone to drive it live or queue automation.</p>
             </div>
         </header>
+        <section id="fleet-health" class="fleet-health-panel" hx-get="/api/fragments/fleet-health" hx-trigger="load, every 10s" hx-swap="outerHTML" aria-live="polite">
+            <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Loading fleet health…</div>
+        </section>
         <section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="load" hx-swap="outerHTML" aria-live="polite">
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Looking for connected devices…</div>
         </section>

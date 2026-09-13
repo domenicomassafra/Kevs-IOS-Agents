@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 
 import type { PhoneFarmPlugin, TaskDefinition, TaskExecutionContext } from './plugin.js';
 import type { JsonObject, JsonValue, ScheduleTiming } from './types.js';
+import { validateAccountTaskPolicy, validateConfiguredAccount } from './accounts.js';
 import {
     resolveDeviceCoordinates,
 } from './devices/coordinates.js';
@@ -244,7 +245,7 @@ function optionalString(value: JsonValue | undefined, name: string): string | un
 function createDoomscrollTask(configuration: TikTokPluginConfiguration): TaskDefinition<DoomscrollPayload> {
     return {
         type: 'doomscroll', version: 1, displayName: 'TikTok warmup',
-        validate(value) {
+        validate(value, context) {
             const input = objectPayload(value);
             const durationMinutes = input.durationMinutes;
             const personality = input.personality;
@@ -262,7 +263,10 @@ function createDoomscrollTask(configuration: TikTokPluginConfiguration): TaskDef
             if (commentEnabled && !commentText?.trim()) {
                 throw new Error('commentText is required when commentEnabled is true');
             }
-            const account = optionalString(input.account, 'account');
+            const account = validateConfiguredAccount(
+                optionalString(input.account, 'account'), context.devicePluginData, 'tiktok',
+            );
+            validateAccountTaskPolicy(account, 'doomscroll', context.devicePluginData, 'tiktok');
             return {
                 durationMinutes, personality, likeEnabled: input.likeEnabled, saveEnabled: input.saveEnabled,
                 commentEnabled,
@@ -294,7 +298,7 @@ function createDoomscrollTask(configuration: TikTokPluginConfiguration): TaskDef
 function createFollowingDoomscrollTask(configuration: TikTokPluginConfiguration): TaskDefinition<FollowingDoomscrollPayload> {
     return {
         type: 'doomscroll-following', version: 1, displayName: 'TikTok engagement',
-        validate(value) {
+        validate(value, context) {
             const input = objectPayload(value);
             const durationMinutes = input.durationMinutes;
             const personality = input.personality;
@@ -310,7 +314,10 @@ function createFollowingDoomscrollTask(configuration: TikTokPluginConfiguration)
             if (typeof input.commentEnabled !== 'boolean') {
                 throw new Error('commentEnabled must be boolean');
             }
-            const account = optionalString(input.account, 'account');
+            const account = validateConfiguredAccount(
+                optionalString(input.account, 'account'), context.devicePluginData, 'tiktok',
+            );
+            validateAccountTaskPolicy(account, 'doomscroll-following', context.devicePluginData, 'tiktok');
             const commentText = optionalString(input.commentText, 'commentText');
             if (commentText && commentText.length > 150) throw new Error('commentText must be 150 characters or fewer');
             if (input.commentEnabled && !commentText?.trim()) {
@@ -417,10 +424,7 @@ function createPostTask(configuration: TikTokPluginConfiguration): TaskDefinitio
                 return { assetId: candidate.assetId, name: candidate.name, mimeType: candidate.mimeType };
             });
             if (input.destination !== 'draft' && input.destination !== 'publish') throw new Error('Invalid post destination');
-            const account = optionalString(input.account, 'account')?.trim();
-            if (account && !/^@[A-Za-z0-9._]{1,64}$/.test(account)) {
-                throw new Error('TikTok handles may contain letters, numbers, periods, and underscores');
-            }
+            const accountCandidate = optionalString(input.account, 'account');
             const caption = optionalString(input.caption, 'caption');
             if (caption && caption.length > 2200) throw new Error('Caption must be 2,200 characters or fewer');
             const musicUrl = optionalString(input.musicUrl, 'musicUrl');
@@ -434,6 +438,8 @@ function createPostTask(configuration: TikTokPluginConfiguration): TaskDefinitio
             if (recurring && input.destination === 'publish' && input.recurringPublishConfirmed !== true) {
                 throw new Error('Recurring public posts require explicit confirmation');
             }
+            const account = validateConfiguredAccount(accountCandidate, context.devicePluginData, 'tiktok');
+            validateAccountTaskPolicy(account, 'post', context.devicePluginData, 'tiktok');
             return {
                 media, destination: input.destination,
                 ...(account ? { account } : {}),

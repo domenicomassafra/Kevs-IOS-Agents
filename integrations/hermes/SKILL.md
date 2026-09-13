@@ -1,0 +1,31 @@
+---
+name: phone-farm
+description: Control owner-managed physical iPhones through the Phone Farm control plane without starting another WDA supervisor or scheduler.
+---
+
+# Phone Farm for Hermes
+
+Use the repository's `npm run agent:client -- ...` adapter. The Phone Farm web/API process remains the single authority for registered devices, account policy, WDA access and scheduler conflicts.
+
+## Contract
+
+- Never start WebDriverAgent, Appium or a second scheduler from this skill.
+- Start by reading `accounts`, then take a semantic `snapshot` of the intended device.
+- Prefer semantic refs and `wait` over raw coordinates. This adapter deliberately has no raw-coordinate command.
+- A ref belongs to exactly one snapshot generation; take a new snapshot after meaningful UI transitions.
+- `tap` and `type` can return 409 while scheduled automation owns the device. Treat that as a control-plane refusal, not a reason to bypass it.
+- Sensitive typed text goes through stdin so it is not exposed in process arguments. The farm trace records text length only.
+- Do not create accounts, discover credentials, bypass login/CAPTCHA walls, evade platform enforcement or automate accounts the owner has not configured.
+
+## Commands
+
+```bash
+npm run -s agent:client -- health
+npm run -s agent:client -- accounts
+npm run -s agent:client -- snapshot --udid '<udid>' --query 'Continue'
+npm run -s agent:client -- tap --udid '<udid>' --generation 3 --ref e2
+npm run -s agent:client -- wait --udid '<udid>' --text 'Home' --timeout-ms 10000
+printf '%s' "$SENSITIVE_TEXT" | npm run -s agent:client -- type --udid '<udid>'
+```
+
+By default the adapter uses `http://127.0.0.1:3000`. For a non-loopback `PHONE_FARM_URL`, `PHONE_FARM_TOKEN` is mandatory.

@@ -215,6 +215,18 @@ p { margin-bottom: 0; color: var(--muted); line-height: 1.55; }
 button:disabled { cursor: wait; opacity: .55; transform: none; }
 
 .device-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 14px; }
+.fleet-health-panel { margin-bottom: 18px; }
+.fleet-health-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.fleet-health-head h2 { margin: 0; font-size: 1.05rem; }
+.fleet-health-head p { margin: 0; color: var(--muted); font-size: .76rem; }
+.fleet-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; }
+.fleet-kpi { border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px; background: var(--surface); min-width: 0; }
+.fleet-kpi strong { display: block; font-size: 1.24rem; line-height: 1.08; }
+.fleet-kpi span { display: block; margin-top: 4px; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; }
+.fleet-account-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.fleet-account-chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; font-size: .72rem; background: var(--surface); }
+.fleet-account-chip.paused { opacity: .58; text-decoration: line-through; }
+.fleet-account-chip.offline { border-style: dashed; }
 .registration-shell { max-width: 1040px; }
 .registration-panel {
     margin: 18px 0;

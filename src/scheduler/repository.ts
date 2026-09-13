@@ -5,11 +5,12 @@ import path from 'node:path';
 
 import type { DatabaseConnection } from '../database/client.js';
 import {
-    assets, executionAttempts, executionLogs, executions, pipelineItems, schedules,
-    type ExecutionRow, type PipelineItemRow, type ScheduleRow,
+    assets, campaigns, executionAttempts, executionLogs, executions, pipelineItems, schedules,
+    type CampaignRow, type ExecutionRow, type PipelineItemRow, type ScheduleRow,
 } from '../database/schema.js';
 import type { PluginRegistry } from '../registry.js';
 import type { CreateTaskInput, JsonObject, PipelineClaim, ScheduleTiming, StoredAsset, TaskEnvelope } from '../types.js';
+import type { PlannedCampaign } from '../campaigns.js';
 import { ensureDeviceQueue, queueNameForDevice } from './queue.js';
 import { initialRunAt, latestDueOccurrence } from './recurrence.js';
 import { DEFAULT_MIN_SCHEDULE_GAP_MINUTES, estimatedTaskWindow, validateTaskInput, windowsTooClose } from './validation.js';
@@ -70,6 +71,108 @@ export class SchedulerRepository {
         await this.attachAssets(schedule.id, assetIds);
         if (schedule.nextRunAt && schedule.nextRunAt <= now) await this.materializeDue(now, schedule.id);
         return schedule;
+    }
+
+    async createCampaign(plan: PlannedCampaign, now = new Date()): Promise<CampaignRow> {
+        return this.connection.db.transaction(async (tx) => {
+            const [campaign] = await tx.insert(campaigns).values({
+                name: plan.name,
+                task: plan.task,
+                timing: plan.timing,
+                runWindowMinutes: plan.runWindowMinutes ?? Number(process.env.SCHEDULER_RUN_WINDOW_MINUTES ?? 30),
+                targets: plan.targets,
+                requiresFanOutConfirmation: plan.requiresFanOutConfirmation ? 1 : 0,
+                requiresPublicActionConfirmation: plan.requiresPublicActionConfirmation ? 1 : 0,
+                createdAt: now,
+                updatedAt: now,
+            }).returning();
+            if (!campaign) throw new Error('Unable to create campaign');
+            if (plan.assetIds.length) {
+                const attached = await tx.update(assets).set({ campaignId: campaign.id }).where(and(
+                    inArray(assets.id, plan.assetIds), isNull(assets.scheduleId), isNull(assets.executionId), isNull(assets.campaignId),
+                )).returning({ id: assets.id });
+                if (attached.length !== plan.assetIds.length) {
+                    throw new Error('One or more campaign assets are missing or already attached');
+                }
+            }
+            return campaign;
+        });
+    }
+
+    async listCampaigns(limit = 100): Promise<CampaignRow[]> {
+        return this.connection.db.select().from(campaigns).orderBy(desc(campaigns.createdAt)).limit(limit);
+    }
+
+    async campaign(id: string): Promise<CampaignRow | null> {
+        const [row] = await this.connection.db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+        return row ?? null;
+    }
+
+    async launchCampaign(
+        id: string,
+        plan: PlannedCampaign,
+        confirmations: { fanOut?: boolean; publicActions?: boolean },
+        now = new Date(),
+    ): Promise<{ campaign: CampaignRow; schedules: ScheduleRow[] }> {
+        const current = await this.campaign(id);
+        if (!current) throw new Error('Campaign not found');
+        if (current.status !== 'draft') throw new Error(`Campaign is already ${current.status}`);
+        if (plan.requiresFanOutConfirmation && confirmations.fanOut !== true) {
+            throw new Error('Multi-target campaign launch requires explicit fan-out confirmation');
+        }
+        if (plan.requiresPublicActionConfirmation && confirmations.publicActions !== true) {
+            throw new Error('Campaign contains public/send actions and requires explicit confirmation');
+        }
+
+        const starts = plan.tasks.map((task) => initialRunAt(task.timing, now));
+        for (let index = 0; index < plan.tasks.length; index++) {
+            const task = plan.tasks[index]!;
+            await this.assertNoScheduleConflict(task.deviceUdid, task.task, starts[index]!);
+            await ensureDeviceQueue(this.boss, task.deviceUdid);
+        }
+
+        let created: ScheduleRow[] = [];
+        let launched: CampaignRow | undefined;
+        await this.connection.db.transaction(async (tx) => {
+            const [locked] = await tx.update(campaigns).set({
+                status: 'active', launchedAt: now, updatedAt: now,
+            }).where(and(eq(campaigns.id, id), eq(campaigns.status, 'draft'))).returning();
+            if (!locked) throw new Error('Campaign was launched or cancelled concurrently');
+            launched = locked;
+
+            const rows = plan.tasks.map((task, index) => ({
+                campaignId: id,
+                campaignAccount: plan.targets[index]?.account ?? null,
+                deviceUdid: task.deviceUdid,
+                pluginId: task.task.pluginId,
+                taskType: task.task.taskType,
+                taskVersion: task.task.taskVersion,
+                payload: task.task.payload,
+                timing: task.timing,
+                runWindowMinutes: task.runWindowMinutes ?? Number(process.env.SCHEDULER_RUN_WINDOW_MINUTES ?? 30),
+                nextRunAt: starts[index]!,
+                createdAt: now,
+                updatedAt: now,
+            }));
+            created = await tx.insert(schedules).values(rows).returning();
+            if (created.length !== rows.length) throw new Error('Unable to materialize every campaign target');
+        });
+        for (const schedule of created) {
+            if (schedule.nextRunAt && schedule.nextRunAt <= now) await this.materializeDue(now, schedule.id);
+        }
+        return { campaign: launched!, schedules: created };
+    }
+
+    async cancelCampaign(id: string, now = new Date()): Promise<CampaignRow | null> {
+        const current = await this.campaign(id);
+        if (!current) return null;
+        if (current.status === 'cancelled') return current;
+        for (const schedule of await this.connection.db.select().from(schedules).where(eq(schedules.campaignId, id))) {
+            if (!['cancelled', 'completed'].includes(schedule.status)) await this.setScheduleStatus(schedule.id, 'cancelled', now);
+        }
+        const [updated] = await this.connection.db.update(campaigns).set({ status: 'cancelled', updatedAt: now })
+            .where(eq(campaigns.id, id)).returning();
+        return updated ?? null;
     }
 
     private async assertNoScheduleConflict(deviceUdid: string, task: TaskEnvelope, start: Date, excludeId?: string): Promise<void> {
@@ -133,6 +236,7 @@ export class SchedulerRepository {
         const rows = await this.connection.db.select().from(assets).where(or(
             eq(assets.executionId, execution.id),
             ...(execution.scheduleId ? [eq(assets.scheduleId, execution.scheduleId)] : []),
+            ...(execution.campaignId ? [eq(assets.campaignId, execution.campaignId)] : []),
         ));
         const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
         return rows.map((asset) => ({
@@ -202,8 +306,9 @@ export class SchedulerRepository {
             interface DueRow {
                 id: string; device_udid: string; plugin_id: string; task_type: string; task_version: number;
                 payload: JsonObject; timing: ScheduleTiming; run_window_minutes: number; next_run_at: Date;
+                campaign_id: string | null; campaign_account: string | null;
             }
-            const result = await tx.execute(sql`select id, device_udid, plugin_id, task_type, task_version, payload,
+            const result = await tx.execute(sql`select id, campaign_id, campaign_account, device_udid, plugin_id, task_type, task_version, payload,
                 timing, run_window_minutes, next_run_at from scheduler.schedules where ${conditions}
                 order by next_run_at for update skip locked limit 100`);
             for (const row of result.rows as unknown as DueRow[]) {
@@ -215,7 +320,8 @@ export class SchedulerRepository {
                 const definition = this.plugins.task(task);
                 const policy = definition.retryPolicy(task.payload);
                 const [execution] = await tx.insert(executions).values({
-                    scheduleId: row.id, deviceUdid: row.device_udid,
+                    scheduleId: row.id, campaignId: row.campaign_id, campaignAccount: row.campaign_account,
+                    deviceUdid: row.device_udid,
                     pluginId: row.plugin_id, taskType: row.task_type, taskVersion: row.task_version, payload: row.payload,
                     scheduledFor: occurrence.scheduledFor,
                     deadlineAt: new Date(occurrence.scheduledFor.getTime() + row.run_window_minutes * 60_000),
@@ -353,7 +459,8 @@ export class SchedulerRepository {
         let created: ExecutionRow | undefined;
         await this.connection.db.transaction(async (tx) => {
             [created] = await tx.insert(executions).values({
-                scheduleId: source.scheduleId, deviceUdid: source.deviceUdid,
+                scheduleId: source.scheduleId, campaignId: source.campaignId, campaignAccount: source.campaignAccount,
+                deviceUdid: source.deviceUdid,
                 pluginId: source.pluginId, taskType: source.taskType, taskVersion: source.taskVersion, payload: source.payload,
                 scheduledFor: now, deadlineAt: new Date(now.getTime() + Number(process.env.SCHEDULER_RUN_WINDOW_MINUTES ?? 30) * 60_000),
             }).returning();

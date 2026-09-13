@@ -489,11 +489,17 @@ async function jsonRequest(url, options) {
         throw new Error(data.error ?? `Request failed (${response.status})`);
     return data;
 }
-function startStream() {
+async function streamUrl() {
+    const data = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token`, {
+        method: 'POST',
+    });
+    return data.url;
+}
+async function startStream() {
     if (paused || !screenSize)
         return;
     setStatus('Connecting video stream…');
-    elements.screen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
+    elements.screen.src = await streamUrl();
 }
 /** Drop MJPEG during post/upload — Photos + Create + FYP cold-start piles on WDA harder than warmup swipes. */
 function pauseStreamForAutomation(message = 'Video stream paused during post (keeps WDA stable)') {
@@ -511,7 +517,7 @@ async function connectRemote() {
         return;
     connecting = true;
     try {
-        startStream();
+        await startStream();
     }
     finally {
         connecting = false;
@@ -1256,7 +1262,7 @@ async function openCalibrate() {
         elements.calControl.checked = false;
         elements.calScreen.parentElement?.classList.remove('controlling');
         await loadCalibratePoints(elements.calApp.value);
-        elements.calScreen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
+        elements.calScreen.src = await streamUrl();
         elements.calStatus.textContent = '';
     }
     catch (error) {

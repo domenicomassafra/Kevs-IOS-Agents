@@ -1,12 +1,29 @@
 import { bigint, index, integer, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
-import type { JsonObject, ScheduleTiming } from '../types.js';
+import type { JsonObject, ScheduleTiming, TaskEnvelope } from '../types.js';
+import type { CampaignTarget } from '../campaigns.js';
 
 export const schedulerSchema = pgSchema('scheduler');
 export const scheduleStatus = schedulerSchema.enum('schedule_status', ['active', 'paused', 'completed', 'cancelled']);
 export const executionStatus = schedulerSchema.enum('execution_status', [
     'queued', 'running', 'succeeded', 'failed', 'cancelled', 'skipped', 'stopped',
 ]);
+export const campaignStatus = schedulerSchema.enum('campaign_status', ['draft', 'active', 'cancelled']);
+
+export const campaigns = schedulerSchema.table('campaigns', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    status: campaignStatus('status').notNull().default('draft'),
+    task: jsonb('task').$type<TaskEnvelope>().notNull(),
+    timing: jsonb('timing').$type<ScheduleTiming>().notNull(),
+    runWindowMinutes: integer('run_window_minutes').notNull().default(30),
+    targets: jsonb('targets').$type<CampaignTarget[]>().notNull(),
+    requiresFanOutConfirmation: integer('requires_fan_out_confirmation').notNull().default(0),
+    requiresPublicActionConfirmation: integer('requires_public_action_confirmation').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    launchedAt: timestamp('launched_at', { withTimezone: true, mode: 'date' }),
+}, (table) => [index('campaigns_status_created_idx').on(table.status, table.createdAt)]);
 
 const taskColumns = {
     pluginId: text('plugin_id').notNull(),
@@ -16,7 +33,10 @@ const taskColumns = {
 };
 
 export const schedules = schedulerSchema.table('schedules', {
-    id: uuid('id').primaryKey().defaultRandom(), deviceUdid: text('device_udid').notNull(), ...taskColumns,
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+    campaignAccount: text('campaign_account'),
+    deviceUdid: text('device_udid').notNull(), ...taskColumns,
     timing: jsonb('timing').$type<ScheduleTiming>().notNull(),
     status: scheduleStatus('status').notNull().default('active'),
     runWindowMinutes: integer('run_window_minutes').notNull().default(30),
@@ -27,11 +47,14 @@ export const schedules = schedulerSchema.table('schedules', {
     index('schedules_due_idx').on(table.status, table.nextRunAt),
     index('schedules_device_idx').on(table.deviceUdid, table.createdAt),
     index('schedules_plugin_idx').on(table.pluginId, table.taskType, table.taskVersion),
+    index('schedules_campaign_idx').on(table.campaignId),
 ]);
 
 export const executions = schedulerSchema.table('executions', {
     id: uuid('id').primaryKey().defaultRandom(),
     scheduleId: uuid('schedule_id').references(() => schedules.id, { onDelete: 'set null' }),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+    campaignAccount: text('campaign_account'),
     deviceUdid: text('device_udid').notNull(), ...taskColumns,
     scheduledFor: timestamp('scheduled_for', { withTimezone: true, mode: 'date' }).notNull(),
     deadlineAt: timestamp('deadline_at', { withTimezone: true, mode: 'date' }).notNull(),
@@ -45,6 +68,7 @@ export const executions = schedulerSchema.table('executions', {
     uniqueIndex('executions_schedule_occurrence_idx').on(table.scheduleId, table.scheduledFor),
     index('executions_device_status_idx').on(table.deviceUdid, table.status),
     index('executions_plugin_idx').on(table.pluginId, table.taskType, table.taskVersion),
+    index('executions_campaign_idx').on(table.campaignId),
 ]);
 
 export const executionAttempts = schedulerSchema.table('execution_attempts', {
@@ -65,10 +89,14 @@ export const assets = schedulerSchema.table('assets', {
     id: uuid('id').primaryKey().defaultRandom(),
     scheduleId: uuid('schedule_id').references(() => schedules.id, { onDelete: 'cascade' }),
     executionId: uuid('execution_id').references(() => executions.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }),
     relativePath: text('relative_path').notNull().unique(), originalName: text('original_name').notNull(),
     mimeType: text('mime_type').notNull(), size: bigint('size', { mode: 'number' }).notNull(), sha256: text('sha256').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-}, (table) => [index('assets_schedule_idx').on(table.scheduleId), index('assets_execution_idx').on(table.executionId)]);
+}, (table) => [
+    index('assets_schedule_idx').on(table.scheduleId), index('assets_execution_idx').on(table.executionId),
+    index('assets_campaign_idx').on(table.campaignId),
+]);
 
 export const pipelineItemStatus = schedulerSchema.enum('pipeline_item_status', [
     'ready', 'publishing', 'published', 'failed', 'cancelled',
@@ -94,3 +122,4 @@ export const pipelineItems = schedulerSchema.table('pipeline_items', {
 export type ScheduleRow = typeof schedules.$inferSelect;
 export type ExecutionRow = typeof executions.$inferSelect;
 export type PipelineItemRow = typeof pipelineItems.$inferSelect;
+export type CampaignRow = typeof campaigns.$inferSelect;

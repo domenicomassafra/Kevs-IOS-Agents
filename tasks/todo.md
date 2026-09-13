@@ -1,0 +1,31 @@
+# Task board
+
+## Completed source waves
+
+- [x] FARM-001 Autoplan + research + ADR + 100-question grilling.
+- [x] FARM-002 Restore green baseline.
+- [x] FARM-003 Truthful host/runtime doctor.
+- [x] FARM-004 Canonical account inventory and API.
+- [x] FARM-005 Account-target binding validation.
+- [x] FARM-006 Account pause/policy.
+- [x] FARM-007 Semantic WDA snapshot/stable refs.
+- [x] FARM-008 Semantic actions/redacted traces.
+- [x] FARM-009 Hermes adapter.
+- [x] FARM-010 Generic MCP adapter.
+- [x] FARM-011 Campaign/content control plane.
+- [x] FARM-012 Health/analytics.
+- [x] FARM-014 Signed expiring remote stream/session capabilities.
+- [x] Source regression gate: `npm run check` => 98/98 tests + TypeScript green (2026-09-13).
+
+## Live-gated
+
+- [ ] FARM-013 Video benchmark: harness implemented; measurements require a physical iPhone and optional qvh endpoint.
+- [ ] FARM-015 launchd production supervision: generators/lifecycle implemented and plist syntax validated; install/restart proof waits for a live-ready host.
+- [ ] FARM-016 Physical-iPhone end-to-end acceptance: receipt-producing harness implemented; execution waits for full Xcode + PostgreSQL + physical iPhone.
+- [ ] FARM-017 Dependency remediation: triaged; current advisories require an Appium/Webdriver compatibility move that must be live-regression-tested rather than force-applied.
+
+## Git closeout
+
+- [ ] Review final diff for generated/runtime artifacts and secrets.
+- [ ] Commit `feat/farming-control-plane-v1`.
+- [ ] Push branch to `origin`.

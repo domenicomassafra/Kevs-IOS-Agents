@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 
 import type { PhoneFarmPlugin, TaskDefinition, TaskExecutionContext } from './plugin.js';
 import type { JsonObject, JsonValue, ScheduleTiming } from './types.js';
+import { validateAccountTaskPolicy, validateConfiguredAccount } from './accounts.js';
 import {
     parseColdDmHandles,
     validateColdDmHandles,
@@ -80,7 +81,7 @@ function optionalString(value: JsonValue | undefined, name: string): string | un
     return value;
 }
 
-function validateDoomscrollPayload(value: JsonValue): DoomscrollPayload {
+function validateDoomscrollPayload(value: JsonValue, devicePluginData: JsonObject, taskType: 'doomscroll' | 'doomscroll-following'): DoomscrollPayload {
     const input = objectPayload(value);
     const durationMinutes = input.durationMinutes;
     const personality = input.personality;
@@ -101,7 +102,8 @@ function validateDoomscrollPayload(value: JsonValue): DoomscrollPayload {
     if (input.commentEnabled && !commentText?.trim()) {
         throw new Error('commentText is required when commentEnabled is true');
     }
-    const account = optionalString(input.account, 'account');
+    const account = validateConfiguredAccount(optionalString(input.account, 'account'), devicePluginData, 'instagram');
+    validateAccountTaskPolicy(account, taskType, devicePluginData, 'instagram');
     return {
         durationMinutes, personality, likeEnabled: input.likeEnabled,
         commentEnabled: input.commentEnabled,
@@ -113,7 +115,7 @@ function validateDoomscrollPayload(value: JsonValue): DoomscrollPayload {
 function createDoomscrollTask(configuration: InstagramPluginConfiguration): TaskDefinition<DoomscrollPayload> {
     return {
         type: 'doomscroll', version: 1, displayName: 'Instagram warmup',
-        validate: (value) => validateDoomscrollPayload(value),
+        validate: (value, context) => validateDoomscrollPayload(value, context.devicePluginData, 'doomscroll'),
         summarize: (payload) => `Warmup · ${payload.personality} · ${payload.durationMinutes} min`,
         estimateDurationMs: (payload) => payload.durationMinutes * 60_000,
         retryPolicy: () => ({ retryLimit: 2, retryDelaySeconds: 60, retryBackoff: true }),
@@ -137,7 +139,7 @@ function createDoomscrollTask(configuration: InstagramPluginConfiguration): Task
 function createDoomscrollFollowingTask(configuration: InstagramPluginConfiguration): TaskDefinition<DoomscrollPayload> {
     return {
         type: 'doomscroll-following', version: 1, displayName: 'Instagram engage following',
-        validate: (value) => validateDoomscrollPayload(value),
+        validate: (value, context) => validateDoomscrollPayload(value, context.devicePluginData, 'doomscroll-following'),
         summarize: (payload) => `Engage following · ${payload.personality} · ${payload.durationMinutes} min`,
         estimateDurationMs: (payload) => payload.durationMinutes * 60_000,
         retryPolicy: () => ({ retryLimit: 2, retryDelaySeconds: 60, retryBackoff: true }),
@@ -162,7 +164,7 @@ function createDoomscrollFollowingTask(configuration: InstagramPluginConfigurati
 function createColdDmsTask(configuration: InstagramPluginConfiguration): TaskDefinition<ColdDmsPayload> {
     return {
         type: 'cold-dms', version: 1, displayName: 'Instagram cold DMs',
-        validate(value) {
+        validate(value, context) {
             const input = objectPayload(value);
             const leadList = optionalString(input.leadList, 'leadList')?.trim()
                 ? validateLeadListName(input.leadList as string)
@@ -190,10 +192,10 @@ function createColdDmsTask(configuration: InstagramPluginConfiguration): TaskDef
             }
             if (typeof input.message !== 'string') throw new Error('message must be a string');
             const message = validateColdDmMessage(input.message);
-            const account = optionalString(input.account, 'account')?.trim();
-            if (account && !/^@[A-Za-z0-9._]{1,64}$/.test(account)) {
-                throw new Error('Instagram handles may contain letters, numbers, periods, and underscores');
-            }
+            const account = validateConfiguredAccount(
+                optionalString(input.account, 'account'), context.devicePluginData, 'instagram',
+            );
+            validateAccountTaskPolicy(account, 'cold-dms', context.devicePluginData, 'instagram');
             let cycles: number | undefined;
             if (input.cycles !== undefined) {
                 if (typeof input.cycles !== 'number' || !Number.isInteger(input.cycles) || input.cycles < 1 || input.cycles > 10) {
@@ -255,10 +257,7 @@ function createPostTask(configuration: InstagramPluginConfiguration): TaskDefini
                 return { assetId: candidate.assetId, name: candidate.name, mimeType: candidate.mimeType };
             });
             if (input.destination !== 'draft' && input.destination !== 'publish') throw new Error('Invalid post destination');
-            const account = optionalString(input.account, 'account')?.trim();
-            if (account && !/^@[A-Za-z0-9._]{1,64}$/.test(account)) {
-                throw new Error('Instagram handles may contain letters, numbers, periods, and underscores');
-            }
+            const accountCandidate = optionalString(input.account, 'account');
             const caption = optionalString(input.caption, 'caption');
             if (caption && caption.length > 2200) throw new Error('Caption must be 2,200 characters or fewer');
             const musicUrl = optionalString(input.musicUrl, 'musicUrl');
@@ -272,6 +271,8 @@ function createPostTask(configuration: InstagramPluginConfiguration): TaskDefini
             if (recurring && input.destination === 'publish' && input.recurringPublishConfirmed !== true) {
                 throw new Error('Recurring public posts require explicit confirmation');
             }
+            const account = validateConfiguredAccount(accountCandidate, context.devicePluginData, 'instagram');
+            validateAccountTaskPolicy(account, 'post', context.devicePluginData, 'instagram');
             return {
                 media, destination: input.destination,
                 ...(account ? { account } : {}),

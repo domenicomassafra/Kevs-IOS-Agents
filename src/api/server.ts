@@ -4,7 +4,7 @@ import type { AuthProvider, PhoneFarmPlugin } from '../plugin.js';
 import { configuredPluginModules, loadAuthProvider, loadPlugins } from '../loader.js';
 import { PluginRegistry } from '../registry.js';
 import { createSchedulerRuntime } from '../scheduler/runtime.js';
-import { assertSafeBind } from '../security.js';
+import { assertSafeBind, isLoopbackHost } from '../security.js';
 import { createTikTokPlugin } from '../tiktok-plugin.js';
 import { createInstagramPlugin } from '../instagram-plugin.js';
 import { defaultDashboardTheme } from '../dashboard-theme.js';
@@ -42,6 +42,7 @@ export async function startServer(options: StartServerOptions = {}) {
     const app = await createApp({
         plugins, scheduler: scheduler.repository, authProvider,
         dashboardTheme: options.dashboardTheme ?? defaultDashboardTheme, registrations, logger: true,
+        requireStreamToken: !isLoopbackHost(host),
     });
     await app.listen({ host, port });
     const address = app.server.address() as AddressInfo;

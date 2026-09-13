@@ -26,6 +26,12 @@
     "./worker": "./src/scheduler/worker.ts"
   },
   "scripts": {
+    "doctor": "node --import tsx src/doctor.ts",
+    "agent:client": "node --import tsx src/agent/cli.ts",
+    "agent:mcp": "node --import tsx src/agent/mcp.ts",
+    "service": "node --import tsx src/service.ts",
+    "acceptance:live": "node --import tsx src/acceptance-live.ts",
+    "benchmark:video": "node --import tsx src/video-benchmark.ts",
     "appium": "APPIUM_HOME=.appium2 node node_modules/appium/index.js --address 127.0.0.1 --base-path / --port 4725 --log-level info",
     "appium:install-driver": "APPIUM_HOME=.appium2 appium driver install xcuitest@7.26.3",
     "wda:prepare": "node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/devices/wda/prepare.ts",
@@ -55,6 +61,7 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/formbody": "^8.0.2",
     "@fastify/multipart": "^9.4.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "appium-ios-device": "^3.1.21",
     "cron-parser": "^5.10.0",
     "drizzle-orm": "^0.45.2",
@@ -64,7 +71,8 @@
     "pg": "^8.23.0",
     "pg-boss": "^12.27.0",
     "sharp": "^0.35.3",
-    "webdriverio": "9.31.3"
+    "webdriverio": "^9.31.8",
+    "zod": "^4.6.4"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

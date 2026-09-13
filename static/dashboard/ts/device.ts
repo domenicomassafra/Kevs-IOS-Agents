@@ -584,10 +584,17 @@ async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
     return data;
 }
 
-function startStream(): void {
+async function streamUrl(): Promise<string> {
+    const data = await jsonRequest<{ url: string }>(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token`, {
+        method: 'POST',
+    });
+    return data.url;
+}
+
+async function startStream(): Promise<void> {
     if (paused || !screenSize) return;
     setStatus('Connecting video stream…');
-    elements.screen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
+    elements.screen.src = await streamUrl();
 }
 
 /** Drop MJPEG during post/upload — Photos + Create + FYP cold-start piles on WDA harder than warmup swipes. */
@@ -604,7 +611,7 @@ async function connectRemote(): Promise<void> {
     if (paused || connecting || !screenSize) return;
     connecting = true;
     try {
-        startStream();
+        await startStream();
     } finally {
         connecting = false;
     }
@@ -1337,7 +1344,7 @@ async function openCalibrate(): Promise<void> {
         elements.calControl.checked = false;
         elements.calScreen.parentElement?.classList.remove('controlling');
         await loadCalibratePoints(elements.calApp.value as CalibrateApp);
-        elements.calScreen.src = `/api/devices/${encodeURIComponent(udid)}/remote/stream?t=${Date.now()}`;
+        elements.calScreen.src = await streamUrl();
         elements.calStatus.textContent = '';
     } catch (error) {
         elements.calStatus.textContent = errorMessage(error);
@@ -1902,4 +1909,3 @@ elements.followingDoomscrollForm.addEventListener('htmx:afterRequest', ((event: 
             : 'Request failed.';
     }
 }) as EventListener);
-
