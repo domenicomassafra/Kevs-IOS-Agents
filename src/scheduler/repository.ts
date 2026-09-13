@@ -9,8 +9,8 @@ import { pipeline } from 'node:stream/promises';
 
 import type { DatabaseConnection } from '../database/client.js';
 import {
-    assets, campaigns, executionAttempts, executionLogs, executions, flowDefinitions, flowVersions, pipelineItems, schedules,
-    type CampaignRow, type ExecutionRow, type FlowDefinitionRow, type FlowVersionRow, type PipelineItemRow, type ScheduleRow,
+    assets, campaigns, devicePools, executionAttempts, executionLogs, executions, flowDefinitions, flowVersions, pipelineItems, schedules,
+    type CampaignRow, type DevicePoolRow, type ExecutionRow, type FlowDefinitionRow, type FlowVersionRow, type PipelineItemRow, type ScheduleRow,
 } from '../database/schema.js';
 import type { PluginRegistry } from '../registry.js';
 import type { CreateTaskInput, JsonObject, PipelineClaim, ScheduleTiming, StoredAsset, TaskEnvelope } from '../types.js';
@@ -66,6 +66,34 @@ export class SchedulerRepository {
         readonly boss: PgBoss,
         readonly plugins: PluginRegistry,
     ) {}
+
+    async listDevicePools(limit = 100): Promise<DevicePoolRow[]> {
+        return this.connection.db.select().from(devicePools)
+            .orderBy(desc(devicePools.updatedAt))
+            .limit(Math.max(1, Math.min(500, limit)));
+    }
+
+    async devicePool(id: string): Promise<DevicePoolRow | null> {
+        const [row] = await this.connection.db.select().from(devicePools).where(eq(devicePools.id, id)).limit(1);
+        return row ?? null;
+    }
+
+    async createDevicePool(name: string, selector: JsonObject, now = new Date()): Promise<DevicePoolRow> {
+        const [row] = await this.connection.db.insert(devicePools).values({ name, selector, createdAt: now, updatedAt: now }).returning();
+        if (!row) throw new Error('Unable to create device pool');
+        return row;
+    }
+
+    async updateDevicePool(id: string, name: string, selector: JsonObject, now = new Date()): Promise<DevicePoolRow | null> {
+        const [row] = await this.connection.db.update(devicePools).set({ name, selector, updatedAt: now })
+            .where(eq(devicePools.id, id)).returning();
+        return row ?? null;
+    }
+
+    async deleteDevicePool(id: string): Promise<boolean> {
+        const removed = await this.connection.db.delete(devicePools).where(eq(devicePools.id, id)).returning({ id: devicePools.id });
+        return removed.length > 0;
+    }
 
     async listFlowDefinitions(limit = 100): Promise<Array<FlowDefinitionRow & { payload: JsonObject }>> {
         const rows = await this.connection.db.select({

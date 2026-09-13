@@ -66,7 +66,9 @@ screenshot
 
 **Run now** creates a normal versioned scheduler task (`com.phone-farm.flow/flow@1`), so it gets the same queueing, stop behavior, logs and execution evidence as built-in tasks.
 
-Automation Studio can also choose **Any matching idle device**. Select platform, runtime kind and/or execution host; the control plane previews the least-loaded currently eligible runtime and converts that choice into a concrete device schedule when you submit. For recurring schedules that binding is intentionally stable rather than silently moving between devices.
+Automation Studio can also choose **Any matching idle device**. Select platform, runtime kind, execution host and/or comma-separated tags; the control plane previews the least-loaded currently eligible runtime and converts that choice into a concrete device schedule when you submit. Use **Save pool** to persist that selector in PostgreSQL and reuse it later by name. For recurring schedules that binding is intentionally stable rather than silently moving between devices.
+
+Device workspaces expose a **Tags** editor. Tags are normalized lower-case labels such as `staging`, `ios-real`, `pixel`, or `macstudio`; the Fleet view can search them together with device name, UDID and host. Tags are operational metadata, not credentials.
 
 Flow timing supports immediate, once, daily, weekly and interval schedules. If the flow came from the saved Flow Library, the execution payload records the exact library ID and version that was scheduled.
 
@@ -84,4 +86,4 @@ The visual builder now uses that same layer directly. Prefer `tapText`, `waitVis
 
 Physical iPhones retain WDA MJPEG pending the existing qvh benchmark. Generic Appium devices currently use a bounded screenshot-stream fallback. FARM-021 will benchmark scrcpy for Android and Baguette-style transport for iOS Simulator; video remains separable from control so a streaming failure does not own scheduler correctness.
 
-The **Fleet view** at `/fleet` already follows the low-contention strategy: every device gets an inexpensive still preview, while only the currently focused tile upgrades to a live stream. Filters cover online, iOS, Android, physical, virtual and running devices. This replaces the old mock 20-seat demo with live fleet data.
+The **Fleet view** at `/fleet` already follows the low-contention strategy: every device gets an inexpensive still preview, while only the currently focused tile upgrades to a live stream. Filters cover online, iOS, Android, physical, virtual and running devices; search covers name, UDID, execution host and tags. The Devices page keeps configured execution hosts visible even when they are offline, and online hosts report bounded load/RAM/CPU/uptime telemetry. This replaces the old mock 20-seat demo with live fleet data.

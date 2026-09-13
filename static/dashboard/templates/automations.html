@@ -98,9 +98,15 @@
                         <label class="field"><span>Target</span><select id="flow-target-mode"><option value="device">Specific device</option><option value="allocate">Any matching idle device</option></select></label>
                         <label id="flow-device-field" class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>
                         <div id="flow-pool-fields" class="flow-pool-fields" hidden>
+                            <label class="field"><span>Saved pool</span><select id="flow-saved-pool"><option value="">Custom target</option></select></label>
                             <label class="field"><span>Platform</span><select id="flow-pool-platform"><option value="">Any</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
                             <label class="field"><span>Kind</span><select id="flow-pool-kind"><option value="">Any</option><option value="physical">Physical</option><option value="simulator">Simulator</option><option value="emulator">Emulator</option></select></label>
                             <label class="field"><span>Host</span><select id="flow-pool-worker"><option value="">Any host</option></select></label>
+                            <label class="field"><span>Tags</span><input id="flow-pool-tags" type="text" placeholder="staging, pixel"></label>
+                            <div class="flow-pool-actions">
+                                <button id="flow-pool-save" class="button secondary" type="button">Save pool</button>
+                                <button id="flow-pool-delete" class="button secondary danger-outline" type="button" disabled>Delete</button>
+                            </div>
                         </div>
                         <label class="field"><span>Flow name</span><input id="flow-name" type="text" maxlength="120" value="My mobile flow"></label>
                         <button id="flow-add" class="button secondary" type="button">Add step</button>

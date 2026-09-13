@@ -1,4 +1,3 @@
-const FLEET_VALUE = '__fleet__';
 const params = new URLSearchParams(location.search);
 const elements = {
     templates: Array.from(document.querySelectorAll('.automation-template[data-template]')),
@@ -11,6 +10,10 @@ const elements = {
     flowPoolPlatform: document.querySelector('#flow-pool-platform'),
     flowPoolKind: document.querySelector('#flow-pool-kind'),
     flowPoolWorker: document.querySelector('#flow-pool-worker'),
+    flowSavedPool: document.querySelector('#flow-saved-pool'),
+    flowPoolTags: document.querySelector('#flow-pool-tags'),
+    flowPoolSave: document.querySelector('#flow-pool-save'),
+    flowPoolDelete: document.querySelector('#flow-pool-delete'),
     flowAllocationHint: document.querySelector('#flow-allocation-hint'),
     flowInspectorQuery: document.querySelector('#flow-inspector-query'),
     flowInspectorRefresh: document.querySelector('#flow-inspector-refresh'),
@@ -68,6 +71,7 @@ let flowSteps = [
     { action: 'wait', milliseconds: 1000 },
 ];
 let flowLibrary = [];
+let devicePools = [];
 let currentFlowId;
 let currentFlowVersion;
 let allocationPreviewUdid = '';
@@ -169,12 +173,62 @@ async function loadDevices() {
     await refreshAllocationPreview().catch(() => undefined);
 }
 function allocationTarget() {
+    const tags = [...new Set(elements.flowPoolTags.value.split(',').map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
     return {
         ...(elements.flowPoolPlatform.value ? { platform: elements.flowPoolPlatform.value } : {}),
         ...(elements.flowPoolKind.value ? { kind: elements.flowPoolKind.value } : {}),
         ...(elements.flowPoolWorker.value ? { workerId: elements.flowPoolWorker.value } : {}),
+        ...(tags.length ? { tags } : {}),
         requireIdle: true,
     };
+}
+function allocationRequest() {
+    return elements.flowSavedPool.value
+        ? { poolId: elements.flowSavedPool.value }
+        : { target: allocationTarget() };
+}
+function renderSavedPools() {
+    const selected = elements.flowSavedPool.value;
+    elements.flowSavedPool.replaceChildren(new Option('Custom target', ''));
+    for (const pool of devicePools)
+        elements.flowSavedPool.add(new Option(pool.name, pool.id));
+    if (selected && devicePools.some(({ id }) => id === selected))
+        elements.flowSavedPool.value = selected;
+    elements.flowPoolDelete.disabled = !elements.flowSavedPool.value;
+    elements.flowPoolSave.textContent = elements.flowSavedPool.value ? 'Update pool' : 'Save pool';
+}
+async function refreshDevicePools() {
+    const data = await jsonRequest('/api/pools');
+    devicePools = data.pools;
+    const knownWorkers = new Set([...elements.flowPoolWorker.options].map((option) => option.value));
+    for (const workerId of devicePools.map(({ selector }) => selector.workerId).filter((value) => Boolean(value))) {
+        if (!knownWorkers.has(workerId)) {
+            elements.flowPoolWorker.add(new Option(`${workerId} · offline/unseen`, workerId));
+            knownWorkers.add(workerId);
+        }
+    }
+    renderSavedPools();
+}
+function applySelectedPool() {
+    const pool = devicePools.find(({ id }) => id === elements.flowSavedPool.value);
+    if (!pool) {
+        elements.flowPoolDelete.disabled = true;
+        elements.flowPoolSave.textContent = 'Save pool';
+        return;
+    }
+    elements.flowPoolPlatform.value = pool.selector.platform ?? '';
+    elements.flowPoolKind.value = pool.selector.kind ?? '';
+    elements.flowPoolWorker.value = pool.selector.workerId ?? '';
+    elements.flowPoolTags.value = pool.selector.tags?.join(', ') ?? '';
+    elements.flowPoolDelete.disabled = false;
+    elements.flowPoolSave.textContent = 'Update pool';
+}
+function switchToCustomPool() {
+    if (!elements.flowSavedPool.value)
+        return;
+    elements.flowSavedPool.value = '';
+    elements.flowPoolDelete.disabled = true;
+    elements.flowPoolSave.textContent = 'Save pool';
 }
 async function refreshAllocationPreview() {
     const allocating = elements.flowTargetMode.value === 'allocate';
@@ -187,7 +241,7 @@ async function refreshAllocationPreview() {
     }
     elements.flowAllocationHint.textContent = 'Finding an idle matching device…';
     const data = await jsonRequest('/api/allocation/preview', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ target: allocationTarget() }),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(allocationRequest()),
     });
     const candidate = data.candidates[0];
     allocationPreviewUdid = candidate?.udid ?? '';
@@ -536,7 +590,7 @@ async function runPortableFlow() {
     return await jsonRequest(allocating ? '/api/schedules/allocate' : '/api/schedules', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(allocating ? { ...common, target: allocationTarget() } : { ...common, deviceUdid }),
+        body: JSON.stringify(allocating ? { ...common, ...allocationRequest() } : { ...common, deviceUdid }),
     });
 }
 function statusLabel(status) {
@@ -704,10 +758,60 @@ elements.flowInspectorQuery.addEventListener('keydown', (event) => {
 elements.flowTargetMode.addEventListener('change', updateFlowTimingUi);
 elements.flowTimingKind.addEventListener('change', updateFlowTimingUi);
 for (const field of [elements.flowPoolPlatform, elements.flowPoolKind, elements.flowPoolWorker]) {
-    field.addEventListener('change', () => void refreshAllocationPreview().catch((error) => {
-        elements.flowAllocationHint.textContent = errorMessage(error);
-    }));
+    field.addEventListener('change', () => {
+        switchToCustomPool();
+        void refreshAllocationPreview().catch((error) => { elements.flowAllocationHint.textContent = errorMessage(error); });
+    });
 }
+elements.flowPoolTags.addEventListener('change', () => {
+    switchToCustomPool();
+    void refreshAllocationPreview().catch((error) => { elements.flowAllocationHint.textContent = errorMessage(error); });
+});
+elements.flowSavedPool.addEventListener('change', () => {
+    applySelectedPool();
+    void refreshAllocationPreview().catch((error) => { elements.flowAllocationHint.textContent = errorMessage(error); });
+});
+elements.flowPoolSave.addEventListener('click', async () => {
+    const existing = devicePools.find(({ id }) => id === elements.flowSavedPool.value);
+    const name = existing?.name ?? window.prompt('Name this reusable device pool', 'Automation pool');
+    if (!name)
+        return;
+    elements.flowPoolSave.disabled = true;
+    try {
+        const data = await jsonRequest(existing ? `/api/pools/${encodeURIComponent(existing.id)}` : '/api/pools', {
+            method: existing ? 'PUT' : 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name, selector: allocationTarget() }),
+        });
+        await refreshDevicePools();
+        elements.flowSavedPool.value = data.pool.id;
+        applySelectedPool();
+        elements.flowResult.textContent = existing ? `Updated pool ${data.pool.name}.` : `Saved pool ${data.pool.name}.`;
+        await refreshAllocationPreview();
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+    finally {
+        elements.flowPoolSave.disabled = false;
+    }
+});
+elements.flowPoolDelete.addEventListener('click', async () => {
+    const pool = devicePools.find(({ id }) => id === elements.flowSavedPool.value);
+    if (!pool || !window.confirm(`Delete device pool “${pool.name}”? Existing schedules keep their concrete device assignment.`))
+        return;
+    elements.flowPoolDelete.disabled = true;
+    try {
+        await jsonRequest(`/api/pools/${encodeURIComponent(pool.id)}`, { method: 'DELETE' });
+        elements.flowSavedPool.value = '';
+        await refreshDevicePools();
+        elements.flowResult.textContent = `Deleted pool ${pool.name}.`;
+        await refreshAllocationPreview();
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
 elements.flowNew.addEventListener('click', newFlow);
 elements.flowSave.addEventListener('click', async () => {
     elements.flowSave.disabled = true;
@@ -947,7 +1051,6 @@ elements.checkNow.addEventListener('click', async () => {
         elements.status.textContent = errorMessage(error);
     }
 });
-void FLEET_VALUE;
 const requestedTemplate = params.get('template');
 selectTemplate(requestedTemplate === 'flow' ? 'flow' : (requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : ''), { refresh: false });
 renderFlowSteps();
@@ -961,4 +1064,5 @@ void loadDevices().then(() => {
     elements.status.textContent = errorMessage(error);
 });
 void refreshFlowLibrary().catch((error) => { elements.flowLibrary.textContent = errorMessage(error); });
+void refreshDevicePools().catch((error) => { elements.flowResult.textContent = errorMessage(error); });
 export {};

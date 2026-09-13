@@ -156,6 +156,12 @@ const elements = {
     tasksDialog: element('#tasks-dialog'),
     openTasks: element('#open-tasks'),
     closeTasks: element('#close-tasks'),
+    tagsDialog: element('#tags-dialog'),
+    openTags: element('#open-tags'),
+    closeTags: element('#close-tags'),
+    tagsForm: element('#tags-form'),
+    deviceTags: element('#device-tags'),
+    tagsResult: element('#tags-result'),
     passcodeForm: element('#passcode-form'),
     devicePasscode: element('#device-passcode'),
     passcodeClear: element('#passcode-clear'),
@@ -1314,6 +1320,27 @@ elements.clearDeviceQueue.addEventListener('click', async () => {
 });
 elements.openAccounts.addEventListener('click', () => elements.accountsDialog.showModal());
 elements.closeAccounts.addEventListener('click', () => elements.accountsDialog.close());
+elements.openTags.addEventListener('click', () => {
+    elements.tagsResult.textContent = 'Loading…';
+    elements.tagsDialog.showModal();
+    void jsonRequest('/api/devices').then((devices) => {
+        const device = devices.find((candidate) => candidate.udid === udid);
+        elements.deviceTags.value = device?.tags?.join(', ') ?? '';
+        elements.tagsResult.textContent = '';
+    }).catch((error) => { elements.tagsResult.textContent = errorMessage(error); });
+});
+elements.closeTags.addEventListener('click', () => elements.tagsDialog.close());
+elements.tagsForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    elements.tagsResult.textContent = 'Saving…';
+    const tags = elements.deviceTags.value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    void jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tags }),
+    }).then((device) => {
+        elements.deviceTags.value = device.tags?.join(', ') ?? '';
+        elements.tagsResult.textContent = device.tags?.length ? `Saved ${device.tags.length} tag${device.tags.length === 1 ? '' : 's'}.` : 'Tags cleared.';
+    }).catch((error) => { elements.tagsResult.textContent = errorMessage(error); });
+});
 elements.openInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.showModal());
 elements.closeInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.close());
 elements.openPasscode.addEventListener('click', () => {

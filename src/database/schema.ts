@@ -28,6 +28,17 @@ export const flowVersions = schedulerSchema.table('flow_versions', {
     index('flow_versions_flow_created_idx').on(table.flowId, table.createdAt),
 ]);
 
+export const devicePools = schedulerSchema.table('device_pools', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    selector: jsonb('selector').$type<JsonObject>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+}, (table) => [
+    uniqueIndex('device_pools_name_idx').on(table.name),
+    index('device_pools_updated_idx').on(table.updatedAt),
+]);
+
 export const campaigns = schedulerSchema.table('campaigns', {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
@@ -143,3 +154,4 @@ export type PipelineItemRow = typeof pipelineItems.$inferSelect;
 export type CampaignRow = typeof campaigns.$inferSelect;
 export type FlowDefinitionRow = typeof flowDefinitions.$inferSelect;
 export type FlowVersionRow = typeof flowVersions.$inferSelect;
+export type DevicePoolRow = typeof devicePools.$inferSelect;

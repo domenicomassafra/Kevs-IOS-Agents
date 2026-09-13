@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { configuredDeviceWorkers, DeviceWorkerClient } from '../src/device-workers.js';
+import { configuredDeviceWorkers, DeviceWorkerClient, DeviceWorkerFleet } from '../src/device-workers.js';
 
 test('device worker descriptors are explicit, unique, and share the configured bearer token', () => {
     const workers = configuredDeviceWorkers(
@@ -20,7 +20,7 @@ test('device worker client authenticates and proxies screen/action calls without
         const request = new Request(input, init);
         requests.push(request);
         if (request.url.endsWith('/v1/host')) {
-            return Response.json({ id: 'macstudio', hostname: 'studio', os: 'darwin', arch: 'arm64', capabilities: ['ios.physical'], tools: { appium: true, appiumRuntime: true, xcrun: true, adb: false } });
+            return Response.json({ id: 'macstudio', hostname: 'studio', os: 'darwin', arch: 'arm64', online: true, observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'], tools: { appium: true, appiumRuntime: true, xcrun: true, adb: false, scrcpyVideo: false } });
         }
         if (request.url.endsWith('/info')) {
             return Response.json({ screenSize: { width: 390, height: 844 }, scale: 3 });
@@ -33,7 +33,7 @@ test('device worker client authenticates and proxies screen/action calls without
     await client.performAction('udid / 1', { type: 'home' });
     await client.updateConfig({
         name: 'Phone', udid: 'udid / 1', workerId: 'macstudio', passcode: '1234',
-        wdaLocalPort: 8101, mjpegLocalPort: 9101, pluginData: { social: { accounts: ['@one'] } },
+        wdaLocalPort: 8101, mjpegLocalPort: 9101, tags: ['staging', 'ios-real'], pluginData: { social: { accounts: ['@one'] } },
     });
     assert.equal(info.screenSize.width, 390);
     assert.equal(host.hostname, 'studio');
@@ -47,4 +47,19 @@ test('device worker client authenticates and proxies screen/action calls without
     assert.equal('passcode' in config, false);
     assert.equal('wdaLocalPort' in config, false);
     assert.equal('mjpegLocalPort' in config, false);
+    assert.deepEqual(config.tags, ['staging', 'ios-real']);
+});
+
+test('configured workers remain visible as offline instead of disappearing from host inventory', async () => {
+    const fetchImpl: typeof fetch = async () => { throw new Error('connect ECONNREFUSED'); };
+    const fleet = new DeviceWorkerFleet([
+        { id: 'sleeping-mac', url: new URL('http://sleeping-mac:3010/'), token: 'secret' },
+    ], fetchImpl);
+    await fleet.refresh();
+    const [host] = fleet.hosts();
+    assert.equal(host?.id, 'sleeping-mac');
+    assert.equal(host?.hostname, 'sleeping-mac');
+    assert.equal(host?.online, false);
+    assert.match(host?.error ?? '', /ECONNREFUSED/);
+    assert.deepEqual(host?.capabilities, []);
 });

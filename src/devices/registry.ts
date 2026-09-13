@@ -27,6 +27,8 @@ export interface RegisteredDevice {
     instagramCoordinates?: DeviceCoordinateOverrides;
     /** When true the farm keeps the entry but stops supervising it — no WDA, no worker, no discovery polling. */
     disabled?: boolean;
+    /** Operator-defined labels used for search/allocation. */
+    tags?: string[];
     pluginData: Record<string, JsonObject>;
 }
 
@@ -36,6 +38,20 @@ export function activeDevices(devices: readonly RegisteredDevice[]): RegisteredD
 }
 
 export const PASSCODE_PATTERN = /^\d{4,}$/;
+const TAG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,31}$/;
+
+export function normalizeDeviceTags(value: unknown): string[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new Error('Device tags must be an array');
+    if (value.length > 20) throw new Error('A device may have at most 20 tags');
+    const tags = value.map((entry) => {
+        if (typeof entry !== 'string') throw new Error('Device tags must be strings');
+        const tag = entry.trim().toLowerCase();
+        if (!TAG_PATTERN.test(tag)) throw new Error(`Invalid device tag: ${entry}`);
+        return tag;
+    });
+    return [...new Set(tags)];
+}
 
 /** A device with its passcode removed and a boolean marker in its place — safe to serialize. */
 export function redactDevice<T extends { passcode?: string }>(device: T): Omit<T, 'passcode'> & { hasPasscode: boolean } {
@@ -66,6 +82,10 @@ export async function loadRegisteredDevices(registryPath = defaultRegistryPath):
         if (!['ios', 'android'].includes(platform)) throw new Error(`Device ${device.udid} has invalid platform ${platform}`);
         if (!['physical', 'simulator', 'emulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid kind ${kind}`);
         if (!['wda', 'appium'].includes(backend)) throw new Error(`Device ${device.udid} has invalid automation backend ${backend}`);
+        if (device.tags !== undefined) {
+            device.tags = normalizeDeviceTags(device.tags);
+            if (!device.tags.length) delete device.tags;
+        }
         if (platform === 'ios') {
             // Unknown profiles used to throw here and turn every PATCH (including
             // rename) into a generic 400. Fall back so the rest of the farm stays usable.
@@ -90,6 +110,10 @@ export async function saveRegisteredDevices(devices: RegisteredDevice[], registr
         if (!['ios', 'android'].includes(platform)) throw new Error(`Device ${device.udid} has invalid platform ${platform}`);
         if (!['physical', 'simulator', 'emulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid kind ${kind}`);
         if (!['wda', 'appium'].includes(backend)) throw new Error(`Device ${device.udid} has invalid automation backend ${backend}`);
+        if (device.tags !== undefined) {
+            device.tags = normalizeDeviceTags(device.tags);
+            if (!device.tags.length) delete device.tags;
+        }
         if (platform === 'ios') coordinatesForProfile(device.coordinateProfile);
         if (device.passcode !== undefined && !PASSCODE_PATTERN.test(device.passcode)) {
             throw new Error(`Device ${device.udid} passcode must contain at least four digits`);

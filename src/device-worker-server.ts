@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 
 import Fastify from 'fastify';
 
-import { loadRegisteredDevices, mutateRegisteredDevices, redactDevice, type RegisteredDevice } from './devices/registry.js';
+import { loadRegisteredDevices, mutateRegisteredDevices, normalizeDeviceTags, redactDevice, type RegisteredDevice } from './devices/registry.js';
 import { RegistryWdaRemoteControl } from './devices/registry-remote.js';
 import { requestWdaService } from './devices/wda-service-client.js';
 import type { DeviceConnectionStatus } from './devices/connection-manager.js';
@@ -190,7 +190,7 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     });
     app.patch<{
         Params: { udid: string };
-        Body: Pick<RegisteredDevice, 'name' | 'coordinateProfile' | 'coordinates' | 'instagramCoordinates' | 'disabled'> & { pluginData?: Record<string, JsonObject> };
+        Body: Pick<RegisteredDevice, 'name' | 'tags' | 'coordinateProfile' | 'coordinates' | 'instagramCoordinates' | 'disabled'> & { pluginData?: Record<string, JsonObject> };
     }>('/v1/devices/:udid/config', async (request, reply) => {
         let found = false;
         await mutateRegisteredDevices((devices) => {
@@ -198,6 +198,11 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
             if (!device) return;
             found = true;
             if (request.body.name !== undefined) device.name = request.body.name;
+            if (request.body.tags !== undefined) {
+                const tags = normalizeDeviceTags(request.body.tags);
+                if (tags.length) device.tags = tags;
+                else delete device.tags;
+            }
             if (request.body.coordinateProfile !== undefined) device.coordinateProfile = request.body.coordinateProfile;
             if (request.body.coordinates !== undefined) device.coordinates = request.body.coordinates;
             if (request.body.instagramCoordinates !== undefined) device.instagramCoordinates = request.body.instagramCoordinates;

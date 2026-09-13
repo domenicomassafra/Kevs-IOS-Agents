@@ -180,6 +180,64 @@ test('serves a live fleet wall instead of the old mock fleet demo', async (conte
     assert.match(legacy.body, /Live device wall/i);
 });
 
+test('device pool API normalizes selectors and rejects duplicate names', async (context) => {
+    type Pool = { id: string; name: string; selector: Record<string, unknown>; createdAt: Date; updatedAt: Date };
+    let pools: Pool[] = [];
+    let sequence = 0;
+    const scheduler = {
+        async listDevicePools() { return pools; },
+        async devicePool(id: string) { return pools.find((pool) => pool.id === id) ?? null; },
+        async createDevicePool(name: string, selector: Record<string, unknown>) {
+            const now = new Date(0);
+            const pool = { id: `pool-${++sequence}`, name, selector, createdAt: now, updatedAt: now };
+            pools.push(pool);
+            return pool;
+        },
+        async updateDevicePool(id: string, name: string, selector: Record<string, unknown>) {
+            const index = pools.findIndex((pool) => pool.id === id);
+            if (index < 0) return null;
+            const pool = { ...pools[index]!, name, selector, updatedAt: new Date(1) };
+            pools[index] = pool;
+            return pool;
+        },
+        async deleteDevicePool(id: string) {
+            const before = pools.length;
+            pools = pools.filter((pool) => pool.id !== id);
+            return pools.length !== before;
+        },
+    } as unknown as SchedulerRepository;
+    const app = await createApp({
+        plugins: new PluginRegistry([]), scheduler, registrations: registrations(), dashboardTheme: defaultDashboardTheme,
+    });
+    context.after(() => app.close());
+
+    const created = await inject(app, {
+        method: 'POST', url: '/api/pools', payload: {
+            name: 'Android staging', selector: { platform: 'android', tags: ['Staging', 'pixel', 'pixel'], requireIdle: true },
+        },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.deepEqual(created.json().pool.selector.tags, ['staging', 'pixel']);
+
+    const duplicate = await inject(app, {
+        method: 'POST', url: '/api/pools', payload: { name: 'android STAGING', selector: {} },
+    });
+    assert.equal(duplicate.statusCode, 409);
+
+    const invalid = await inject(app, {
+        method: 'PUT', url: '/api/pools/pool-1', payload: { name: 'Android staging', selector: { tags: ['bad tag'] } },
+    });
+    assert.equal(invalid.statusCode, 400);
+
+    const listed = await inject(app, { method: 'GET', url: '/api/pools' });
+    assert.equal(listed.statusCode, 200);
+    assert.equal(listed.json().pools.length, 1);
+
+    const deleted = await inject(app, { method: 'DELETE', url: '/api/pools/pool-1' });
+    assert.equal(deleted.statusCode, 204);
+    assert.equal(pools.length, 0);
+});
+
 test('flow library API validates, versions and exports portable flows through the scheduler repository contract', async (context) => {
     const stored = new Map<string, {
         id: string; name: string; currentVersion: number; payload: Record<string, unknown>; versions: Array<{ version: number; createdAt: Date }>;

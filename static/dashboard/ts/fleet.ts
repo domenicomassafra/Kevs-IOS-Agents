@@ -7,6 +7,7 @@ interface FleetDevice {
     platform?: 'ios' | 'android';
     kind?: 'physical' | 'simulator' | 'emulator';
     workerId?: string;
+    tags?: string[];
     disabled?: boolean;
     connected: ConnectedDevice | null;
 }
@@ -15,6 +16,7 @@ interface Execution { deviceUdid: string; status: string; taskType: string; plug
 const grid = document.querySelector<HTMLElement>('#fleet-grid')!;
 const count = document.querySelector<HTMLElement>('#fleet-visible-count')!;
 const refresh = document.querySelector<HTMLButtonElement>('#fleet-refresh')!;
+const search = document.querySelector<HTMLInputElement>('#fleet-search')!;
 const groupBy = document.querySelector<HTMLSelectElement>('#fleet-group')!;
 const bulk = document.querySelector<HTMLElement>('#fleet-bulk')!;
 const selectedCount = document.querySelector<HTMLElement>('#fleet-selected-count')!;
@@ -62,13 +64,17 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 function matches(device: FleetDevice): boolean {
     const platform = device.platform ?? 'ios';
     const kind = device.kind ?? 'physical';
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'online') return Boolean(device.connected) && !device.disabled;
-    if (activeFilter === 'ios' || activeFilter === 'android') return platform === activeFilter;
-    if (activeFilter === 'physical') return kind === 'physical';
-    if (activeFilter === 'virtual') return kind !== 'physical';
-    if (activeFilter === 'running') return running.has(device.udid);
-    return true;
+    const filterMatch = activeFilter === 'all'
+        || (activeFilter === 'online' && Boolean(device.connected) && !device.disabled)
+        || ((activeFilter === 'ios' || activeFilter === 'android') && platform === activeFilter)
+        || (activeFilter === 'physical' && kind === 'physical')
+        || (activeFilter === 'virtual' && kind !== 'physical')
+        || (activeFilter === 'running' && running.has(device.udid));
+    if (!filterMatch) return false;
+    const query = search.value.trim().toLowerCase();
+    if (!query) return true;
+    return [device.name, device.udid, device.workerId ?? '', platform, kind, ...(device.tags ?? [])]
+        .some((value) => value.toLowerCase().includes(query));
 }
 
 function screenshotUrl(udid: string): string {
@@ -81,6 +87,7 @@ function tile(device: FleetDevice): string {
     const online = Boolean(device.connected) && !device.disabled;
     const execution = running.get(device.udid);
     const worker = device.workerId ? ` · ${escapeHtml(device.workerId)}` : '';
+    const tags = (device.tags ?? []).map((tag) => `<span class="connection-chip tag">#${escapeHtml(tag)}</span>`).join('');
     const preview = online
         ? `<img class="fleet-live-preview" src="${screenshotUrl(device.udid)}" alt="Screen of ${escapeHtml(device.name)}" draggable="false">`
         : '<div class="mock-screen mock-offline"><div class="mock-offline-mark"></div><span class="mock-offline-label">Offline</span></div>';
@@ -90,7 +97,7 @@ function tile(device: FleetDevice): string {
             <div class="fleet-phone"><div class="fleet-bezel">${preview}</div></div>
         </button>
         <div class="fleet-copy"><h2>${escapeHtml(device.name)}</h2><p>${escapeHtml(platform)} · ${escapeHtml(kind)}${device.connected?.osVersion ? ` · ${escapeHtml(device.connected.osVersion)}` : ''}${worker}</p>
-            <div class="fleet-chips"><span class="connection-chip ${online ? 'ready' : 'unavailable'}">${online ? 'Online' : 'Offline'}</span>${execution ? `<span class="connection-chip running">${escapeHtml(execution.taskType)}</span>` : '<span class="connection-chip">Idle</span>'}</div>
+            <div class="fleet-chips"><span class="connection-chip ${online ? 'ready' : 'unavailable'}">${online ? 'Online' : 'Offline'}</span>${execution ? `<span class="connection-chip running">${escapeHtml(execution.taskType)}</span>` : '<span class="connection-chip">Idle</span>'}${tags}</div>
         </div>
         <a class="button secondary fleet-open" href="/devices/${encodeURIComponent(device.udid)}">Open →</a>
     </article>`;
@@ -163,7 +170,7 @@ async function focusDevice(udid: string): Promise<void> {
     render();
     focus.hidden = false;
     focusName.textContent = device.name;
-    focusMeta.textContent = `${device.platform ?? 'ios'} · ${device.kind ?? 'physical'}${device.workerId ? ` · ${device.workerId}` : ''}`;
+    focusMeta.textContent = `${device.platform ?? 'ios'} · ${device.kind ?? 'physical'}${device.workerId ? ` · ${device.workerId}` : ''}${device.tags?.length ? ` · ${device.tags.map((tag) => `#${tag}`).join(' ')}` : ''}`;
     focusOpen.href = `/devices/${encodeURIComponent(udid)}`;
     focusStatus.textContent = 'Connecting live stream…';
     focusFallbackActive = false;
@@ -195,6 +202,7 @@ filters.forEach((button) => button.addEventListener('click', () => {
     render();
 }));
 refresh.addEventListener('click', () => void load());
+search.addEventListener('input', render);
 groupBy.addEventListener('change', () => {
     grouping = groupBy.value as typeof grouping;
     render();

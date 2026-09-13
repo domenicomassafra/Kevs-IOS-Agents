@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { activeDevices, saveRegisteredDevices } from '../src/devices/registry.js';
+import { activeDevices, normalizeDeviceTags, saveRegisteredDevices } from '../src/devices/registry.js';
 import { DeviceConnectionManager } from '../src/devices/connection-manager.js';
 
 test('activeDevices drops the disabled entries', () => {
@@ -25,6 +25,13 @@ test('saveRegisteredDevices only keeps disabled when it is exactly true', async 
     const saved = JSON.parse(await readFile(configPath, 'utf8')) as Array<{ udid: string; disabled?: boolean }>;
     assert.equal(saved.find((d) => d.udid === 'on')!.disabled, undefined);
     assert.equal(saved.find((d) => d.udid === 'off')!.disabled, true);
+});
+
+test('device tags normalize for stable search and allocation semantics', () => {
+    assert.deepEqual(normalizeDeviceTags([' Staging ', 'PIXEL', 'staging']), ['staging', 'pixel']);
+    assert.deepEqual(normalizeDeviceTags([]), []);
+    assert.throws(() => normalizeDeviceTags(['bad tag']), /Invalid device tag/);
+    assert.throws(() => normalizeDeviceTags(Array.from({ length: 21 }, (_, index) => `tag-${index}`)), /at most 20/);
 });
 
 test('DeviceConnectionManager stops supervising a device once it is disabled', async () => {

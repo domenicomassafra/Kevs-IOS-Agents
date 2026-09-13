@@ -10,7 +10,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 
 import { discoverConnectedDevices, type Device } from '../devices/discovery.js';
-import { loadRegisteredDevices, mutateRegisteredDevices, saveRegisteredDevices, redactDevice, PASSCODE_PATTERN, type RegisteredDevice } from '../devices/registry.js';
+import { loadRegisteredDevices, mutateRegisteredDevices, normalizeDeviceTags, saveRegisteredDevices, redactDevice, PASSCODE_PATTERN, type RegisteredDevice } from '../devices/registry.js';
 import {
     CALIBRATABLE_POINTS, labelsForApp, coordinatesForProfile, resolveDeviceCoordinates,
     validateCoordinateOverrides, parseSocialApp,
@@ -521,9 +521,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         await options.registrations.cancel(request.params.id);
         return reply.code(204).send();
     });
-    app.post<{ Body: { name?: string; udid?: string; wdaLocalPort?: number; mjpegLocalPort?: number; passcode?: string; coordinateProfile?: string; pluginData?: Record<string, JsonObject> } }>(
+    app.post<{ Body: { name?: string; udid?: string; tags?: string[]; wdaLocalPort?: number; mjpegLocalPort?: number; passcode?: string; coordinateProfile?: string; pluginData?: Record<string, JsonObject> } }>(
         '/api/devices', async (request, reply) => {
-            const { name, udid, wdaLocalPort, mjpegLocalPort, passcode, coordinateProfile, pluginData } = request.body;
+            const { name, udid, tags, wdaLocalPort, mjpegLocalPort, passcode, coordinateProfile, pluginData } = request.body;
             if (!udid) return reply.code(400).send({ error: 'A device UDID is required' });
             if (passcode !== undefined && !PASSCODE_PATTERN.test(passcode)) {
                 return reply.code(400).send({ error: 'Device passcode must contain at least four digits' });
@@ -533,6 +533,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 // Explicit whitelist — never mass-assign arbitrary body keys into devices.json.
                 const device: RegisteredDevice = {
                     name: name ?? udid, udid, pluginData: pluginData ?? {},
+                    ...(tags !== undefined && normalizeDeviceTags(tags).length ? { tags: normalizeDeviceTags(tags) } : {}),
                     ...(wdaLocalPort !== undefined ? { wdaLocalPort } : {}),
                     ...(mjpegLocalPort !== undefined ? { mjpegLocalPort } : {}),
                     ...(coordinateProfile !== undefined ? { coordinateProfile: coordinateProfile as RegisteredDevice['coordinateProfile'] } : {}),
@@ -544,9 +545,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.code(201).send(redactDevice(created));
         },
     );
-    app.patch<{ Params: { udid: string }; Body: { name?: string; wdaLocalPort?: number; mjpegLocalPort?: number; passcode?: string; coordinates?: unknown; instagramCoordinates?: unknown; disabled?: boolean; coordinateProfile?: string; pluginData?: Record<string, JsonObject> } }>(
+    app.patch<{ Params: { udid: string }; Body: { name?: string; tags?: string[]; wdaLocalPort?: number; mjpegLocalPort?: number; passcode?: string; coordinates?: unknown; instagramCoordinates?: unknown; disabled?: boolean; coordinateProfile?: string; pluginData?: Record<string, JsonObject> } }>(
         '/api/devices/:udid', async (request, reply) => {
-            const { passcode, coordinates, instagramCoordinates, name, wdaLocalPort, mjpegLocalPort, disabled, coordinateProfile, pluginData } = request.body ?? {};
+            const { passcode, coordinates, instagramCoordinates, name, tags, wdaLocalPort, mjpegLocalPort, disabled, coordinateProfile, pluginData } = request.body ?? {};
             if (passcode !== undefined && passcode !== '' && !PASSCODE_PATTERN.test(passcode)) {
                 return reply.code(400).send({ error: 'Device passcode must contain at least four digits' });
             }
@@ -557,6 +558,11 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 const device = devices.find((entry) => entry.udid === request.params.udid);
                 if (!device) throw httpError(404, 'Device not found');
                 if (name !== undefined) device.name = normalizeDeviceName(name);
+                if (tags !== undefined) {
+                    const normalized = normalizeDeviceTags(tags);
+                    if (normalized.length) device.tags = normalized;
+                    else delete device.tags;
+                }
                 if (wdaLocalPort !== undefined) device.wdaLocalPort = wdaLocalPort;
                 if (mjpegLocalPort !== undefined) device.mjpegLocalPort = mjpegLocalPort;
                 if (coordinateProfile !== undefined) device.coordinateProfile = coordinateProfile as RegisteredDevice['coordinateProfile'];
@@ -944,14 +950,64 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             || value.deviceUdids.some((udid) => typeof udid !== 'string' || !udid.trim()))) {
             throw httpError(400, 'target.deviceUdids must contain at most 100 non-empty ids');
         }
+        let tags: string[] | undefined;
+        try { tags = value.tags === undefined ? undefined : normalizeDeviceTags(value.tags); }
+        catch (error) { throw httpError(400, errorMessage(error)); }
         return {
             ...(value.platform ? { platform: value.platform } : {}),
             ...(value.kind ? { kind: value.kind } : {}),
             ...(value.workerId ? { workerId: value.workerId } : {}),
             ...(value.deviceUdids ? { deviceUdids: [...new Set(value.deviceUdids.map((udid) => udid.trim()))] } : {}),
+            ...(tags?.length ? { tags } : {}),
             ...(value.requireIdle !== undefined ? { requireIdle: value.requireIdle } : {}),
         };
     };
+    const poolName = (value: unknown): string => {
+        if (typeof value !== 'string') throw httpError(400, 'Pool name is required');
+        const name = value.replace(/\s+/g, ' ').trim();
+        if (!name || name.length > 80) throw httpError(400, 'Pool name must contain 1 to 80 characters');
+        return name;
+    };
+    const selectorJson = (selector: DeviceAllocationSelector): JsonObject => structuredClone(selector) as unknown as JsonObject;
+    const assertUniquePoolName = async (name: string, excludeId?: string): Promise<void> => {
+        const normalized = name.toLocaleLowerCase();
+        const duplicate = (await options.scheduler.listDevicePools(500))
+            .find((pool) => pool.id !== excludeId && pool.name.toLocaleLowerCase() === normalized);
+        if (duplicate) throw httpError(409, `A device pool named “${name}” already exists`);
+    };
+    const resolveAllocationSelector = async (input: { poolId?: string; target?: DeviceAllocationSelector }): Promise<DeviceAllocationSelector> => {
+        if (input.poolId) {
+            if (input.target && Object.keys(input.target).length) throw httpError(400, 'Use either poolId or target, not both');
+            const pool = await options.scheduler.devicePool(input.poolId);
+            if (!pool) throw httpError(404, 'Device pool not found');
+            return validatedAllocationSelector(pool.selector as unknown as DeviceAllocationSelector);
+        }
+        return validatedAllocationSelector(input.target);
+    };
+    app.get('/api/pools', async () => ({ pools: await options.scheduler.listDevicePools(200) }));
+    app.post<{ Body: { name?: string; selector?: DeviceAllocationSelector } }>('/api/pools', async (request, reply) => {
+        const selector = validatedAllocationSelector(request.body.selector);
+        const name = poolName(request.body.name);
+        await assertUniquePoolName(name);
+        const pool = await options.scheduler.createDevicePool(name, selectorJson(selector));
+        return reply.code(201).send({ pool });
+    });
+    app.get<{ Params: { id: string } }>('/api/pools/:id', async (request, reply) => {
+        const pool = await options.scheduler.devicePool(request.params.id);
+        return pool ? { pool } : reply.code(404).send({ error: 'Device pool not found' });
+    });
+    app.put<{ Params: { id: string }; Body: { name?: string; selector?: DeviceAllocationSelector } }>('/api/pools/:id', async (request, reply) => {
+        const selector = validatedAllocationSelector(request.body.selector);
+        const name = poolName(request.body.name);
+        await assertUniquePoolName(name, request.params.id);
+        const pool = await options.scheduler.updateDevicePool(request.params.id, name, selectorJson(selector));
+        return pool ? { pool } : reply.code(404).send({ error: 'Device pool not found' });
+    });
+    app.delete<{ Params: { id: string } }>('/api/pools/:id', async (request, reply) => (
+        await options.scheduler.deleteDevicePool(request.params.id)
+            ? reply.code(204).send()
+            : reply.code(404).send({ error: 'Device pool not found' })
+    ));
     const allocationCandidates = async (selector: DeviceAllocationSelector) => {
         const [registered, connected, executions, schedules] = await Promise.all([
             loadRegisteredDevices(), discoverDevices(), options.scheduler.listExecutions(500), options.scheduler.listSchedules(500),
@@ -960,13 +1016,13 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             registered, new Set(connected.map(({ udid }) => udid)), executions, schedules, selector,
         );
     };
-    app.post<{ Body: { target?: DeviceAllocationSelector } }>('/api/allocation/preview', async (request) => ({
-        candidates: await allocationCandidates(validatedAllocationSelector(request.body.target)),
+    app.post<{ Body: { target?: DeviceAllocationSelector; poolId?: string } }>('/api/allocation/preview', async (request) => ({
+        candidates: await allocationCandidates(await resolveAllocationSelector(request.body)),
     }));
     app.post<{
-        Body: Omit<CreateTaskInput, 'deviceUdid'> & { target?: DeviceAllocationSelector; assetIds?: string[] };
+        Body: Omit<CreateTaskInput, 'deviceUdid'> & { target?: DeviceAllocationSelector; poolId?: string; assetIds?: string[] };
     }>('/api/schedules/allocate', async (request, reply) => {
-        const selector = validatedAllocationSelector(request.body.target);
+        const selector = await resolveAllocationSelector(request.body);
         const candidate = (await allocationCandidates(selector))[0];
         if (!candidate) return reply.code(409).send({ error: 'No connected device matches this allocation target' });
         const device = (await loadRegisteredDevices()).find(({ udid }) => udid === candidate.udid);
@@ -1177,8 +1233,19 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 options.virtualRuntimes?.() ?? Promise.resolve([]),
             ]);
             const cards = hosts.map((host) => {
-                const capabilities = host.capabilities.map((capability) => `<span class="connection-chip ready">${escapeHtml(capability)}</span>`).join('');
+                const online = host.online !== false;
+                const capabilities = host.capabilities.map((capability) => `<span class="connection-chip ${online ? 'ready' : 'unavailable'}">${escapeHtml(capability)}</span>`).join('');
                 const hostRuntimes = runtimes.filter((runtime) => (runtime.workerId ?? 'local') === host.id);
+                const metrics = host.metrics;
+                const metricHtml = metrics ? (() => {
+                    const gib = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(1);
+                    const used = metrics.totalMemoryBytes > 0
+                        ? Math.round(((metrics.totalMemoryBytes - metrics.freeMemoryBytes) / metrics.totalMemoryBytes) * 100)
+                        : 0;
+                    const uptimeHours = metrics.uptimeSeconds / 3600;
+                    const uptime = uptimeHours < 48 ? `${uptimeHours.toFixed(1)}h` : `${(uptimeHours / 24).toFixed(1)}d`;
+                    return `<div class="host-metrics"><span><strong>${metrics.load1.toFixed(2)}</strong> load</span><span><strong>${used}%</strong> RAM · ${gib(metrics.freeMemoryBytes)}G free</span><span><strong>${metrics.cpuCount}</strong> CPU</span><span><strong>${uptime}</strong> uptime</span></div>`;
+                })() : '';
                 const runtimeRows = hostRuntimes.map((runtime) => {
                     const action = runtime.state === 'booted' ? 'shutdown' : 'boot';
                     const label = runtime.state === 'booted' ? 'Stop' : 'Boot';
@@ -1187,9 +1254,15 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                     const stateClass = runtime.state === 'booted' ? 'ready' : 'unavailable';
                     return `<div class="host-runtime"><div><strong>${escapeHtml(runtime.name)}</strong><span>${escapeHtml(runtime.platform)} · ${escapeHtml(runtime.kind)}${runtime.osVersion ? ` · ${escapeHtml(runtime.osVersion)}` : ''}</span></div><div class="inline-actions"><span class="connection-chip ${stateClass}">${escapeHtml(runtime.state)}</span><button class="button secondary runtime-action" type="button" hx-post="${url}" hx-swap="none" hx-on::after-request="setTimeout(function(){htmx.ajax('GET','/api/fragments/hosts',{target:'#host-list',swap:'outerHTML'})},1200)">${label}</button></div></div>`;
                 }).join('');
-                return `<article class="host-card"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div><div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">no mobile capabilities</span>'}</div>${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : '<p class="host-runtime-empty">No simulator/emulator definitions detected on this host.</p>'}</article>`;
+                const status = `<span class="connection-chip ${online ? 'ready' : 'unavailable'}">${online ? 'online' : 'offline'}</span>`;
+                const error = !online && host.error ? `<p class="host-error">${escapeHtml(host.error)}</p>` : '';
+                const empty = online
+                    ? '<p class="host-runtime-empty">No simulator/emulator definitions detected on this host.</p>'
+                    : '<p class="host-runtime-empty">Worker is configured but unreachable. Its devices stay registered and will return when the node reconnects.</p>';
+                return `<article class="host-card${online ? '' : ' offline'}"><div class="host-card-head"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div>${status}</div>${metricHtml}<div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">capabilities unavailable</span>'}</div>${error}${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : empty}</article>`;
             }).join('');
-            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${hosts.length} connected node${hosts.length === 1 ? '' : 's'}</p></div><div class="host-grid">${cards || '<div class="empty-state"><h2>No execution hosts connected</h2><p>Pair a Mac/PC worker with the control plane to expose real or virtual devices.</p></div>'}</div></section>`);
+            const onlineHosts = hosts.filter((host) => host.online !== false).length;
+            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${onlineHosts}/${hosts.length} online</p></div><div class="host-grid">${cards || '<div class="empty-state"><h2>No execution hosts configured</h2><p>Pair a Mac/PC worker with the control plane to expose real or virtual devices.</p></div>'}</div></section>`);
         });
         app.get('/api/fragments/fleet-health', async (_request, reply) => {
             const [devices, registered, schedules, executions, campaignRows] = await Promise.all([

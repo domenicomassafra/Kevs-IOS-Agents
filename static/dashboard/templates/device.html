@@ -25,6 +25,7 @@
                 <a class="crumb" href="/automations">Automations</a>
                 <a class="crumb" href="/tasks">Tasks</a>
                 <button id="open-tasks" class="button secondary" type="button">Tasks &amp; schedules</button>
+                <button id="open-tags" class="button secondary" type="button">Tags</button>
                 <button id="open-accounts" class="button secondary ios-social-only" type="button">TikTok accounts</button>
                 <button id="open-instagram-accounts" class="button secondary ios-social-only" type="button">Instagram accounts</button>
                 <button id="open-passcode" class="button secondary ios-social-only" type="button">Passcode</button>
@@ -218,6 +219,18 @@
             <h3>Recent runs</h3>
             <div id="device-executions" class="task-list loading-card"><span class="spinner" aria-hidden="true"></span>Loading task history…</div>
         </div>
+    </dialog>
+    <dialog id="tags-dialog">
+        <form id="tags-form" class="modal">
+            <div class="modal-head">
+                <div><span class="eyebrow">Fleet metadata</span><h2>Device tags</h2></div>
+                <button id="close-tags" class="icon-button" type="button">Close</button>
+            </div>
+            <p>Use tags for reusable allocation pools, for example <code>staging</code>, <code>ios-real</code>, or <code>pixel</code>.</p>
+            <label for="device-tags">Tags</label>
+            <input id="device-tags" type="text" placeholder="staging, ios-real, macstudio">
+            <div class="form-actions"><span id="tags-result" class="run-meta" aria-live="polite"></span><span class="spacer"></span><button class="button primary" type="submit">Save tags</button></div>
+        </form>
     </dialog>
     <dialog id="accounts-dialog">
         <form id="accounts-form" class="modal">

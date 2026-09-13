@@ -28,7 +28,9 @@
 - [x] FARM-022 capability-aware allocation: preview + least-loaded online/idle device selection above the existing scheduler.
 - [x] FARM-022 Flow Studio scheduling: now/once/daily/weekly/interval plus immutable saved-flow revision attribution.
 - [x] FARM-022 Semantic Inspector: live accessibility elements → tap/wait/assert/input authoring without hand-entering selectors.
-- [x] Current source regression gate: `npm run check` => 122/122 tests + TypeScript green (2026-09-14).
+- [x] FARM-023 device tags + named PostgreSQL allocation pools + Fleet search/pool authoring.
+- [x] FARM-023 execution-host observability: configured offline workers remain visible; online workers report bounded load/RAM/CPU/uptime telemetry.
+- [x] Current source regression gate: `npm run check` => 126/126 tests + TypeScript green (2026-09-14).
 
 ## Live-gated
 
@@ -41,9 +43,11 @@
 - [ ] FARM-019 live runtime matrix: iOS Simulator + Android emulator + physical Android + distributed proxy receipt.
 - [ ] FARM-021 Cross-platform video bake-off: scrcpy adapter is implemented; live Android measurements + Baguette/qvh comparison remain pending.
 - [ ] FARM-022 live allocator/inspector proof across at least two matching runtimes after the device-worker matrix is online.
+- [ ] FARM-023 live tag/pool allocation proof across at least two matching tagged runtimes after the worker matrix is online.
 
 ## Git closeout
 
 - [x] Review FARM-018 diff for generated/runtime artifacts and secrets.
 - [x] Commit FARM-018 on `feat/farming-control-plane-v1`.
 - [x] Push updated branch to `origin`.
+- [ ] Merge the completed control-plane feature branch to `main`, push `origin/main`, then delete the merged feature branch/worktree debris.

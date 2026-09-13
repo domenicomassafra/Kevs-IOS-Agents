@@ -7,6 +7,8 @@ export interface DeviceAllocationSelector {
     kind?: MobileDeviceKind;
     workerId?: string;
     deviceUdids?: string[];
+    /** Every requested tag must exist on the candidate device. */
+    tags?: string[];
     /** Default true: do not place new work on a device with queued/running execution. */
     requireIdle?: boolean;
 }
@@ -54,6 +56,10 @@ export function rankAllocationCandidates(
         if (selector.kind && selector.kind !== kind) return [];
         if (selector.workerId && selector.workerId !== device.workerId) return [];
         if (allowedIds && !allowedIds.has(device.udid)) return [];
+        if (selector.tags?.length) {
+            const tags = new Set(device.tags ?? []);
+            if (selector.tags.some((tag) => !tags.has(tag))) return [];
+        }
         if (requireIdle && queuedOrRunning > 0) return [];
         const activeSchedules = activeScheduleCount.get(device.udid) ?? 0;
         return [{

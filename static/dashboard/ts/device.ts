@@ -225,6 +225,12 @@ const elements = {
     tasksDialog: element<HTMLDialogElement>('#tasks-dialog'),
     openTasks: element<HTMLButtonElement>('#open-tasks'),
     closeTasks: element<HTMLButtonElement>('#close-tasks'),
+    tagsDialog: element<HTMLDialogElement>('#tags-dialog'),
+    openTags: element<HTMLButtonElement>('#open-tags'),
+    closeTags: element<HTMLButtonElement>('#close-tags'),
+    tagsForm: element<HTMLFormElement>('#tags-form'),
+    deviceTags: element<HTMLInputElement>('#device-tags'),
+    tagsResult: element<HTMLElement>('#tags-result'),
     passcodeForm: element<HTMLFormElement>('#passcode-form'),
     devicePasscode: element<HTMLInputElement>('#device-passcode'),
     passcodeClear: element<HTMLButtonElement>('#passcode-clear'),
@@ -1397,6 +1403,27 @@ elements.clearDeviceQueue.addEventListener('click', async () => {
 });
 elements.openAccounts.addEventListener('click', () => elements.accountsDialog.showModal());
 elements.closeAccounts.addEventListener('click', () => elements.accountsDialog.close());
+elements.openTags.addEventListener('click', () => {
+    elements.tagsResult.textContent = 'Loading…';
+    elements.tagsDialog.showModal();
+    void jsonRequest<Array<{ udid: string; tags?: string[] }>>('/api/devices').then((devices) => {
+        const device = devices.find((candidate) => candidate.udid === udid);
+        elements.deviceTags.value = device?.tags?.join(', ') ?? '';
+        elements.tagsResult.textContent = '';
+    }).catch((error) => { elements.tagsResult.textContent = errorMessage(error); });
+});
+elements.closeTags.addEventListener('click', () => elements.tagsDialog.close());
+elements.tagsForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    elements.tagsResult.textContent = 'Saving…';
+    const tags = elements.deviceTags.value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    void jsonRequest<{ tags?: string[] }>(`/api/devices/${encodeURIComponent(udid)}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tags }),
+    }).then((device) => {
+        elements.deviceTags.value = device.tags?.join(', ') ?? '';
+        elements.tagsResult.textContent = device.tags?.length ? `Saved ${device.tags.length} tag${device.tags.length === 1 ? '' : 's'}.` : 'Tags cleared.';
+    }).catch((error) => { elements.tagsResult.textContent = errorMessage(error); });
+});
 elements.openInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.showModal());
 elements.closeInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.close());
 elements.openPasscode.addEventListener('click', () => {

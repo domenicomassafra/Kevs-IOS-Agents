@@ -56,9 +56,9 @@ Done criteria: account pause/allow-list policy, campaign records, targeting, app
 
 `npm run acceptance:live -- --udid <UDID>` now produces a receipt for health → screenshot → semantic tree → stream → optional input → optional scheduled task. launchd render/install/uninstall/status support also exists. The remaining proof requires full Xcode selected, Apple signing ready, PostgreSQL available and a physical iPhone attached; services must not be installed merely to create a crash loop on an unready host.
 
-### Wave G — distributed MiniPC production runtime (source complete, deployment proof pending)
+### Wave G — distributed MiniPC production runtime (MiniPC deployed, device-worker proof pending)
 
-`docker-compose.production.yml` packages the Linux control plane and PostgreSQL with persistent storage and restart policies. `PHONE_FARM_ROLE=device-worker` packages macOS launchd with Appium, WDA supervision, queue execution and the authenticated device gateway but deliberately omits the web server. Remote screenshots, semantic trees, MJPEG and input are proxied through the gateway; canonical media is fetched from the MiniPC on demand with size/SHA-256 verification. Final closure requires deploying this topology on the actual MiniPC + Mac + iPhone and running the live acceptance receipt there.
+`docker-compose.production.yml` packages the Linux control plane and PostgreSQL with persistent storage and restart policies. The actual `minipc-ubuntu` control plane is deployed and proven healthy over tailnet HTTPS with the canonical PostgreSQL service and migrations. `PHONE_FARM_ROLE=device-worker` packages macOS launchd with Appium, WDA supervision, queue execution and the authenticated device gateway but deliberately omits the web server. Remote screenshots, semantic trees, MJPEG and input are proxied through the gateway; canonical media is fetched from the MiniPC on demand with size/SHA-256 verification. Final physical closure still requires the production Mac worker + signed WDA/iPhone acceptance receipt.
 
 ### Wave H — cross-platform lab + semantic Studio (source complete, live matrix pending)
 
@@ -75,3 +75,7 @@ Android workers can optionally expose a version-matched scrcpy server as a video
 ### Wave K — capability-aware scheduling + semantic authoring (source complete, live matrix pending)
 
 Automation Studio can either target a concrete device or ask the control plane to auto-pick an online, enabled, idle device matching platform/kind/worker constraints. Allocation ranks current execution/schedule load but still materializes a normal schedule bound to a concrete UDID for auditability. Flow timing now supports now/once/daily/weekly/interval schedules, and saved library executions carry the exact source flow/version in their immutable payload. The Semantic Inspector reads the live normalized accessibility tree and turns visible elements into semantic steps without hand-entering selector text. Live proof waits for two or more matching worker runtimes.
+
+### Wave L — reusable device pools + host observability (source complete, live worker matrix pending)
+
+Devices now carry normalized operator tags used by Fleet search and allocation. Named selectors are persisted in PostgreSQL as reusable device pools, and Automation Studio can schedule against a saved pool while still resolving to a concrete UDID before materialization. Configured workers stay visible while offline, while reachable hosts advertise capabilities plus bounded CPU/load/RAM/uptime telemetry. The MiniPC remains the metadata authority and workers receive tags/config without secrets or worker-local transport ports.

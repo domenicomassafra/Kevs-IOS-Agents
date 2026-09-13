@@ -171,9 +171,9 @@ Android workers may additionally expose an optional raw-H.264 scrcpy path when A
 
 ### Capability-aware allocation
 
-The scheduler remains device-addressed, but the API may resolve a target immediately before schedule creation. The allocator filters the canonical device registry to connected/enabled devices matching optional platform, kind, worker and explicit-device bounds, then ranks current queued/running execution load and active schedules. By default only idle runtimes qualify. `/api/schedules/allocate` writes the selected UDID into the ordinary schedule, so later executions, logs and campaign evidence never depend on a floating pool name. Recurring schedules stay on that chosen device rather than silently roaming between hosts.
+The scheduler remains device-addressed, but the API may resolve a target immediately before schedule creation. The allocator filters the canonical device registry to connected/enabled devices matching optional platform, kind, worker, normalized tags and explicit-device bounds, then ranks current queued/running execution load and active schedules. By default only idle runtimes qualify. Named selectors can be persisted as `scheduler.device_pools`; `/api/schedules/allocate` resolves either a saved pool or ad-hoc selector and writes the selected UDID into the ordinary schedule, so later executions, logs and campaign evidence never depend on a floating pool name. Recurring schedules stay on that chosen device rather than silently roaming between hosts.
 
-Automation Studio exposes the same model as **Specific device** vs **Any matching idle device**. A preview endpoint shows the current first candidate before submission. The Semantic Inspector can inspect either that candidate or the selected concrete device and turn the normalized accessibility snapshot into authoring actions; inspection itself is read-only.
+Automation Studio exposes the same model as **Specific device** vs **Any matching idle device**. Allocation filters can be saved/updated/deleted as named pools and can require operator-defined device tags. A preview endpoint shows the current first candidate before submission. The Semantic Inspector can inspect either that candidate or the selected concrete device and turn the normalized accessibility snapshot into authoring actions; inspection itself is read-only. Execution hosts are also first-class inventory: configured workers remain visible while offline, and online workers publish capabilities plus bounded load/RAM/CPU/uptime telemetry.
 
 `com.phone-farm.flow/flow@1` is the generic cross-platform contract. Its payload
 is an ordered list of portable actions (app launch/terminate, wait, tap, swipe,
@@ -190,6 +190,7 @@ through the exact same scheduler/evidence path as plugin-specific tasks.
 | `once` | `runAt` (ISO) |
 | `daily` | `localTime` `"HH:MM"`, `timezone` (IANA) |
 | `weekly` | `localTime`, `timezone`, `weekdays` (0–6) |
+| `interval` | `everyMinutes`, optional `startOffsetMinutes` |
 
 `run_window_minutes` (default 30) is the grace period after the scheduled time;
 past it, the execution is abandoned as "window expired". Recurrence is computed

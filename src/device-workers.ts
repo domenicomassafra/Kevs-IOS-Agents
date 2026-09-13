@@ -139,6 +139,7 @@ export class DeviceWorkerClient {
     async updateConfig(device: RegisteredDevice): Promise<void> {
         const body = {
             name: device.name,
+            tags: device.tags ?? [],
             ...(device.coordinateProfile ? { coordinateProfile: device.coordinateProfile } : {}),
             ...(device.coordinates ? { coordinates: device.coordinates } : {}),
             ...(device.instagramCoordinates ? { instagramCoordinates: device.instagramCoordinates } : {}),
@@ -161,18 +162,32 @@ export class DeviceWorkerFleet implements RemoteControl {
         this.clients = new Map(descriptors.map((descriptor) => [descriptor.id, new DeviceWorkerClient(descriptor, fetchImpl)]));
     }
 
+    private unavailableHost(id: string, client: DeviceWorkerClient, error: unknown, online: boolean): HostSnapshot {
+        return {
+            id,
+            hostname: client.descriptor.url.hostname,
+            os: 'unknown',
+            arch: 'unknown',
+            online,
+            observedAt: new Date().toISOString(),
+            error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+            capabilities: [],
+            tools: { appium: false, appiumRuntime: false, xcrun: false, adb: false, scrcpyVideo: false },
+        };
+    }
+
     async refresh(): Promise<DeviceWorkerDevice[]> {
         const batches = await Promise.all(Array.from(this.clients.entries(), async ([id, client]) => {
             try {
                 const devices = await client.devices();
-                const host = await client.host().catch(() => undefined);
+                const host = await client.host().catch((error) => this.unavailableHost(id, client, error, true));
                 return { id, devices, host };
             } catch (error) {
                 console.warn(`Device worker ${id} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-                return { id, devices: [] as DeviceWorkerDevice[], host: undefined };
+                return { id, devices: [] as DeviceWorkerDevice[], host: this.unavailableHost(id, client, error, false) };
             }
         }));
-        this.hostSnapshots = batches.flatMap(({ host }) => host ? [host] : []);
+        this.hostSnapshots = batches.map(({ host }) => host);
         const ownership = new Map<string, string>();
         const snapshots: DeviceWorkerDevice[] = [];
         for (const batch of batches) {
@@ -197,6 +212,8 @@ export class DeviceWorkerFleet implements RemoteControl {
                     existing.platform = snapshot.registered.platform;
                     existing.kind = snapshot.registered.kind;
                     existing.automationBackend = snapshot.registered.automationBackend;
+                    existing.tags = snapshot.registered.tags;
+                    if (!existing.tags?.length) delete existing.tags;
                     if (!existing.coordinateProfile && snapshot.registered.coordinateProfile) existing.coordinateProfile = snapshot.registered.coordinateProfile;
                     continue;
                 }
@@ -209,6 +226,7 @@ export class DeviceWorkerFleet implements RemoteControl {
                     ...(snapshot.registered.platform ? { platform: snapshot.registered.platform } : {}),
                     ...(snapshot.registered.kind ? { kind: snapshot.registered.kind } : {}),
                     ...(snapshot.registered.automationBackend ? { automationBackend: snapshot.registered.automationBackend } : {}),
+                    ...(snapshot.registered.tags?.length ? { tags: snapshot.registered.tags } : {}),
                     ...(snapshot.registered.coordinateProfile ? { coordinateProfile: snapshot.registered.coordinateProfile } : {}),
                     ...(snapshot.registered.coordinates ? { coordinates: snapshot.registered.coordinates } : {}),
                     ...(snapshot.registered.instagramCoordinates ? { instagramCoordinates: snapshot.registered.instagramCoordinates } : {}),

@@ -32,6 +32,8 @@ export interface RegisteredDevice extends DeviceIdentity {
     /** Instagram single-tap overrides. */
     instagramCoordinates?: Record<string, { x: number; y: number }>;
     disabled?: boolean;
+    /** Operator-defined labels used for search and allocation pools. */
+    tags?: string[];
     pluginData: Record<string, JsonObject>;
 }
 

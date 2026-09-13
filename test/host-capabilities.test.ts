@@ -11,6 +11,9 @@ test('mac hosts advertise iOS physical and simulator only when the matching tool
         commandAvailable: async (command) => command === 'xcrun',
     });
     assert.equal(host.id, 'studio');
+    assert.equal(host.online, true);
+    assert.ok(host.metrics && host.metrics.cpuCount > 0);
+    assert.ok(host.metrics && host.metrics.totalMemoryBytes >= host.metrics.freeMemoryBytes);
     assert.deepEqual(host.capabilities.sort(), ['ios.physical', 'ios.simulator', 'simctl'].sort());
 });
 

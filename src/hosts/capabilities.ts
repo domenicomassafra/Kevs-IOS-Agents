@@ -16,8 +16,11 @@ export type HostCapability =
 export interface HostSnapshot {
     id: string;
     hostname: string;
-    os: NodeJS.Platform;
+    os: NodeJS.Platform | 'unknown';
     arch: string;
+    online: boolean;
+    observedAt: string;
+    error?: string;
     capabilities: HostCapability[];
     tools: {
         appium: boolean;
@@ -25,6 +28,13 @@ export interface HostSnapshot {
         xcrun: boolean;
         adb: boolean;
         scrcpyVideo: boolean;
+    };
+    metrics?: {
+        uptimeSeconds: number;
+        load1: number;
+        cpuCount: number;
+        totalMemoryBytes: number;
+        freeMemoryBytes: number;
     };
 }
 
@@ -77,7 +87,16 @@ export async function detectHostCapabilities(options: {
         hostname: options.hostname ?? os.hostname(),
         os: platform,
         arch: options.arch ?? process.arch,
+        online: true,
+        observedAt: new Date().toISOString(),
         capabilities,
         tools: { appium, appiumRuntime, xcrun, adb, scrcpyVideo },
+        metrics: {
+            uptimeSeconds: Math.max(0, Math.round(os.uptime())),
+            load1: Number((os.loadavg()[0] ?? 0).toFixed(2)),
+            cpuCount: os.cpus().length,
+            totalMemoryBytes: os.totalmem(),
+            freeMemoryBytes: os.freemem(),
+        },
     };
 }
