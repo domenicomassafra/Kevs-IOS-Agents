@@ -12,6 +12,7 @@ import {
     validateColdDmHandles,
     validateColdDmMessage,
 } from './instagram/cold-dms-payload.js';
+import { summarizeLeadLists, validateLeadListName } from './instagram/leads.js';
 
 export interface InstagramPluginConfiguration {
     doomscrollEntrypoint?: string;
@@ -46,11 +47,27 @@ type PostPayload = JsonObject & {
 };
 
 type ColdDmsPayload = JsonObject & {
+    /** Explicit handles. Empty when the run pulls from a lead list instead. */
     handles: string[];
     message: string;
     account?: string;
     cycles?: number;
+    /** Pull the next uncontacted batch from data/leads/<leadList>.json. */
+    leadList?: string;
+    leadBatch?: number;
+    skipPrivate?: boolean;
 };
+
+const COLD_DMS_MAX_LEAD_BATCH = 25;
+
+function parseLeadBatch(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > COLD_DMS_MAX_LEAD_BATCH) {
+        throw new Error(`leadBatch must be an integer between 1 and ${COLD_DMS_MAX_LEAD_BATCH}`);
+    }
+    return parsed;
+}
 
 function objectPayload(value: JsonValue): Record<string, JsonValue> {
     if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Payload must be an object');
@@ -147,19 +164,29 @@ function createColdDmsTask(configuration: InstagramPluginConfiguration): TaskDef
         type: 'cold-dms', version: 1, displayName: 'Instagram cold DMs',
         validate(value) {
             const input = objectPayload(value);
+            const leadList = optionalString(input.leadList, 'leadList')?.trim()
+                ? validateLeadListName(input.leadList as string)
+                : undefined;
+            const leadBatch = parseLeadBatch(input.leadBatch);
+            const skipPrivate = input.skipPrivate === undefined ? undefined : Boolean(input.skipPrivate);
             const handlesRaw = input.handles;
             let handles: string[];
             if (typeof handlesRaw === 'string') {
-                handles = validateColdDmHandles(parseColdDmHandles(handlesRaw));
+                handles = parseColdDmHandles(handlesRaw);
             } else if (Array.isArray(handlesRaw)) {
-                handles = validateColdDmHandles(
-                    handlesRaw.map((item) => {
-                        if (typeof item !== 'string') throw new Error('handles must be strings');
-                        return item.startsWith('@') ? item.trim() : `@${item.trim()}`;
-                    }).filter(Boolean),
-                );
+                handles = handlesRaw.map((item) => {
+                    if (typeof item !== 'string') throw new Error('handles must be strings');
+                    return item.startsWith('@') ? item.trim() : `@${item.trim()}`;
+                }).filter((item) => item !== '@');
+            } else if (handlesRaw === undefined && leadList) {
+                handles = [];
             } else {
                 throw new Error('handles must be a string list or array');
+            }
+            if (leadList) {
+                if (handles.length > 0) throw new Error('Choose either a lead list or pasted handles, not both');
+            } else {
+                handles = validateColdDmHandles(handles);
             }
             if (typeof input.message !== 'string') throw new Error('message must be a string');
             const message = validateColdDmMessage(input.message);
@@ -179,10 +206,17 @@ function createColdDmsTask(configuration: InstagramPluginConfiguration): TaskDef
                 message,
                 ...(cycles ? { cycles } : {}),
                 ...(account ? { account } : {}),
+                ...(leadList ? { leadList, leadBatch: leadBatch ?? 10 } : {}),
+                ...(leadList && skipPrivate !== undefined ? { skipPrivate } : {}),
             };
         },
-        summarize: (payload) => `Cold DMs · ${payload.handles.length} handles`,
-        estimateDurationMs: (payload) => Math.max(60_000, payload.handles.length * 45_000),
+        summarize: (payload) => (payload.leadList
+            ? `Cold DMs · next ${payload.leadBatch ?? 10} from ${payload.leadList}`
+            : `Cold DMs · ${payload.handles.length} handles`),
+        estimateDurationMs: (payload) => Math.max(
+            60_000,
+            (payload.leadList ? (payload.leadBatch ?? 10) : payload.handles.length) * (payload.cycles ?? 1) * 45_000,
+        ),
         retryPolicy: () => ({ retryLimit: 0, retryDelaySeconds: 0, retryBackoff: false }),
         supportsStop: () => true,
         execute: (context, payload) => context.runProcess({
@@ -193,6 +227,11 @@ function createColdDmsTask(configuration: InstagramPluginConfiguration): TaskDef
                 INSTAGRAM_BUNDLE_ID: configuration.bundleId ?? 'com.burbn.instagram',
                 COLD_DMS_HANDLES: payload.handles.join('\n'),
                 COLD_DMS_MESSAGE: payload.message,
+                ...(payload.leadList ? {
+                    COLD_DMS_LEAD_LIST: payload.leadList,
+                    COLD_DMS_LEAD_BATCH: String(payload.leadBatch ?? 10),
+                    COLD_DMS_SKIP_PRIVATE: payload.skipPrivate === false ? 'false' : 'true',
+                } : {}),
                 ...(typeof payload.cycles === 'number' ? { COLD_DMS_CYCLES: String(payload.cycles) } : {}),
                 ...(payload.account ? { INSTAGRAM_SWITCH_ACCOUNT: payload.account } : {}),
             },
@@ -408,7 +447,10 @@ export function createInstagramPlugin(configuration: InstagramPluginConfiguratio
                     if (device.disabled) return reply.code(409).send({ error: 'This device is disconnected — reconnect it before scheduling automation' });
                     const body = request.body;
                     try {
-                        const handles = validateColdDmHandles(parseColdDmHandles(body.handles ?? ''));
+                        const leadList = body.lead_list?.trim() ? validateLeadListName(body.lead_list) : undefined;
+                        const handles = leadList ? [] : validateColdDmHandles(parseColdDmHandles(body.handles ?? ''));
+                        const leadBatch = leadList ? (parseLeadBatch(body.lead_batch) ?? 10) : undefined;
+                        const skipPrivate = leadList ? body.skip_private !== 'false' : undefined;
                         const message = validateColdDmMessage(body.message ?? '');
                         const cyclesRaw = body.cycles ? Number(body.cycles) : undefined;
                         const cycles = cyclesRaw && Number.isInteger(cyclesRaw) && cyclesRaw >= 1 && cyclesRaw <= 10
@@ -435,6 +477,7 @@ export function createInstagramPlugin(configuration: InstagramPluginConfiguratio
                                     message,
                                     ...(cycles ? { cycles } : {}),
                                     ...(body.account?.trim() ? { account: body.account.trim() } : {}),
+                                    ...(leadList ? { leadList, leadBatch, skipPrivate } : {}),
                                 },
                             },
                             timing: { kind: 'now' },
@@ -446,6 +489,8 @@ export function createInstagramPlugin(configuration: InstagramPluginConfiguratio
                     }
                 },
             );
+
+            context.app.get('/api/instagram/leads', async () => ({ lists: await summarizeLeadLists() }));
 
             context.app.get<{ Params: { udid: string } }>('/api/devices/:udid/instagram/posts/current', async (request) => {
                 const latest = (await context.scheduler.listExecutions(25, request.params.udid))

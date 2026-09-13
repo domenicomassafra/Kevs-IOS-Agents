@@ -1690,3 +1690,7 @@ dialog#calibrate-dialog { width: min(760px, calc(100% - 28px)); }
 }
 .pipeline-item .run-error { margin-top: 4px; color: #ff7b72; font-size: 12px; }
 .empty-state-inline { margin: 8px 0; color: var(--muted); font-size: 13px; }
+
+.lead-fields { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; }
+.lead-fields label { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.lead-fields input[type="number"] { width: 72px; }

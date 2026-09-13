@@ -166,7 +166,7 @@
                             </button>
                             <button id="open-instagram-cold-dms" class="workflow-tile" type="button">
                                 <span class="workflow-tile-title">Cold DMs</span>
-                                <span class="workflow-tile-desc">Handle list · open composer (no send)</span>
+                                <span class="workflow-tile-desc">Lead list or handles · compose &amp; send</span>
                             </button>
                         </div>
                     </div>
@@ -575,8 +575,20 @@
                 <button id="close-instagram-cold-dms" class="icon-button" type="button">Close</button>
             </div>
             <p>Opens Instagram → DM inbox → Compose → recipient → types preset → <strong>Send</strong> → Home → next.</p>
-            <label for="instagram-cold-dms-handles">Handles <small>(one per line or comma-separated, max 25)</small></label>
-            <textarea id="instagram-cold-dms-handles" name="handles" rows="6" required placeholder="@creator1&#10;@creator2"></textarea>
+            <label for="instagram-cold-dms-lead-list">Lead list <small>(next uncontacted batch from data/leads)</small></label>
+            <select id="instagram-cold-dms-lead-list" name="lead_list">
+                <option value="">Paste handles instead</option>
+            </select>
+            <div id="instagram-cold-dms-lead-fields" class="lead-fields" hidden>
+                <label for="instagram-cold-dms-lead-batch">Batch size
+                    <input id="instagram-cold-dms-lead-batch" name="lead_batch" type="number" min="1" max="25" value="10">
+                </label>
+                <label for="instagram-cold-dms-skip-private">
+                    <input id="instagram-cold-dms-skip-private" name="skip_private" type="checkbox" value="true" checked> Skip private accounts
+                </label>
+            </div>
+            <label for="instagram-cold-dms-handles">Handles <small>(one per line or comma-separated, max 25 — ignored when a lead list is chosen)</small></label>
+            <textarea id="instagram-cold-dms-handles" name="handles" rows="6" placeholder="@creator1&#10;@creator2"></textarea>
             <label for="instagram-cold-dms-message">Message preset</label>
             <textarea id="instagram-cold-dms-message" name="message" rows="4" maxlength="1000" required placeholder="Hey — love your content…"></textarea>
             <label for="instagram-cold-dms-cycles">Cycles per handle</label>

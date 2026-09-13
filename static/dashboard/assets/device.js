@@ -97,6 +97,9 @@ const elements = {
     cancelInstagramColdDms: element('#cancel-instagram-cold-dms'),
     instagramColdDmsForm: element('#instagram-cold-dms-form'),
     instagramColdDmsAccount: element('#instagram-cold-dms-account'),
+    instagramColdDmsLeadList: element('#instagram-cold-dms-lead-list'),
+    instagramColdDmsLeadFields: element('#instagram-cold-dms-lead-fields'),
+    instagramColdDmsHandles: element('#instagram-cold-dms-handles'),
     instagramColdDmsResult: element('#instagram-cold-dms-result'),
     instagramDoomscrollForm: element('#instagram-doomscroll-form'),
     instagramCommentEnabled: element('#instagram-comment-enabled'),
@@ -1745,8 +1748,38 @@ elements.instagramFollowingDoomscrollForm.addEventListener('htmx:afterRequest', 
             : 'Request failed.';
     }
 }));
+function syncColdDmsLeadMode() {
+    const usingList = elements.instagramColdDmsLeadList.value !== '';
+    elements.instagramColdDmsLeadFields.hidden = !usingList;
+    elements.instagramColdDmsHandles.disabled = usingList;
+    elements.instagramColdDmsHandles.required = !usingList;
+}
+async function loadColdDmsLeadLists() {
+    const previous = elements.instagramColdDmsLeadList.value;
+    try {
+        const response = await fetch('/api/instagram/leads');
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        elements.instagramColdDmsLeadList.replaceChildren(new Option('Paste handles instead', ''));
+        for (const list of result.lists) {
+            const label = `${list.name} · ${list.remainingPublic} public left of ${list.total}`;
+            elements.instagramColdDmsLeadList.add(new Option(label, list.name));
+        }
+        if (result.lists.some((list) => list.name === previous))
+            elements.instagramColdDmsLeadList.value = previous;
+        else if (!previous && result.lists.length > 0)
+            elements.instagramColdDmsLeadList.value = result.lists[0].name;
+    }
+    catch {
+        // Leave whatever options are there; pasted handles still work.
+    }
+    syncColdDmsLeadMode();
+}
+elements.instagramColdDmsLeadList.addEventListener('change', syncColdDmsLeadMode);
 elements.openInstagramColdDms.addEventListener('click', () => {
     elements.instagramColdDmsResult.textContent = '';
+    void loadColdDmsLeadLists();
     elements.instagramColdDmsDialog.showModal();
 });
 elements.closeInstagramColdDms.addEventListener('click', () => elements.instagramColdDmsDialog.close());

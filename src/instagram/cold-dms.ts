@@ -8,6 +8,14 @@ import {
     validateColdDmHandles,
     validateColdDmMessage,
 } from './cold-dms-payload.js';
+import {
+    loadLeadContactState,
+    loadLeadList,
+    markLeadContacted,
+    pickLeads,
+    summarizeLeadList,
+    validateLeadListName,
+} from './leads.js';
 
 function positiveInteger(name: string, fallback: number): number {
     const rawValue = process.env[name] ?? String(fallback);
@@ -25,11 +33,59 @@ if (!udidEnv) {
 const udid: string = udidEnv;
 
 const message = validateColdDmMessage(process.env.COLD_DMS_MESSAGE ?? '');
-const handles = validateColdDmHandles(parseColdDmHandles(process.env.COLD_DMS_HANDLES ?? ''));
 const switchAccountName = process.env.INSTAGRAM_SWITCH_ACCOUNT?.trim() || undefined;
 const betweenHandleMs = positiveInteger('COLD_DMS_BETWEEN_MS', 2500);
+// Random extra wait added to every gap so the cadence isn't metronomic.
+const jitterMs = Number.parseInt(process.env.COLD_DMS_JITTER_MS ?? '1500', 10) || 0;
 
 const registeredDevice = (await loadRegisteredDevices()).find((device) => device.udid === udid);
+
+// Handles come either from an explicit paste (COLD_DMS_HANDLES) or from a lead
+// list, where we pull the next uncontacted batch and record each outcome so
+// the next run continues where this one stopped.
+const leadListName = process.env.COLD_DMS_LEAD_LIST?.trim()
+    ? validateLeadListName(process.env.COLD_DMS_LEAD_LIST)
+    : undefined;
+let handles: string[];
+if (leadListName) {
+    const batchSize = positiveInteger('COLD_DMS_LEAD_BATCH', 10);
+    const skipPrivate = process.env.COLD_DMS_SKIP_PRIVATE !== 'false';
+    const retryFailed = process.env.COLD_DMS_RETRY_FAILED === 'true';
+    const list = await loadLeadList(leadListName);
+    const state = await loadLeadContactState(leadListName);
+    const summary = summarizeLeadList(list, state);
+    const picked = pickLeads(list, state, {
+        size: batchSize,
+        skipPrivate,
+        retryFailed,
+        exclude: [...registeredAccounts(registeredDevice), ...(switchAccountName ? [switchAccountName] : [])],
+    });
+    console.log(
+        `Lead list "${leadListName}": total=${summary.total} sent=${summary.sent} failed=${summary.failed} `
+        + `remaining=${summary.remaining} (${summary.remainingPublic} public) → picked ${picked.length}`
+        + `${skipPrivate ? ' (skipping private)' : ''}`,
+    );
+    if (picked.length === 0) {
+        throw new Error(`Lead list "${leadListName}" has no uncontacted leads left for this filter`);
+    }
+    handles = validateColdDmHandles(picked.map((lead) => `@${lead.username}`));
+} else {
+    handles = validateColdDmHandles(parseColdDmHandles(process.env.COLD_DMS_HANDLES ?? ''));
+}
+
+async function recordLeadOutcome(handle: string, status: 'sent' | 'failed', error?: string): Promise<void> {
+    if (!leadListName) return;
+    try {
+        await markLeadContacted(leadListName, handle, {
+            status,
+            deviceUdid: udid,
+            ...(switchAccountName ? { account: switchAccountName } : {}),
+            ...(error ? { error } : {}),
+        });
+    } catch (stateError) {
+        console.warn(`Could not record ${status} for ${handle}: ${stateError instanceof Error ? stateError.message : String(stateError)}`);
+    }
+}
 const coordinates = resolveDeviceCoordinates(
     coordinateProfile(registeredDevice),
     registeredDevice?.instagramCoordinates,
@@ -204,7 +260,8 @@ const remoteControl = new WdaRemoteControl({
 
 console.log(
     `Starting Instagram cold DMs: handles=${handles.length} cycles=${cycles} `
-    + `sends=${sequence.length} messageChars=${message.length}`,
+    + `sends=${sequence.length} messageChars=${message.length}`
+    + `${leadListName ? ` leadList=${leadListName}` : ''}`,
 );
 
 await remoteControl.unlock(udid);
@@ -250,11 +307,12 @@ try {
         try {
             await sendMessageToHandle(driver, handle);
             sent += 1;
+            await recordLeadOutcome(handle, 'sent');
         } catch (error) {
             failed += 1;
-            console.error(
-                `Skipped ${handle}: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            const reason = error instanceof Error ? error.message : String(error);
+            console.error(`Skipped ${handle}: ${reason}`);
+            await recordLeadOutcome(handle, 'failed', reason);
             try {
                 await returnToHome(driver);
             } catch {
@@ -264,7 +322,7 @@ try {
         }
         if (index < sequence.length - 1 && !stopRequested) {
             await returnToHome(driver);
-            await cancellableDelay(betweenHandleMs);
+            await cancellableDelay(betweenHandleMs + Math.floor(Math.random() * (jitterMs + 1)));
         }
     }
 } finally {

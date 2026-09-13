@@ -10,3 +10,6 @@ static/assets/
 *.log
 .appium2/
 logs/
+
+# Cold DM lead contact state (per-run outcomes; keep local)
+data/leads/state/
