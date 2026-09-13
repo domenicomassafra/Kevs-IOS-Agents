@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { rm } from 'node:fs/promises';
+import { access, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { DatabaseConnection } from '../database/client.js';
@@ -247,7 +247,11 @@ export class SchedulerRepository {
     }
 
     async appendLogs(id: string, attempt: number, lines: string[]): Promise<void> {
-        if (lines.length) await this.connection.db.insert(executionLogs).values(lines.map((line) => ({ executionId: id, attempt, line })));
+        if (!lines.length) return;
+        await this.connection.db.insert(executionLogs).values(lines.map((line) => ({ executionId: id, attempt, line })));
+        // Heartbeat so reconcile does not treat a healthy long post as a zombie.
+        await this.connection.db.update(executions).set({ updatedAt: new Date() })
+            .where(and(eq(executions.id, id), eq(executions.status, 'running')));
     }
 
     async finishAttempt(id: string, attempt: number, exitCode: number | null, error?: string): Promise<void> {
@@ -257,8 +261,9 @@ export class SchedulerRepository {
 
     async finishExecution(id: string, status: 'succeeded' | 'failed' | 'cancelled' | 'stopped', exitCode: number | null, error?: string): Promise<void> {
         await this.connection.db.update(executions).set({
-            status, exitCode, error, finishedAt: new Date(), updatedAt: new Date(),
+            status, exitCode, error: error ?? null, finishedAt: new Date(), updatedAt: new Date(),
         }).where(eq(executions.id, id));
+        await this.syncPipelineItemsForExecution(id, status, error);
         // Keep the media for retryable outcomes — the dashboard Retry button
         // accepts failed/stopped and would otherwise hit "asset is missing".
         // failed/stopped media is reclaimed by cleanup() once it ages out.
@@ -383,6 +388,7 @@ export class SchedulerRepository {
             }
 
             const ageMs = Date.now() - new Date(execution.updatedAt).getTime();
+            const abandonAfterMs = this.runningAbandonGraceMs(execution);
 
             if (execution.status === 'running') {
                 if (job?.state === 'retry') {
@@ -398,10 +404,12 @@ export class SchedulerRepository {
                     changed += 1;
                 } else if (
                     job.state === 'active'
-                    && (ageMs > 45_000 || (execution.stopRequestedAt && ageMs > 5_000))
+                    && (ageMs > abandonAfterMs || (execution.stopRequestedAt && ageMs > 5_000))
                 ) {
                     // Worker SIGTERM leaves the job "active" and blocks the singleton
                     // device queue forever — same class of ghost as queued orphans.
+                    // Grace is task-duration based so long TikTok posts are not killed
+                    // while still logging heartbeats.
                     await this.boss.cancel(queue, job.id).catch(() => {});
                     await this.finishExecution(
                         execution.id,
@@ -410,7 +418,7 @@ export class SchedulerRepository {
                         'Abandoned active queue job after worker restart',
                     );
                     changed += 1;
-                    console.log(`Finalized zombie running execution ${execution.id}`);
+                    console.log(`Finalized zombie running execution ${execution.id} (no heartbeat for ${Math.round(ageMs / 1000)}s)`);
                 }
                 continue;
             }
@@ -432,7 +440,75 @@ export class SchedulerRepository {
                 console.error(`Failed to requeue ${execution.id}:`, error);
             }
         }
+        changed += await this.releaseOrphanedPublishingItems();
         return changed;
+    }
+
+    /** How long a running job may go without an updatedAt heartbeat before reconcile abandons it. */
+    private runningAbandonGraceMs(execution: ExecutionRow): number {
+        const configured = Number(process.env.SCHEDULER_RUNNING_ABANDON_MS);
+        if (Number.isFinite(configured) && configured >= 60_000) return configured;
+        let estimate = 60_000;
+        try {
+            estimate = this.plugins.task(taskEnvelope(execution)).estimateDurationMs(execution.payload);
+        } catch { /* plugin unavailable */ }
+        // Posts routinely run 2–5+ minutes; keep a floor so short estimates never
+        // recreate the old 45s false-abandon.
+        return Math.min(15 * 60_000, Math.max(5 * 60_000, estimate + 2 * 60_000));
+    }
+
+    /**
+     * If a drain/post dies outside task.execute (reconcile abandon, SIGTERM),
+     * pipeline items can be left in publishing forever. Release them back to ready.
+     */
+    private async syncPipelineItemsForExecution(
+        executionId: string,
+        status: 'succeeded' | 'failed' | 'cancelled' | 'stopped',
+        error?: string,
+    ): Promise<void> {
+        if (status === 'succeeded') {
+            await this.connection.db.update(pipelineItems).set({
+                status: 'published', publishedAt: new Date(), updatedAt: new Date(), error: null, assetId: null,
+            }).where(and(eq(pipelineItems.executionId, executionId), eq(pipelineItems.status, 'publishing')));
+            return;
+        }
+        const message = error?.trim() || `Execution ${status}`;
+        // Do not auto-requeue — a half-finished TikTok post must not silently retry
+        // and risk publishing the wrong camera-roll clip.
+        await this.connection.db.update(pipelineItems).set({
+            status: 'failed',
+            error: message,
+            updatedAt: new Date(),
+        }).where(and(eq(pipelineItems.executionId, executionId), eq(pipelineItems.status, 'publishing')));
+    }
+
+    /** Catch publishing rows whose execution already finished but never synced. */
+    private async releaseOrphanedPublishingItems(): Promise<number> {
+        const published = await this.connection.db.execute(sql`
+            update scheduler.pipeline_items as p
+            set status = 'published',
+                published_at = coalesce(p.published_at, now()),
+                asset_id = null,
+                error = null,
+                updated_at = now()
+            from scheduler.executions as e
+            where p.execution_id = e.id
+              and p.status = 'publishing'
+              and e.status = 'succeeded'
+            returning p.id
+        `);
+        const failed = await this.connection.db.execute(sql`
+            update scheduler.pipeline_items as p
+            set status = 'failed',
+                error = coalesce(e.error, 'Released after execution ended'),
+                updated_at = now()
+            from scheduler.executions as e
+            where p.execution_id = e.id
+              and p.status = 'publishing'
+              and e.status in ('failed', 'cancelled', 'stopped', 'skipped')
+            returning p.id
+        `);
+        return (published.rows as unknown[]).length + (failed.rows as unknown[]).length;
     }
 
     /** Send a fresh pg-boss job for an execution that is still marked queued. */
@@ -532,7 +608,7 @@ export class SchedulerRepository {
                 set status = 'publishing', execution_id = ${executionId}::uuid, updated_at = now(), error = null
                 where id = (
                     select id from scheduler.pipeline_items
-                    where device_udid = ${deviceUdid} and status = 'ready'
+                    where device_udid = ${deviceUdid} and status = 'ready' and asset_id is not null
                     order by created_at asc
                     for update skip locked
                     limit 1
@@ -546,14 +622,24 @@ export class SchedulerRepository {
         });
         if (!claimed) return null;
         const [assetRow] = await this.connection.db.select().from(assets).where(eq(assets.id, claimed.asset_id)).limit(1);
-        if (!assetRow) throw new Error(`Pipeline media asset ${claimed.asset_id} is missing`);
+        if (!assetRow) {
+            await this.failPipelineItem(claimed.id, `Pipeline media asset ${claimed.asset_id} is missing`);
+            return null;
+        }
         const root = path.resolve(process.env.SCHEDULER_DATA_DIR ?? '.scheduler-data');
+        const filePath = path.resolve(root, assetRow.relativePath);
+        try {
+            await access(filePath);
+        } catch {
+            await this.failPipelineItem(claimed.id, `Pipeline media file is missing on disk (${assetRow.originalName})`);
+            return null;
+        }
         return {
             id: claimed.id,
             caption: claimed.caption,
             asset: {
                 id: assetRow.id,
-                path: path.resolve(root, assetRow.relativePath),
+                path: filePath,
                 name: assetRow.originalName,
                 mimeType: assetRow.mimeType,
                 size: assetRow.size,

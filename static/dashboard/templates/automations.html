@@ -83,7 +83,7 @@
                     <h2>Queue &amp; schedule</h2>
                 </div>
             </div>
-            <p class="workflows-lead">Add ready forms (video + title). When auto is on, the farm drains one item at each Eastern check time.</p>
+            <p class="workflows-lead">Add ready forms (video + title). Auto drains <strong>one ready item</strong> per tick — empty queues skip TikTok entirely. Name phones <code>#1</code>, <code>#2</code>… for fleet stagger.</p>
 
             <div class="field automation-device-field">
                 <label for="pipeline-device">Device</label>
@@ -91,6 +91,8 @@
                     <option value="">Select an iPhone…</option>
                 </select>
             </div>
+            <label class="checkbox-option"><input id="pipeline-fleet" type="checkbox"> All connected devices · stagger +5 min by farm # (#1 on time, #2 +5 m, #3 +10 m…)</label>
+            <p id="pipeline-fleet-hint" class="run-meta" hidden></p>
 
             <form id="pipeline-form" class="pipeline-add">
                 <label for="pipeline-video">Video</label>
@@ -100,7 +102,7 @@
                 <div class="form-actions">
                     <span id="pipeline-add-result" class="run-meta" aria-live="polite"></span>
                     <span class="spacer"></span>
-                    <button class="button primary" type="submit">Add to queue</button>
+                    <button id="pipeline-submit" class="button primary" type="submit">Add to queue</button>
                 </div>
             </form>
 

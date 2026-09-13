@@ -36,6 +36,10 @@ export function validateTiming(timing: ScheduleTiming, now = new Date()): void {
         if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
             throw new Error('Interval schedules require everyMinutes between 1 and 1440');
         }
+        const offset = timing.startOffsetMinutes ?? 0;
+        if (!Number.isInteger(offset) || offset < 0 || offset > 24 * 60) {
+            throw new Error('Interval startOffsetMinutes must be between 0 and 1440');
+        }
         return;
     }
     void parseRecurring(timing, now).next();
@@ -44,7 +48,10 @@ export function validateTiming(timing: ScheduleTiming, now = new Date()): void {
 export function initialRunAt(timing: ScheduleTiming, now = new Date()): Date {
     if (timing.kind === 'now') return now;
     if (timing.kind === 'once') return new Date(timing.runAt);
-    if (timing.kind === 'interval') return now;
+    if (timing.kind === 'interval') {
+        const offsetMs = (timing.startOffsetMinutes ?? 0) * 60_000;
+        return new Date(now.getTime() + offsetMs);
+    }
     return parseRecurring(timing, new Date(now.getTime() - 1_000)).next().toDate();
 }
 

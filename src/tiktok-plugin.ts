@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,8 @@ import type { JsonObject, JsonValue, ScheduleTiming } from './types.js';
 import {
     resolveDeviceCoordinates,
 } from './devices/coordinates.js';
+import { farmOrderIndex, farmStaggerSlot, shiftLocalTime } from './devices/farm-order.js';
+import type { RegisteredDevice } from './devices/registry.js';
 import {
     createWorkflowPattern,
     listWorkflowsFromPluginData,
@@ -75,12 +77,15 @@ type PostPayload = JsonObject & {
 const PIPELINE_CHECK_TIMES = ['12:00', '15:00', '18:00', '21:00'] as const;
 const PIPELINE_TIMEZONE = 'America/New_York';
 const PIPELINE_FREQUENCIES = ['production', '60', '15', '5', '1'] as const;
+const PIPELINE_STAGGER_MINUTES = 5;
 type PipelineFrequency = (typeof PIPELINE_FREQUENCIES)[number];
 
 type PostPipelinePluginData = {
     enabled?: boolean;
     scheduleIds?: string[];
     frequency?: PipelineFrequency;
+    fleet?: boolean;
+    staggerMinutes?: number;
 };
 
 function parsePipelineFrequency(value: unknown): PipelineFrequency {
@@ -98,14 +103,30 @@ function pipelineFrequencyLabel(frequency: PipelineFrequency): string {
     return 'every minute';
 }
 
-function pipelineCheckSummary(frequency: PipelineFrequency): Array<{ localTime?: string; timezone?: string; everyMinutes?: number; label: string }> {
+function pipelineCheckSummary(
+    frequency: PipelineFrequency,
+    staggerMinutes = 0,
+): Array<{ localTime?: string; timezone?: string; everyMinutes?: number; startOffsetMinutes?: number; label: string }> {
     if (frequency === 'production') {
-        return PIPELINE_CHECK_TIMES.map((localTime) => ({
-            localTime, timezone: PIPELINE_TIMEZONE, label: `${localTime} ${PIPELINE_TIMEZONE}`,
-        }));
+        return PIPELINE_CHECK_TIMES.map((localTime) => {
+            const shifted = shiftLocalTime(localTime, staggerMinutes);
+            return {
+                localTime: shifted,
+                timezone: PIPELINE_TIMEZONE,
+                label: staggerMinutes
+                    ? `${shifted} ${PIPELINE_TIMEZONE} (+${staggerMinutes}m stagger)`
+                    : `${shifted} ${PIPELINE_TIMEZONE}`,
+            };
+        });
     }
     const everyMinutes = Number(frequency);
-    return [{ everyMinutes, label: pipelineFrequencyLabel(frequency) }];
+    return [{
+        everyMinutes,
+        startOffsetMinutes: staggerMinutes,
+        label: staggerMinutes
+            ? `${pipelineFrequencyLabel(frequency)} · starts +${staggerMinutes}m`
+            : pipelineFrequencyLabel(frequency),
+    }];
 }
 
 function postPipelineFromPluginData(data: JsonObject): PostPipelinePluginData {
@@ -118,11 +139,37 @@ function postPipelineFromPluginData(data: JsonObject): PostPipelinePluginData {
             ? obj.scheduleIds.filter((id): id is string => typeof id === 'string')
             : [],
         frequency: parsePipelineFrequency(obj.frequency),
+        fleet: obj.fleet === true,
+        staggerMinutes: typeof obj.staggerMinutes === 'number' ? obj.staggerMinutes : undefined,
     };
 }
 
 function withPostPipeline(data: JsonObject, pipeline: PostPipelinePluginData): JsonObject {
     return { ...data, postPipeline: pipeline as unknown as JsonObject };
+}
+
+function pipelineTimingsForDevice(frequency: PipelineFrequency, staggerMinutes: number): ScheduleTiming[] {
+    if (frequency === 'production') {
+        return PIPELINE_CHECK_TIMES.map((localTime) => ({
+            kind: 'daily' as const,
+            localTime: shiftLocalTime(localTime, staggerMinutes),
+            timezone: PIPELINE_TIMEZONE,
+        }));
+    }
+    return [{
+        kind: 'interval',
+        everyMinutes: Number(frequency),
+        ...(staggerMinutes > 0 ? { startOffsetMinutes: staggerMinutes } : {}),
+    }];
+}
+
+function activeFarmDevices(devices: RegisteredDevice[]): RegisteredDevice[] {
+    return devices
+        .filter((device) => !device.disabled)
+        .sort((a, b) => {
+            const diff = farmOrderIndex(a.name) - farmOrderIndex(b.name);
+            return diff !== 0 ? diff : a.name.localeCompare(b.name);
+        });
 }
 
 async function hashFile(filePath: string): Promise<string> {
@@ -139,13 +186,18 @@ function createPipelineDrainTask(configuration: TikTokPluginConfiguration): Task
             return {};
         },
         summarize: () => 'Post pipeline · check & publish',
-        estimateDurationMs: () => 60_000,
+        estimateDurationMs: () => 6 * 60_000,
         retryPolicy: () => ({ retryLimit: 0, retryDelaySeconds: 0, retryBackoff: false }),
         supportsStop: () => true,
         async execute(context: TaskExecutionContext) {
             const claimed = await context.claimPipelineItem();
             if (!claimed) {
-                await context.log('Pipeline empty — nothing to publish');
+                await context.log('Pipeline empty — skipping TikTok (no ready video+caption)');
+                return { exitCode: 0, stopped: false };
+            }
+            if (!claimed.caption?.trim()) {
+                await context.failPipelineItem(claimed.id, 'Pipeline item is missing a caption');
+                await context.log('Skipped item without caption — will not publish random media');
                 return { exitCode: 0, stopped: false };
             }
             await context.log(`Publishing pipeline item ${claimed.id} (${claimed.asset.name})`);
@@ -155,7 +207,7 @@ function createPipelineDrainTask(configuration: TikTokPluginConfiguration): Task
                     device: context.device,
                     files: [{ path: claimed.asset.path, name: claimed.asset.name, mimeType: claimed.asset.mimeType }],
                     destination: 'publish',
-                    ...(claimed.caption ? { caption: claimed.caption } : {}),
+                    caption: claimed.caption.trim(),
                 }));
                 const result = await context.runProcess({
                     entrypoint: configuration.postEntrypoint ?? fileURLToPath(new URL('./tiktok/post.ts', import.meta.url)),
@@ -390,7 +442,7 @@ function createPostTask(configuration: TikTokPluginConfiguration): TaskDefinitio
             };
         },
         summarize: (payload) => `Post · publish · ${payload.media.length} media`,
-        estimateDurationMs: () => 60_000,
+        estimateDurationMs: () => 6 * 60_000,
         retryPolicy: () => ({ retryLimit: 0, retryDelaySeconds: 0, retryBackoff: false }),
         supportsStop: () => true,
         async execute(context: TaskExecutionContext, payload) {
@@ -811,14 +863,29 @@ export function createTikTokPlugin(configuration: TikTokPluginConfiguration = {}
                 if (!device) return reply.code(404).send({ error: 'Device is not registered' });
                 const pipeline = postPipelineFromPluginData(tiktokPluginData(device));
                 const frequency = pipeline.frequency ?? 'production';
+                const staggerMinutes = pipeline.staggerMinutes ?? 0;
                 const items = await context.scheduler.listPipelineItems(device.udid);
+                const fleet = activeFarmDevices(await context.loadDevices());
                 return {
                     enabled: pipeline.enabled === true,
                     frequency,
                     frequencyLabel: pipelineFrequencyLabel(frequency),
-                    checkTimes: pipelineCheckSummary(frequency),
+                    fleet: pipeline.fleet === true,
+                    staggerMinutes,
+                    farmIndex: farmOrderIndex(device.name),
+                    checkTimes: pipelineCheckSummary(frequency, staggerMinutes),
                     scheduleIds: pipeline.scheduleIds ?? [],
                     items,
+                    fleetPreview: fleet.map((entry, order) => {
+                        const slot = farmStaggerSlot(entry.name, fleet.map((d) => d.name));
+                        return {
+                            udid: entry.udid,
+                            name: entry.name,
+                            farmIndex: farmOrderIndex(entry.name),
+                            staggerMinutes: slot * PIPELINE_STAGGER_MINUTES,
+                            order: order + 1,
+                        };
+                    }),
                 };
             });
 
@@ -849,20 +916,32 @@ export function createTikTokPlugin(configuration: TikTokPluginConfiguration = {}
                     const caption = fields.get('caption')?.trim() || fields.get('title')?.trim() || '';
                     if (!caption) throw new Error('Add a title / caption');
                     if (caption.length > 2200) throw new Error('Caption must be 2,200 characters or fewer');
-                    const stored = await context.scheduler.registerAssets([{
-                        relativePath: path.relative(dataRoot, video.path),
-                        originalName: video.name,
-                        mimeType: video.mimeType,
-                        size: (await stat(video.path)).size,
-                        sha256: await hashFile(video.path),
-                    }]);
-                    assetIds = stored.map(({ id }) => id);
-                    const item = await context.scheduler.enqueuePipelineItem({
-                        deviceUdid: device.udid,
-                        assetId: stored[0]!.id,
-                        caption,
-                    });
-                    return reply.code(201).send(item);
+                    const fleet = fields.get('fleet') === 'true' || fields.get('scope') === 'fleet';
+                    const targets = fleet
+                        ? activeFarmDevices(await context.loadDevices())
+                        : [device];
+                    if (!targets.length) throw new Error('No connected devices available for the pipeline');
+                    const created = [];
+                    for (const target of targets) {
+                        const targetDir = await mkdtemp(path.join(assetRoot, 'pipeline-'));
+                        const targetPath = path.join(targetDir, video.name);
+                        await copyFile(video.path, targetPath);
+                        const stored = await context.scheduler.registerAssets([{
+                            relativePath: path.relative(dataRoot, targetPath),
+                            originalName: video.name,
+                            mimeType: video.mimeType,
+                            size: (await stat(targetPath)).size,
+                            sha256: await hashFile(targetPath),
+                        }]);
+                        assetIds.push(...stored.map(({ id }) => id));
+                        created.push(await context.scheduler.enqueuePipelineItem({
+                            deviceUdid: target.udid,
+                            assetId: stored[0]!.id,
+                            caption,
+                        }));
+                    }
+                    await rm(directory, { recursive: true, force: true });
+                    return reply.code(201).send(fleet ? { fleet: true, items: created } : created[0]);
                 } catch (error) {
                     if (assetIds.length) await context.scheduler.deleteAssets(assetIds);
                     await rm(directory, { recursive: true, force: true });
@@ -878,57 +957,96 @@ export function createTikTokPlugin(configuration: TikTokPluginConfiguration = {}
                 return { ok: true, item };
             });
 
-            context.app.post<{ Params: { udid: string }; Body: { enabled?: boolean; frequency?: string } }>('/api/devices/:udid/tiktok/pipeline/auto', async (request, reply) => {
+            const applyPipelineAuto = async (
+                targets: RegisteredDevice[],
+                enabled: boolean,
+                frequency: PipelineFrequency,
+                fleet: boolean,
+            ) => {
+                const createdByDevice: Array<{
+                    udid: string; name: string; staggerMinutes: number; scheduleIds: string[];
+                }> = [];
+                const allCreated: string[] = [];
+                const names = targets.map((entry) => entry.name);
+                try {
+                    for (const target of targets) {
+                        const pluginData = tiktokPluginData(target);
+                        const current = postPipelineFromPluginData(pluginData);
+                        for (const id of current.scheduleIds ?? []) {
+                            try { await context.scheduler.setScheduleStatus(id, 'cancelled'); } catch { /* already gone */ }
+                        }
+                        const slot = farmStaggerSlot(target.name, names);
+                        const staggerMinutes = fleet ? slot * PIPELINE_STAGGER_MINUTES : 0;
+                        const createdIds: string[] = [];
+                        if (enabled) {
+                            for (const timing of pipelineTimingsForDevice(frequency, staggerMinutes)) {
+                                const schedule = await context.scheduler.createTask({
+                                    deviceUdid: target.udid,
+                                    task: {
+                                        pluginId: 'com.git-agni.tiktok',
+                                        taskType: 'pipeline-drain',
+                                        taskVersion: 1,
+                                        payload: {},
+                                    },
+                                    timing,
+                                    runWindowMinutes: frequency === 'production' ? 45 : Math.max(5, Number(frequency) + 2),
+                                }, pluginData);
+                                createdIds.push(schedule.id);
+                                allCreated.push(schedule.id);
+                            }
+                        }
+                        const next = withPostPipeline(pluginData, {
+                            enabled, frequency, fleet, staggerMinutes, scheduleIds: createdIds,
+                        });
+                        await context.mutateDevices((devices) => {
+                            const row = devices.find((entry) => entry.udid === target.udid);
+                            if (!row) throw new Error(`Device ${target.name} disappeared while updating pipeline`);
+                            row.pluginData['com.git-agni.tiktok'] = next;
+                        });
+                        createdByDevice.push({
+                            udid: target.udid, name: target.name, staggerMinutes, scheduleIds: createdIds,
+                        });
+                    }
+                    return {
+                        enabled,
+                        frequency,
+                        frequencyLabel: pipelineFrequencyLabel(frequency),
+                        fleet,
+                        staggerStepMinutes: PIPELINE_STAGGER_MINUTES,
+                        devices: createdByDevice,
+                    };
+                } catch (error) {
+                    for (const id of allCreated) {
+                        try { await context.scheduler.setScheduleStatus(id, 'cancelled'); } catch { /* ignore */ }
+                    }
+                    throw error;
+                }
+            };
+
+            context.app.post<{
+                Params: { udid: string };
+                Body: { enabled?: boolean; frequency?: string; scope?: string; fleet?: boolean };
+            }>('/api/devices/:udid/tiktok/pipeline/auto', async (request, reply) => {
                 const device = await deviceData(request.params.udid);
                 if (!device) return reply.code(404).send({ error: 'Device is not registered' });
                 if (device.disabled) return reply.code(409).send({ error: 'This device is disconnected' });
                 const enabled = request.body?.enabled === true;
                 const frequency = parsePipelineFrequency(request.body?.frequency);
-                const pluginData = tiktokPluginData(device);
-                const current = postPipelineFromPluginData(pluginData);
-                const createdIds: string[] = [];
+                const fleet = request.body?.fleet === true || request.body?.scope === 'fleet';
                 try {
-                    for (const id of current.scheduleIds ?? []) {
-                        try { await context.scheduler.setScheduleStatus(id, 'cancelled'); } catch { /* already gone */ }
-                    }
-                    if (enabled) {
-                        const timings: ScheduleTiming[] = frequency === 'production'
-                            ? PIPELINE_CHECK_TIMES.map((localTime) => ({
-                                kind: 'daily' as const, localTime, timezone: PIPELINE_TIMEZONE,
-                            }))
-                            : [{ kind: 'interval', everyMinutes: Number(frequency) }];
-                        for (const timing of timings) {
-                            const schedule = await context.scheduler.createTask({
-                                deviceUdid: device.udid,
-                                task: {
-                                    pluginId: 'com.git-agni.tiktok',
-                                    taskType: 'pipeline-drain',
-                                    taskVersion: 1,
-                                    payload: {},
-                                },
-                                timing,
-                                runWindowMinutes: frequency === 'production' ? 45 : Math.max(5, Number(frequency) + 2),
-                            }, pluginData);
-                            createdIds.push(schedule.id);
-                        }
-                    }
-                    const next = withPostPipeline(pluginData, { enabled, frequency, scheduleIds: createdIds });
-                    await context.mutateDevices((devices) => {
-                        const target = devices.find((entry) => entry.udid === device.udid);
-                        if (!target) throw new Error('Device disappeared while updating pipeline');
-                        target.pluginData['com.git-agni.tiktok'] = next;
-                    });
+                    const targets = fleet
+                        ? activeFarmDevices(await context.loadDevices())
+                        : [device];
+                    if (!targets.length) return reply.code(409).send({ error: 'No active devices for fleet pipeline' });
+                    const result = await applyPipelineAuto(targets, enabled, frequency, fleet);
+                    const self = result.devices.find((entry) => entry.udid === device.udid) ?? result.devices[0]!;
                     return {
-                        enabled,
-                        frequency,
-                        frequencyLabel: pipelineFrequencyLabel(frequency),
-                        checkTimes: pipelineCheckSummary(frequency),
-                        scheduleIds: createdIds,
+                        ...result,
+                        staggerMinutes: self.staggerMinutes,
+                        checkTimes: pipelineCheckSummary(frequency, self.staggerMinutes),
+                        scheduleIds: self.scheduleIds,
                     };
                 } catch (error) {
-                    for (const id of createdIds) {
-                        try { await context.scheduler.setScheduleStatus(id, 'cancelled'); } catch { /* ignore */ }
-                    }
                     return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
                 }
             });
