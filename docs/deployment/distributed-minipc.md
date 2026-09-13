@@ -24,6 +24,8 @@ cp .env.minipc.example .env.minipc
 
 `docker-compose.production.yml` runs PostgreSQL 17 and the control-plane container with persistent state in `.runtime/minipc` plus the PostgreSQL named volume. Both services use `restart: unless-stopped`.
 
+The control-plane image intentionally installs npm dependencies with lifecycle scripts disabled. Native OCR and iPhone automation binaries are execution-node concerns and are not loaded by the Linux control plane; the Docker build includes a real `tsx` import smoke test for the API server so a missing Linux runtime dependency fails the image build immediately.
+
 The control-plane worker list uses:
 
 ```text
