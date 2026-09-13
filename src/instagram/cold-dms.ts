@@ -2,7 +2,13 @@ import { remote, type Browser } from 'webdriverio';
 
 import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { coordinateProfile, registeredAccounts } from './runtime-settings.js';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import { switchInstagramAccount, tapCoordinate, typeText } from './actions.js';
+import { findWordMatch, messageWordMatches } from './cold-dms-verify.js';
+import { findHandleMatch, pointFromWord, recognizeWords, type OcrWord } from './ocr.js';
+import sharp from 'sharp';
 import {
     parseColdDmHandles,
     validateColdDmHandles,
@@ -38,6 +44,11 @@ const betweenHandleMs = positiveInteger('COLD_DMS_BETWEEN_MS', 2500);
 // Random extra wait added to every gap so the cadence isn't metronomic.
 const jitterMs = Number.parseInt(process.env.COLD_DMS_JITTER_MS ?? '1500', 10) || 0;
 
+// Screenshot+OCR checks: recipient header before typing, text in composer
+// before Send, text gone from composer after Send. A lead is only marked
+// "sent" when all three pass. COLD_DMS_VERIFY=false restores blind taps.
+const verifyEnabled = process.env.COLD_DMS_VERIFY !== 'false';
+
 const registeredDevice = (await loadRegisteredDevices()).find((device) => device.udid === udid);
 
 // Handles come either from an explicit paste (COLD_DMS_HANDLES) or from a lead
@@ -47,6 +58,8 @@ const leadListName = process.env.COLD_DMS_LEAD_LIST?.trim()
     ? validateLeadListName(process.env.COLD_DMS_LEAD_LIST)
     : undefined;
 let handles: string[];
+/** Display names by handle, so recipient checks can accept either. */
+const leadNames = new Map<string, string>();
 if (leadListName) {
     const batchSize = positiveInteger('COLD_DMS_LEAD_BATCH', 10);
     const skipPrivate = process.env.COLD_DMS_SKIP_PRIVATE !== 'false';
@@ -69,6 +82,7 @@ if (leadListName) {
         throw new Error(`Lead list "${leadListName}" has no uncontacted leads left for this filter`);
     }
     handles = validateColdDmHandles(picked.map((lead) => `@${lead.username}`));
+    for (const lead of picked) if (lead.fullName) leadNames.set(lead.username.toLowerCase(), lead.fullName);
 } else {
     handles = validateColdDmHandles(parseColdDmHandles(process.env.COLD_DMS_HANDLES ?? ''));
 }
@@ -191,18 +205,34 @@ async function openNewMessageComposer(browser: Browser): Promise<void> {
     await browser.pause(2000);
 }
 
-async function returnToHome(browser: Browser): Promise<void> {
-    console.log('Returning to Home after send');
-    // Leave the open thread (top-left chevron).
-    await tapCoordinate(browser, ig.dmBack.x, ig.dmBack.y, 'DM back (leave thread)');
-    await browser.pause(1600);
-    // Floating Home icon is on the same pill row as Messages (dmCompose.y ≈ 825),
-    // not the older homeTab seed at y=852 which misses the bar.
-    const homeX = ig.homeTab.x;
-    const homeY = ig.dmCompose.y;
-    console.log(`Tapping Home tab at (${homeX}, ${homeY})`);
-    await tapCoordinate(browser, homeX, homeY, 'Home tab');
-    await browser.pause(2000);
+/**
+ * Kill and relaunch Instagram, then land on Home. Used between every lead so
+ * a thread left open, a half-dismissed sheet, or a mis-tap never leaks into
+ * the next send — the same recovery the TikTok warmup relies on.
+ */
+async function relaunchInstagram(browser: Browser, reason: string): Promise<void> {
+    console.log(`Relaunching Instagram (${reason})`);
+    try {
+        await browser.terminateApp(instagramBundleId);
+    } catch (error) {
+        console.log(`terminateApp: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    await browser.pause(900);
+    await browser.activateApp(instagramBundleId);
+    await browser.pause(3500);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+            const state = await browser.queryAppState(instagramBundleId);
+            if (state === 4) break;
+            console.log(`Instagram not foreground (state=${state}); activate retry ${attempt}`);
+        } catch (error) {
+            console.log(`queryAppState: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        await browser.activateApp(instagramBundleId);
+        await browser.pause(2500);
+    }
+    await tapCoordinate(browser, ig.homeTab.x, ig.homeTab.y, 'Home tab');
+    await browser.pause(1500);
 }
 
 async function sendMessageToHandle(browser: Browser, handle: string): Promise<void> {
@@ -226,28 +256,80 @@ async function sendMessageToHandle(browser: Browser, handle: string): Promise<vo
         'Top search result',
     );
     await browser.pause(1500);
-    console.log(
-        `Confirming with blue arrow at (${ig.dmSearchSubmit.x}, ${ig.dmSearchSubmit.y})`,
-    );
-    await tapCoordinate(
-        browser,
-        ig.dmSearchSubmit.x,
-        ig.dmSearchSubmit.y,
-        'New message blue arrow',
-    );
+
+    // The recipient is now a chip in the To: field. Current Instagram shows a
+    // "Chat" button to open the thread; older builds used a blue arrow in the
+    // header, which is what dmSearchSubmit was calibrated for.
+    const chat = await findLabelOnScreen(/^chat$/i, 'Chat button');
+    if (chat) {
+        await tapCoordinate(browser, chat.x, chat.y, 'Chat button');
+    } else {
+        console.log(`Confirming with blue arrow at (${ig.dmSearchSubmit.x}, ${ig.dmSearchSubmit.y})`);
+        await tapCoordinate(browser, ig.dmSearchSubmit.x, ig.dmSearchSubmit.y, 'New message blue arrow');
+    }
     await browser.pause(2500);
-    console.log(
-        `Focusing Message field at (${ig.dmComposer.x}, ${ig.dmComposer.y})`,
-    );
-    await tapCoordinate(browser, ig.dmComposer.x, ig.dmComposer.y, 'Message field');
+    await verifyRecipient(handle);
+
+    // Composer: prefer the "Message..." placeholder wherever it currently sits.
+    const placeholder = await findLabelOnScreen(/^message/i, 'Message field');
+    const composerPoint = placeholder ?? { x: ig.dmComposer.x, y: ig.dmComposer.y };
+    console.log(`Focusing Message field at (${composerPoint.x}, ${composerPoint.y})`);
+    await tapCoordinate(browser, composerPoint.x, composerPoint.y, 'Message field');
     await browser.pause(1000);
     await clearFocusedField(browser);
     await typeText(browser, message);
     await browser.pause(800);
-    console.log(`Sending DM at (${ig.dmSend.x}, ${ig.dmSend.y})`);
-    await tapCoordinate(browser, ig.dmSend.x, ig.dmSend.y, 'DM Send');
-    await browser.pause(2000);
-    console.log(`Sent DM to ${handle}`);
+
+    if (!verifyEnabled) {
+        console.log(`Sending DM at (${ig.dmSend.x}, ${ig.dmSend.y})`);
+        await tapCoordinate(browser, ig.dmSend.x, ig.dmSend.y, 'DM Send');
+        await browser.pause(2000);
+        console.log(`Sent DM to ${handle} (unverified)`);
+        return;
+    }
+
+    // Instagram swaps the mic/camera icons for a "Send" label once the
+    // composer has text, and restores the "Message..." placeholder after the
+    // send. Those two labels are the proof; the typed text itself is small
+    // gray-on-dark and OCR often misses it.
+    const pre = await readScreen();
+    const sendWord = findWordMatch(pre.words, /^send$/i, belowHeaderPx());
+    const typed = messageWordMatches(pre.words, message).filter((word) => word.y + word.height / 2 >= belowHeaderPx());
+    if (!sendWord && typed.length === 0) {
+        // OCR misses are common on this UI; the calibrated Send point is
+        // authoritative, and the post-send check decides whether it worked.
+        console.log('Neither the Send label nor the typed text was OCR-readable — tapping calibrated Send anyway');
+    }
+    const sendPoint = sendWord ? pointFromWord(sendWord, screenScale) : { x: ig.dmSend.x, y: ig.dmSend.y };
+    console.log(
+        `Composer ready (${sendWord ? 'Send label visible' : 'typed text visible'}); `
+        + `Send control ${sendWord ? 'located by OCR' : 'from calibration'} at (${sendPoint.x}, ${sendPoint.y})`,
+    );
+
+    const MAX_SEND_TAPS = 2;
+    for (let attempt = 1; attempt <= MAX_SEND_TAPS; attempt += 1) {
+        await tapCoordinate(browser, sendPoint.x, sendPoint.y, `DM Send${attempt > 1 ? ` (retry ${attempt})` : ''}`);
+        await browser.pause(2200);
+        const after = await readScreen();
+        const sendStillVisible = Boolean(findWordMatch(after.words, /^send$/i, belowHeaderPx()));
+        const placeholderBack = Boolean(findWordMatch(after.words, /^message/i, belowHeaderPx()));
+        const bubble = messageWordMatches(after.words, message).some((word) => word.y + word.height / 2 >= belowHeaderPx());
+        if (!sendStillVisible && (placeholderBack || bubble)) {
+            console.log(
+                `Sent DM to ${handle} — Send label cleared`
+                + `${placeholderBack ? ', placeholder back' : ''}${bubble ? ', message bubble visible' : ''}`,
+            );
+            return;
+        }
+        if (attempt === MAX_SEND_TAPS) {
+            const file = await saveDebugShot(after.image, 'send');
+            throw new VerificationError(
+                `Could not confirm send after ${MAX_SEND_TAPS} taps `
+                + `(sendVisible=${sendStillVisible} placeholder=${placeholderBack} bubble=${bubble}). Screenshot ${file}`,
+            );
+        }
+        console.warn(`Send not confirmed yet (sendVisible=${sendStillVisible} placeholder=${placeholderBack}) — retrying`);
+    }
 }
 
 const cycles = positiveInteger('COLD_DMS_CYCLES', 1);
@@ -258,6 +340,68 @@ const remoteControl = new WdaRemoteControl({
     passcodeKeypadLayout: coordinates.passcodeKeypad,
 });
 
+let screenScale = 1;
+
+// Instagram runs dark here and Tesseract wants dark text on light, so OCR
+// the raw frame and an inverted copy and pool the words.
+async function readScreen(): Promise<{ words: OcrWord[]; image: Buffer }> {
+    const image = await remoteControl.getScreenshot(udid);
+    const inverted = await sharp(image).grayscale().negate().png().toBuffer();
+    const [raw, flipped] = await Promise.all([recognizeWords(image), recognizeWords(inverted)]);
+    return { words: [...raw, ...flipped], image };
+}
+
+async function saveDebugShot(image: Buffer, label: string): Promise<string> {
+    const file = path.resolve('.wda', `cold-dm-${label}-${udid}.png`);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, image);
+    return file;
+}
+
+/** Everything above this is status bar + nav header; ignore it when hunting UI words. */
+function belowHeaderPx(): number {
+    return 120 * screenScale;
+}
+
+class VerificationError extends Error {}
+
+/** OCR the screen for a UI label and return its tap point (points, not pixels). */
+async function findLabelOnScreen(pattern: RegExp, description: string): Promise<{ x: number; y: number } | undefined> {
+    if (!verifyEnabled) return undefined;
+    const { words } = await readScreen();
+    const match = findWordMatch(words, pattern, belowHeaderPx());
+    if (!match) {
+        console.log(`${description} label not found by OCR — falling back to calibrated coordinate`);
+        return undefined;
+    }
+    const point = pointFromWord(match, screenScale);
+    console.log(`${description} located by OCR ("${match.text}") at (${point.x}, ${point.y})`);
+    return point;
+}
+
+function nameTokens(name: string | undefined): string[] {
+    return (name ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length >= 3);
+}
+
+async function verifyRecipient(handle: string): Promise<void> {
+    if (!verifyEnabled) return;
+    const { words, image } = await readScreen();
+    if (findHandleMatch(words, handle)) {
+        console.log(`Recipient confirmed: ${handle} visible in thread header`);
+        return;
+    }
+    const tokens = nameTokens(leadNames.get(handle.replace(/^@/, '').toLowerCase()));
+    const nameHit = words.find((word) => tokens.includes(word.text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')));
+    if (nameHit) {
+        console.log(`Recipient confirmed by display name ("${nameHit.text}") for ${handle}`);
+        return;
+    }
+    const file = await saveDebugShot(image, 'recipient');
+    const seen = words.slice(0, 12).map((word) => word.text).join(' ') || '(nothing recognized)';
+    throw new VerificationError(`Recipient ${handle} not visible after opening thread (OCR saw: ${seen}). Screenshot ${file}`);
+}
+
+
 console.log(
     `Starting Instagram cold DMs: handles=${handles.length} cycles=${cycles} `
     + `sends=${sequence.length} messageChars=${message.length}`
@@ -265,6 +409,10 @@ console.log(
 );
 
 await remoteControl.unlock(udid);
+if (verifyEnabled) {
+    screenScale = (await remoteControl.getScreenInfo(udid)).scale;
+    console.log(`Send verification on (screen scale ${screenScale})`);
+}
 
 let driver: Browser | undefined;
 let sent = 0;
@@ -313,16 +461,19 @@ try {
             const reason = error instanceof Error ? error.message : String(error);
             console.error(`Skipped ${handle}: ${reason}`);
             await recordLeadOutcome(handle, 'failed', reason);
-            try {
-                await returnToHome(driver);
-            } catch {
-                // Best-effort recovery before the next send.
+            if (index < sequence.length - 1 && !stopRequested) {
+                try {
+                    await relaunchInstagram(driver, `recovering after ${handle}`);
+                } catch (relaunchError) {
+                    console.warn(`Relaunch failed: ${relaunchError instanceof Error ? relaunchError.message : String(relaunchError)}`);
+                }
             }
             continue;
         }
         if (index < sequence.length - 1 && !stopRequested) {
-            await returnToHome(driver);
             await cancellableDelay(betweenHandleMs + Math.floor(Math.random() * (jitterMs + 1)));
+            if (stopRequested) break;
+            await relaunchInstagram(driver, 'fresh Home for next lead');
         }
     }
 } finally {
