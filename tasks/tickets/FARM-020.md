@@ -19,12 +19,16 @@ Make general mobile automation a first-class product surface rather than keeping
 - Accessibility-first steps inspired by Maestro/Playwright-style authoring: `tapText`, `waitVisible`, `assertVisible`, `waitGone`, and `inputText`.
 - Semantic steps accept optional element type, exact-match mode and bounded timeout; both WDA and Appium backends use the same stable-ref semantic controller.
 - Automatic polling/waits avoid hard-coded sleeps for ordinary UI readiness and survive device-size changes better than pixel-only flows.
+- Canonical PostgreSQL Flow Library with immutable version history (`flow_definitions` + `flow_versions`).
+- Automation Studio can create, save a new version, load, duplicate, delete and restore an older revision without bypassing the scheduler.
+- Native `mobile-farm-flow@1` JSON import/export for portable backups and sharing.
+- Bounded Maestro YAML compatibility: accessibility-first `launchApp`, `tapOn`, `assertVisible`, `inputText`, `extendedWaitUntil` and supported key presses import into Portable Flow steps; export refuses steps without a lossless mapping instead of silently degrading them.
 
 ## Verification
 
-- Flow validation, execution-order and semantic-step tests pass.
+- Flow validation, execution-order, semantic-step, versioned API and Maestro compatibility tests pass.
 
 ## Follow-up
 
-- Add save/version/duplicate/import/export for user-authored flow definitions.
-- Consider a Maestro-compatible import/export adapter rather than replacing the scheduler with Maestro.
+- Add tags/folders and parameterized reusable variables/secrets without storing credentials inside flow definitions.
+- Add richer cross-platform selectors (resource id / accessibility id / regex) where the normalized tree can represent them safely.

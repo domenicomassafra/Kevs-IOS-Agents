@@ -7,6 +7,7 @@ export type HostCapability =
     | 'ios.simulator'
     | 'android.physical'
     | 'android.emulator'
+    | 'android.h264'
     | 'appium'
     | 'wda'
     | 'simctl'
@@ -23,6 +24,7 @@ export interface HostSnapshot {
         appiumRuntime: boolean;
         xcrun: boolean;
         adb: boolean;
+        scrcpyVideo: boolean;
     };
 }
 
@@ -45,15 +47,19 @@ export async function detectHostCapabilities(options: {
     envPath?: string;
     appiumEntry?: string;
     appiumRuntimeEntry?: string;
+    scrcpyServerJar?: string;
     commandAvailable?: (command: string) => Promise<boolean>;
 } = {}): Promise<HostSnapshot> {
     const platform = options.platform ?? process.platform;
     const probe = options.commandAvailable ?? ((command: string) => commandAvailable(command, options.envPath));
-    const [xcrun, adb, appium, appiumRuntime] = await Promise.all([
+    const [xcrun, adb, appium, appiumRuntime, scrcpyVideo] = await Promise.all([
         probe('xcrun'),
         probe('adb'),
         exists(options.appiumEntry ?? path.resolve('node_modules/appium/index.js')),
         exists(options.appiumRuntimeEntry ?? path.resolve('node_modules/appium-runtime/index.js')),
+        options.scrcpyServerJar || process.env.PHONE_FARM_SCRCPY_SERVER_JAR
+            ? exists(options.scrcpyServerJar ?? process.env.PHONE_FARM_SCRCPY_SERVER_JAR!)
+            : Promise.resolve(false),
     ]);
     const capabilities: HostCapability[] = [];
     if (appium || appiumRuntime) capabilities.push('appium');
@@ -65,12 +71,13 @@ export async function detectHostCapabilities(options: {
         if (xcrun && appium) capabilities.push('wda');
     }
     if (adb) capabilities.push('android.physical', 'android.emulator');
+    if (adb && scrcpyVideo) capabilities.push('android.h264');
     return {
         id: options.id ?? process.env.PHONE_FARM_WORKER_ID ?? 'local',
         hostname: options.hostname ?? os.hostname(),
         os: platform,
         arch: options.arch ?? process.arch,
         capabilities,
-        tools: { appium, appiumRuntime, xcrun, adb },
+        tools: { appium, appiumRuntime, xcrun, adb, scrcpyVideo },
     };
 }

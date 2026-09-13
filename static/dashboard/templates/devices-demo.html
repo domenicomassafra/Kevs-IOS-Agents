@@ -55,7 +55,20 @@
                 <button type="button" class="fleet-filter" data-filter="virtual">Virtual</button>
                 <button type="button" class="fleet-filter" data-filter="running">Running</button>
             </div>
-            <div class="inline-actions"><p class="fleet-toolbar-meta" id="fleet-visible-count">Loading…</p><button id="fleet-refresh" class="button secondary" type="button">Refresh</button></div>
+            <div class="inline-actions">
+                <label class="fleet-group-field">Group <select id="fleet-group"><option value="none">None</option><option value="host">Host</option><option value="platform">Platform</option><option value="kind">Kind</option></select></label>
+                <p class="fleet-toolbar-meta" id="fleet-visible-count">Loading…</p><button id="fleet-refresh" class="button secondary" type="button">Refresh</button>
+            </div>
+        </div>
+
+        <div id="fleet-bulk" class="fleet-bulk-bar" hidden>
+            <strong id="fleet-selected-count">0 selected</strong>
+            <button id="fleet-select-visible" class="button secondary" type="button">Select visible</button>
+            <button id="fleet-clear-selection" class="button secondary" type="button">Clear</button>
+            <span class="spacer"></span>
+            <select id="fleet-bulk-action"><option value="">Bulk action…</option><option value="reconnect">Reconnect</option><option value="clear-queue">Clear queue / stop automation</option><option value="enable">Enable</option><option value="disable">Disable</option></select>
+            <button id="fleet-bulk-apply" class="button primary" type="button">Apply</button>
+            <span id="fleet-bulk-status" class="run-meta"></span>
         </div>
 
         <section class="fleet-live-layout">

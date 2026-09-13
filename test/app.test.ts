@@ -7,6 +7,7 @@ import { defaultDashboardTheme } from '../src/dashboard-theme.js';
 import type { DeviceRegistrationManager, RegistrationSnapshot } from '../src/devices/registration.js';
 import { PluginRegistry } from '../src/registry.js';
 import type { SchedulerRepository } from '../src/scheduler/repository.js';
+import { portableFlowPlugin } from '../src/flow-plugin.js';
 
 const device = { name: 'Test iPhone', osVersion: '16.7', udid: 'test-device', productType: 'iPhone10,1' };
 
@@ -177,4 +178,51 @@ test('serves a live fleet wall instead of the old mock fleet demo', async (conte
     const legacy = await app.inject({ method: 'GET', url: '/demo/devices' });
     assert.equal(legacy.statusCode, 200);
     assert.match(legacy.body, /Live device wall/i);
+});
+
+test('flow library API validates, versions and exports portable flows through the scheduler repository contract', async (context) => {
+    const stored = new Map<string, {
+        id: string; name: string; currentVersion: number; payload: Record<string, unknown>; versions: Array<{ version: number; createdAt: Date }>;
+    }>();
+    const scheduler = {
+        async listFlowDefinitions() { return [...stored.values()]; },
+        async createFlowDefinition(payload: Record<string, unknown>) {
+            const id = '11111111-1111-4111-8111-111111111111';
+            const flow = { id, name: String(payload.name), currentVersion: 1, payload, versions: [{ version: 1, createdAt: new Date(0) }], createdAt: new Date(0), updatedAt: new Date(0) };
+            stored.set(id, flow);
+            return flow;
+        },
+        async flowDefinition(id: string) { return stored.get(id) ?? null; },
+        async saveFlowVersion(id: string, payload: Record<string, unknown>) {
+            const current = stored.get(id);
+            if (!current) return null;
+            const version = current.currentVersion + 1;
+            const next = { ...current, name: String(payload.name), currentVersion: version, payload, versions: [{ version, createdAt: new Date(1) }, ...current.versions] };
+            stored.set(id, next);
+            return next;
+        },
+        async duplicateFlowDefinition() { return null; }, async restoreFlowVersion() { return null; }, async deleteFlowDefinition() { return true; },
+    } as unknown as SchedulerRepository;
+    const app = await createApp({ plugins: new PluginRegistry([portableFlowPlugin]), scheduler, dashboardTheme: defaultDashboardTheme });
+    context.after(() => app.close());
+    const headers = { authorization: 'Bearer test' };
+
+    const created = await app.inject({
+        method: 'POST', url: '/api/flows', headers,
+        payload: { name: 'Login', steps: [{ action: 'launch', appId: 'com.example.app' }, { action: 'tapText', text: 'Continue' }] },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().flow.currentVersion, 1);
+
+    const updated = await app.inject({
+        method: 'PUT', url: '/api/flows/11111111-1111-4111-8111-111111111111', headers,
+        payload: { name: 'Login', steps: [{ action: 'launch', appId: 'com.example.app' }, { action: 'assertVisible', text: 'Welcome' }] },
+    });
+    assert.equal(updated.statusCode, 200);
+    assert.equal(updated.json().flow.currentVersion, 2);
+
+    const exported = await app.inject({ method: 'GET', url: '/api/flows/11111111-1111-4111-8111-111111111111/export' });
+    assert.equal(exported.statusCode, 200);
+    assert.equal(exported.json().format, 'mobile-farm-flow@1');
+    assert.equal(exported.json().flow.name, 'Login');
 });

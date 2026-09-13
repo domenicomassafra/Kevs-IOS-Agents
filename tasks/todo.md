@@ -21,7 +21,11 @@
 - [x] FARM-020 semantic v2: accessibility-first tap/wait/assert/input/gone steps in the portable flow builder.
 - [x] FARM-019 virtual lifecycle: host-level inventory plus Boot/Stop for iOS Simulators and Android AVDs.
 - [x] FARM-021 UI tranche: real `/fleet` device wall with cheap previews and one focused live stream; old 20-seat mock removed.
-- [x] Current source regression gate: `npm run check` => 114/114 tests + TypeScript green (2026-09-14).
+- [x] FARM-020 Flow Library: canonical PostgreSQL persistence, immutable versions, duplicate/restore/delete and Mobile Farm JSON import/export.
+- [x] FARM-020 Maestro bridge: bounded/lossless YAML import/export subset over the same scheduler contract.
+- [x] FARM-021 Fleet operations: host/platform/kind grouping, multi-select and safe reconnect/enable/disable/clear-queue bulk actions.
+- [x] FARM-021 scrcpy source adapter: optional version-matched Android raw-H.264 path wired through signed stream capabilities and the benchmark harness.
+- [x] Current source regression gate: `npm run check` => 119/119 tests + TypeScript green (2026-09-14).
 
 ## Live-gated
 
@@ -32,7 +36,7 @@
 - [ ] FARM-017 Dependency remediation: triaged; current advisories require an Appium/Webdriver compatibility move that must be live-regression-tested rather than force-applied.
 - [ ] FARM-018 device half: production secret pairing + Mac worker launchd + signed WDA/iPhone acceptance after full Xcode and device registration exist.
 - [ ] FARM-019 live runtime matrix: iOS Simulator + Android emulator + physical Android + distributed proxy receipt.
-- [ ] FARM-021 Cross-platform video bake-off: scrcpy/Baguette versus generic screenshot fallback.
+- [ ] FARM-021 Cross-platform video bake-off: scrcpy adapter is implemented; live Android measurements + Baguette/qvh comparison remain pending.
 
 ## Git closeout
 

@@ -9,8 +9,8 @@ import { pipeline } from 'node:stream/promises';
 
 import type { DatabaseConnection } from '../database/client.js';
 import {
-    assets, campaigns, executionAttempts, executionLogs, executions, pipelineItems, schedules,
-    type CampaignRow, type ExecutionRow, type PipelineItemRow, type ScheduleRow,
+    assets, campaigns, executionAttempts, executionLogs, executions, flowDefinitions, flowVersions, pipelineItems, schedules,
+    type CampaignRow, type ExecutionRow, type FlowDefinitionRow, type FlowVersionRow, type PipelineItemRow, type ScheduleRow,
 } from '../database/schema.js';
 import type { PluginRegistry } from '../registry.js';
 import type { CreateTaskInput, JsonObject, PipelineClaim, ScheduleTiming, StoredAsset, TaskEnvelope } from '../types.js';
@@ -20,6 +20,10 @@ import { initialRunAt, latestDueOccurrence } from './recurrence.js';
 import { DEFAULT_MIN_SCHEDULE_GAP_MINUTES, estimatedTaskWindow, validateTaskInput, windowsTooClose } from './validation.js';
 
 export interface ExecutionDetail extends ExecutionRow { logs: string[] }
+export interface FlowDefinitionDetail extends FlowDefinitionRow {
+    payload: JsonObject;
+    versions: Array<Pick<FlowVersionRow, 'version' | 'createdAt'>>;
+}
 
 /** Thrown by setScheduleStatus for a disallowed status change (e.g. resuming a completed schedule). */
 export class ScheduleTransitionError extends Error {}
@@ -62,6 +66,82 @@ export class SchedulerRepository {
         readonly boss: PgBoss,
         readonly plugins: PluginRegistry,
     ) {}
+
+    async listFlowDefinitions(limit = 100): Promise<Array<FlowDefinitionRow & { payload: JsonObject }>> {
+        const rows = await this.connection.db.select({
+            definition: flowDefinitions,
+            payload: flowVersions.payload,
+        }).from(flowDefinitions)
+            .innerJoin(flowVersions, and(
+                eq(flowVersions.flowId, flowDefinitions.id),
+                eq(flowVersions.version, flowDefinitions.currentVersion),
+            ))
+            .orderBy(desc(flowDefinitions.updatedAt))
+            .limit(Math.max(1, Math.min(500, limit)));
+        return rows.map(({ definition, payload }) => ({ ...definition, payload }));
+    }
+
+    async flowDefinition(id: string, version?: number): Promise<FlowDefinitionDetail | null> {
+        const [definition] = await this.connection.db.select().from(flowDefinitions).where(eq(flowDefinitions.id, id)).limit(1);
+        if (!definition) return null;
+        const selectedVersion = version ?? definition.currentVersion;
+        const [selected] = await this.connection.db.select().from(flowVersions).where(and(
+            eq(flowVersions.flowId, id), eq(flowVersions.version, selectedVersion),
+        )).limit(1);
+        if (!selected) return null;
+        const versions = await this.connection.db.select({
+            version: flowVersions.version, createdAt: flowVersions.createdAt,
+        }).from(flowVersions).where(eq(flowVersions.flowId, id)).orderBy(desc(flowVersions.version));
+        return { ...definition, currentVersion: selectedVersion, payload: selected.payload, versions };
+    }
+
+    async createFlowDefinition(payload: JsonObject, now = new Date()): Promise<FlowDefinitionDetail> {
+        const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+        if (!name) throw new Error('Flow name is required');
+        let id = '';
+        await this.connection.db.transaction(async (tx) => {
+            const [definition] = await tx.insert(flowDefinitions).values({ name, createdAt: now, updatedAt: now }).returning();
+            if (!definition) throw new Error('Unable to create flow definition');
+            id = definition.id;
+            await tx.insert(flowVersions).values({ flowId: id, version: 1, payload, createdAt: now });
+        });
+        return (await this.flowDefinition(id))!;
+    }
+
+    async saveFlowVersion(id: string, payload: JsonObject, now = new Date()): Promise<FlowDefinitionDetail | null> {
+        const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+        if (!name) throw new Error('Flow name is required');
+        let nextVersion: number | undefined;
+        await this.connection.db.transaction(async (tx) => {
+            const [locked] = await tx.execute(sql`
+                select id, current_version from scheduler.flow_definitions where id = ${id}::uuid for update
+            `).then((result) => result.rows as unknown as Array<{ id: string; current_version: number }>);
+            if (!locked) return;
+            nextVersion = locked.current_version + 1;
+            await tx.insert(flowVersions).values({ flowId: id, version: nextVersion, payload, createdAt: now });
+            await tx.update(flowDefinitions).set({ name, currentVersion: nextVersion, updatedAt: now })
+                .where(eq(flowDefinitions.id, id));
+        });
+        if (!nextVersion) return null;
+        return this.flowDefinition(id);
+    }
+
+    async duplicateFlowDefinition(id: string, name?: string): Promise<FlowDefinitionDetail | null> {
+        const source = await this.flowDefinition(id);
+        if (!source) return null;
+        return this.createFlowDefinition({ ...source.payload, name: name?.trim() || `${source.name} copy` });
+    }
+
+    async restoreFlowVersion(id: string, version: number, now = new Date()): Promise<FlowDefinitionDetail | null> {
+        const source = await this.flowDefinition(id, version);
+        if (!source) return null;
+        return this.saveFlowVersion(id, source.payload, now);
+    }
+
+    async deleteFlowDefinition(id: string): Promise<boolean> {
+        const removed = await this.connection.db.delete(flowDefinitions).where(eq(flowDefinitions.id, id)).returning({ id: flowDefinitions.id });
+        return removed.length > 0;
+    }
 
     private async materializeAssetFile(asset: {
         id: string;

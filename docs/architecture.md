@@ -157,13 +157,17 @@ installed, that schedule fails loudly instead of executing v2 logic.
 
 `com.phone-farm.flow/flow@1` is the platform-neutral automation contract. Coordinate tap/swipe remains available as a fallback, but the preferred steps use the common accessibility tree: `tapText`, `waitVisible`, `assertVisible`, `waitGone`, and `inputText`. WDA JSON, XCUITest XML and UiAutomator2 XML are normalized into the same stable-ref snapshot model before those actions run. This keeps scheduler contracts independent of Appium/WDA and lets the same flow survive device-size changes when labels and accessibility roles remain stable.
 
+Portable flows are also canonical library objects. `scheduler.flow_definitions` identifies a flow while `scheduler.flow_versions` stores immutable revisions; editing creates a new revision instead of mutating history. Mobile Farm JSON is the native lossless interchange format. A bounded Maestro YAML adapter supports the accessibility-oriented command subset that maps cleanly into this contract; unsupported/lossy steps fail export rather than silently changing behavior.
+
 ### Virtual runtime lifecycle
 
 Execution workers expose both currently connected devices and known virtual-runtime definitions. macOS workers use `simctl` for iOS Simulator definitions and lifecycle; hosts with Android tooling use the emulator CLI plus ADB for AVD definitions and shutdown. The MiniPC proxies Boot/Stop to the owning worker rather than trying to run mobile SDK tooling inside the Linux control-plane container.
 
 ### Live fleet wall
 
-`/fleet` is the real fleet view. It intentionally does not open a high-rate stream for every device: tiles refresh inexpensive still screenshots, while the selected tile alone requests the signed live-stream capability. This follows the lab UX pattern from Baguette/STF and keeps video transport separate from scheduler/control correctness.
+`/fleet` is the real fleet view. It intentionally does not open a high-rate stream for every device: tiles refresh inexpensive still screenshots, while the selected tile alone requests the signed live-stream capability. This follows the lab UX pattern from Baguette/STF and keeps video transport separate from scheduler/control correctness. Operators can group by worker/platform/kind and multi-select devices for bounded operational actions (reconnect, enable/disable, clear queue/stop); public/send/touch actions are deliberately not exposed as bulk commands.
+
+Android workers may additionally expose an optional raw-H.264 scrcpy path when ADB and an explicitly version-matched `scrcpy-server` artifact are present. That transport is video-only (`control=false`) and never replaces Appium/UiAutomator2 as the deterministic action API. It uses the same expiring stream-capability envelope through the worker/MiniPC proxy and currently feeds the benchmark harness, not the default browser renderer.
 
 `com.phone-farm.flow/flow@1` is the generic cross-platform contract. Its payload
 is an ordered list of portable actions (app launch/terminate, wait, tap, swipe,
@@ -193,7 +197,8 @@ in `src/scheduler/recurrence.ts`; the next occurrence is written to
 | `src/api/` | Fastify app factory, controllers, middleware, HTTP routes |
 | `src/scheduler/` | runtime, repository, pg-boss queue, recurrence, worker, executor |
 | `src/database/` | Drizzle client, schema, migrate/setup entrypoints |
-| `src/devices/` | physical/virtual discovery, registry (`devices.json`), WDA and Appium remotes, registration flow, wda-service, coordinate profiles, passcode lookup |
+| `src/devices/` | physical/virtual discovery, registry (`devices.json`), WDA/Appium remotes, optional scrcpy video source, registration flow, wda-service, coordinate profiles, passcode lookup |
+| `src/flows/` | flow interchange/compatibility adapters (currently bounded Maestro YAML) |
 | `src/hosts/` | execution-host capability detection (`simctl`, `adb`, Appium, WDA) |
 | `src/semantic/` | normalized WDA/Appium accessibility snapshots, stable refs and semantic actions |
 | `src/flow-plugin.ts` | built-in portable cross-platform flow task |

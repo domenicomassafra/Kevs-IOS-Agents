@@ -80,6 +80,7 @@
     "pg-boss": "^12.27.0",
     "sharp": "^0.35.3",
     "webdriverio": "^9.31.8",
+    "yaml": "^2.9.1",
     "zod": "^4.6.4"
   },
   "devDependencies": {

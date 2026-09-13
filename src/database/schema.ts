@@ -10,6 +10,24 @@ export const executionStatus = schedulerSchema.enum('execution_status', [
 ]);
 export const campaignStatus = schedulerSchema.enum('campaign_status', ['draft', 'active', 'cancelled']);
 
+export const flowDefinitions = schedulerSchema.table('flow_definitions', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    currentVersion: integer('current_version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+}, (table) => [index('flow_definitions_updated_idx').on(table.updatedAt)]);
+
+export const flowVersions = schedulerSchema.table('flow_versions', {
+    flowId: uuid('flow_id').notNull().references(() => flowDefinitions.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    payload: jsonb('payload').$type<JsonObject>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+}, (table) => [
+    primaryKey({ columns: [table.flowId, table.version] }),
+    index('flow_versions_flow_created_idx').on(table.flowId, table.createdAt),
+]);
+
 export const campaigns = schedulerSchema.table('campaigns', {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
@@ -123,3 +141,5 @@ export type ScheduleRow = typeof schedules.$inferSelect;
 export type ExecutionRow = typeof executions.$inferSelect;
 export type PipelineItemRow = typeof pipelineItems.$inferSelect;
 export type CampaignRow = typeof campaigns.$inferSelect;
+export type FlowDefinitionRow = typeof flowDefinitions.$inferSelect;
+export type FlowVersionRow = typeof flowVersions.$inferSelect;

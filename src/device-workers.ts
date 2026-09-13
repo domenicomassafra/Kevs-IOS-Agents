@@ -112,6 +112,10 @@ export class DeviceWorkerClient {
         return this.request(`/v1/devices/${encodeURIComponent(udid)}/stream`, { signal }, 20_000);
     }
 
+    async getH264Stream(udid: string, signal?: AbortSignal): Promise<Response> {
+        return this.request(`/v1/devices/${encodeURIComponent(udid)}/h264`, { signal }, 20_000);
+    }
+
     async performAction(udid: string, action: RemoteAction): Promise<void> {
         await this.request(`/v1/devices/${encodeURIComponent(udid)}/action`, {
             method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(action),
@@ -276,6 +280,7 @@ export class DeviceWorkerFleet implements RemoteControl {
     async getAccessibilityTree(udid: string): Promise<unknown> { return (await this.clientFor(udid)).getAccessibilityTree(udid); }
     async getScreenshot(udid: string): Promise<Buffer> { return (await this.clientFor(udid)).getScreenshot(udid); }
     async getMjpegStream(udid: string, signal?: AbortSignal): Promise<Response> { return (await this.clientFor(udid)).getMjpegStream(udid, signal); }
+    async getH264Stream(udid: string, signal?: AbortSignal): Promise<Response> { return (await this.clientFor(udid)).getH264Stream(udid, signal); }
     async performAction(udid: string, action: RemoteAction): Promise<void> { return (await this.clientFor(udid)).performAction(udid, action); }
     async isLocked(udid: string): Promise<boolean> { return (await this.clientFor(udid)).isLocked(udid); }
     async connectionStatus(udid: string): Promise<DeviceConnectionStatus> { return (await this.clientFor(udid)).connection(udid); }

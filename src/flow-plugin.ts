@@ -1,7 +1,7 @@
 import type { PhoneFarmPlugin, TaskDefinition } from './plugin.js';
 import type { JsonObject, JsonValue } from './types.js';
 
-type FlowStep =
+export type FlowStep =
     | { action: 'launch'; appId: string }
     | { action: 'terminate'; appId: string }
     | { action: 'wait'; milliseconds: number }
@@ -13,7 +13,7 @@ type FlowStep =
     | { action: 'home' | 'lock' | 'wake' | 'unlock' | 'volumeUp' | 'volumeDown' }
     | { action: 'screenshot' };
 
-interface PortableFlowPayload extends JsonObject {
+export interface PortableFlowPayload extends JsonObject {
     name: string;
     steps: FlowStep[];
 }

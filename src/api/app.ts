@@ -24,7 +24,7 @@ import { requestWdaService } from '../devices/wda-service-client.js';
 import type { DeviceConnectionStatus } from '../devices/connection-manager.js';
 import type { AuthProvider, PluginNavLink } from '../plugin.js';
 import type { PluginRegistry } from '../registry.js';
-import type { CreateTaskInput, JsonObject, ScheduleTiming } from '../types.js';
+import type { CreateTaskInput, JsonObject, JsonValue, ScheduleTiming } from '../types.js';
 import { ScheduleTransitionError, type SchedulerRepository } from '../scheduler/repository.js';
 import {
     listFleetAccounts, pluginIdForPlatform, SOCIAL_ACCOUNT_PLATFORMS, withAccountPolicy,
@@ -37,6 +37,8 @@ import { StreamTokenService } from '../security/stream-token.js';
 import type { HostSnapshot } from '../hosts/capabilities.js';
 import type { RuntimeDevice } from '../devices/runtime-discovery.js';
 import type { VirtualRuntime, VirtualRuntimePlatform } from '../devices/virtual-runtime.js';
+import { exportMaestroFlow, importMaestroFlow } from '../flows/maestro.js';
+import type { PortableFlowPayload } from '../flow-plugin.js';
 
 export interface CreateAppOptions {
     plugins: PluginRegistry;
@@ -414,6 +416,57 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         return { account };
     });
     app.get('/api/devices/discovered', async () => discoverDevices());
+    app.post<{
+        Body: { deviceUdids?: string[]; action?: 'enable' | 'disable' | 'reconnect' | 'clear-queue' };
+    }>('/api/fleet/actions', async (request, reply) => {
+        const action = request.body.action;
+        const deviceUdids = [...new Set((request.body.deviceUdids ?? []).filter((value): value is string => (
+            typeof value === 'string' && value.trim().length > 0
+        )).map((value) => value.trim()))];
+        if (!action || !['enable', 'disable', 'reconnect', 'clear-queue'].includes(action)) {
+            return reply.code(400).send({ error: 'Unsupported fleet action' });
+        }
+        if (!deviceUdids.length || deviceUdids.length > 100) {
+            return reply.code(400).send({ error: 'Choose between 1 and 100 devices' });
+        }
+        const registered = await loadRegisteredDevices();
+        const known = new Set(registered.map(({ udid }) => udid));
+        const missing = deviceUdids.filter((udid) => !known.has(udid));
+        if (missing.length) return reply.code(404).send({ error: `Unknown devices: ${missing.join(', ')}` });
+
+        if (action === 'enable' || action === 'disable') {
+            const disabled = action === 'disable';
+            await mutateDevices((devices) => {
+                for (const device of devices) {
+                    if (!deviceUdids.includes(device.udid)) continue;
+                    if (disabled) device.disabled = true;
+                    else delete device.disabled;
+                }
+            });
+            return { ok: true, action, affected: deviceUdids.length };
+        }
+
+        const results: Array<{ udid: string; ok: boolean; message: string }> = [];
+        for (const udid of deviceUdids) {
+            try {
+                if (action === 'clear-queue') {
+                    const cleared = await options.scheduler.clearDeviceQueue(udid);
+                    results.push({ udid, ok: true, message: `cancelled ${cleared.cancelled}, stopping ${cleared.stopping}` });
+                    continue;
+                }
+                if (await options.scheduler.activeExecution(udid)) {
+                    results.push({ udid, ok: false, message: 'automation is running' });
+                    continue;
+                }
+                remote.forget?.(udid);
+                if (options.reconnectDevice) await options.reconnectDevice(udid);
+                results.push({ udid, ok: true, message: 'reconnect requested' });
+            } catch (error) {
+                results.push({ udid, ok: false, message: errorMessage(error) });
+            }
+        }
+        return { ok: results.every(({ ok }) => ok), action, results };
+    });
     app.get('/api/runtime-devices/discovered', async () => ({ devices: await options.runtimeCandidates?.() ?? [] }));
     app.get('/api/virtual-runtimes', async () => ({ runtimes: await options.virtualRuntimes?.() ?? [] }));
     app.post<{
@@ -632,6 +685,39 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             .type(upstream.headers.get('content-type') ?? 'multipart/x-mixed-replace; boundary=--BoundaryString')
             .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
     });
+    app.post<{ Params: { udid: string } }>('/api/devices/:udid/remote/h264-token', async (request, reply) => {
+        if (!remote.getH264Stream) return reply.code(501).send({ error: 'Optimized H.264 transport is unavailable' });
+        const base = `/api/devices/${encodeURIComponent(request.params.udid)}/remote/h264`;
+        if (!options.requireStreamToken) return { url: `${base}?t=${Date.now()}`, expiresAt: null };
+        const capability = streamTokens.issue(request.params.udid);
+        const query = new URLSearchParams({ exp: String(capability.expiresAt), sig: capability.signature });
+        return { url: `${base}?${query}`, expiresAt: new Date(capability.expiresAt).toISOString() };
+    });
+    app.get<{
+        Params: { udid: string };
+        Querystring: { exp?: string; sig?: string };
+    }>('/api/devices/:udid/remote/h264', async (request, reply) => {
+        if (!remote.getH264Stream) return reply.code(501).send({ error: 'Optimized H.264 transport is unavailable' });
+        if (options.requireStreamToken) {
+            const expiresAt = Number(request.query.exp);
+            const signature = request.query.sig ?? '';
+            if (!streamTokens.verify(request.params.udid, expiresAt, signature)) {
+                return reply.code(403).send({ error: 'Stream capability is missing, invalid, or expired' });
+            }
+        }
+        const abort = new AbortController();
+        request.raw.once('close', () => abort.abort());
+        try {
+            const upstream = await remote.getH264Stream(request.params.udid, abort.signal);
+            if (!upstream.body) return reply.code(503).send({ error: 'H.264 stream is unavailable' });
+            return reply.header('cache-control', 'no-store, no-cache, must-revalidate')
+                .header('x-mobile-farm-video-backend', upstream.headers.get('x-mobile-farm-video-backend') ?? 'h264')
+                .type(upstream.headers.get('content-type') ?? 'video/h264')
+                .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
+        } catch (error) {
+            return reply.code(503).send({ error: errorMessage(error) });
+        }
+    });
     app.post<{ Params: { udid: string }; Body: RemoteAction }>('/api/devices/:udid/remote/action', async (request, reply) => {
         if (await options.scheduler.activeExecution(request.params.udid)) {
             return reply.code(409).send({ error: 'Remote input is disabled while automation is running' });
@@ -717,6 +803,79 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     app.get<{ Querystring: { deviceUdid?: string } }>('/api/schedules', async (request) => ({
         schedules: await options.scheduler.listSchedules(200, request.query.deviceUdid),
     }));
+    const validatedFlowPayload = (value: JsonValue): JsonObject => {
+        const definition = options.plugins.task({
+            pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload: {},
+        });
+        return definition.validate(value, { timingKind: 'now', devicePluginData: {} });
+    };
+    app.get('/api/flows', async () => ({ flows: await options.scheduler.listFlowDefinitions(200) }));
+    app.post<{ Body: JsonObject }>('/api/flows', async (request, reply) => {
+        const flow = await options.scheduler.createFlowDefinition(validatedFlowPayload(request.body));
+        return reply.code(201).send({ flow });
+    });
+    app.post<{ Body: { format?: string; flow?: JsonValue } }>('/api/flows/import', async (request, reply) => {
+        if (request.body.format !== 'mobile-farm-flow@1' || !request.body.flow) {
+            return reply.code(400).send({ error: 'Expected a mobile-farm-flow@1 export' });
+        }
+        const flow = await options.scheduler.createFlowDefinition(validatedFlowPayload(request.body.flow));
+        return reply.code(201).send({ flow });
+    });
+    app.post<{ Body: { yaml?: string; name?: string } }>('/api/flows/import/maestro', async (request, reply) => {
+        if (typeof request.body.yaml !== 'string') return reply.code(400).send({ error: 'yaml is required' });
+        if (request.body.name !== undefined && (typeof request.body.name !== 'string' || request.body.name.length > 120)) {
+            return reply.code(400).send({ error: 'name must be at most 120 characters' });
+        }
+        const imported = importMaestroFlow(request.body.yaml, request.body.name);
+        const flow = await options.scheduler.createFlowDefinition(validatedFlowPayload(imported));
+        return reply.code(201).send({ flow });
+    });
+    app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/api/flows/:id', async (request, reply) => {
+        const version = request.query.version === undefined ? undefined : Number(request.query.version);
+        if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
+            return reply.code(400).send({ error: 'version must be a positive integer' });
+        }
+        const flow = await options.scheduler.flowDefinition(request.params.id, version);
+        return flow ? { flow } : reply.code(404).send({ error: 'Flow not found' });
+    });
+    app.put<{ Params: { id: string }; Body: JsonObject }>('/api/flows/:id', async (request, reply) => {
+        const flow = await options.scheduler.saveFlowVersion(request.params.id, validatedFlowPayload(request.body));
+        return flow ? { flow } : reply.code(404).send({ error: 'Flow not found' });
+    });
+    app.post<{ Params: { id: string }; Body: { name?: string } }>('/api/flows/:id/duplicate', async (request, reply) => {
+        if (request.body.name !== undefined && (typeof request.body.name !== 'string' || request.body.name.trim().length > 120)) {
+            return reply.code(400).send({ error: 'name must contain at most 120 characters' });
+        }
+        const flow = await options.scheduler.duplicateFlowDefinition(request.params.id, request.body.name);
+        return flow ? reply.code(201).send({ flow }) : reply.code(404).send({ error: 'Flow not found' });
+    });
+    app.post<{ Params: { id: string }; Body: { version?: number } }>('/api/flows/:id/restore', async (request, reply) => {
+        if (!Number.isInteger(request.body.version) || Number(request.body.version) < 1) {
+            return reply.code(400).send({ error: 'version must be a positive integer' });
+        }
+        const flow = await options.scheduler.restoreFlowVersion(request.params.id, Number(request.body.version));
+        return flow ? { flow } : reply.code(404).send({ error: 'Flow/version not found' });
+    });
+    app.get<{ Params: { id: string } }>('/api/flows/:id/export', async (request, reply) => {
+        const flow = await options.scheduler.flowDefinition(request.params.id);
+        if (!flow) return reply.code(404).send({ error: 'Flow not found' });
+        const safeName = flow.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'flow';
+        return reply.header('content-disposition', `attachment; filename="${safeName}.mobile-flow.json"`)
+            .send({ format: 'mobile-farm-flow@1', exportedAt: new Date().toISOString(), flow: flow.payload });
+    });
+    app.get<{ Params: { id: string } }>('/api/flows/:id/export/maestro', async (request, reply) => {
+        const flow = await options.scheduler.flowDefinition(request.params.id);
+        if (!flow) return reply.code(404).send({ error: 'Flow not found' });
+        const yaml = exportMaestroFlow(flow.payload as PortableFlowPayload);
+        const safeName = flow.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'flow';
+        return reply.header('content-disposition', `attachment; filename="${safeName}.maestro.yaml"`)
+            .type('application/yaml; charset=utf-8').send(yaml);
+    });
+    app.delete<{ Params: { id: string } }>('/api/flows/:id', async (request, reply) => (
+        await options.scheduler.deleteFlowDefinition(request.params.id)
+            ? reply.code(204).send()
+            : reply.code(404).send({ error: 'Flow not found' })
+    ));
     app.get('/api/campaigns', async () => ({ campaigns: await options.scheduler.listCampaigns(200) }));
     app.post<{ Body: CreateCampaignInput }>('/api/campaigns', async (request, reply) => {
         const devices = await loadRegisteredDevices();

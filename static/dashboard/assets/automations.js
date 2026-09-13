@@ -10,6 +10,19 @@ const elements = {
     flowSteps: document.querySelector('#flow-steps'),
     flowRun: document.querySelector('#flow-run'),
     flowResult: document.querySelector('#flow-result'),
+    flowLibrary: document.querySelector('#flow-library'),
+    flowNew: document.querySelector('#flow-new'),
+    flowSave: document.querySelector('#flow-save'),
+    flowSaveState: document.querySelector('#flow-save-state'),
+    flowDuplicate: document.querySelector('#flow-duplicate'),
+    flowDelete: document.querySelector('#flow-delete'),
+    flowExport: document.querySelector('#flow-export'),
+    flowExportMaestro: document.querySelector('#flow-export-maestro'),
+    flowImport: document.querySelector('#flow-import'),
+    flowImportFile: document.querySelector('#flow-import-file'),
+    flowVersion: document.querySelector('#flow-version'),
+    flowVersionField: document.querySelector('#flow-version-field'),
+    flowRestore: document.querySelector('#flow-restore'),
     device: document.querySelector('#pipeline-device'),
     fleet: document.querySelector('#pipeline-fleet'),
     fleetHint: document.querySelector('#pipeline-fleet-hint'),
@@ -31,6 +44,9 @@ let flowSteps = [
     { action: 'launch', appId: 'com.apple.Preferences' },
     { action: 'wait', milliseconds: 1000 },
 ];
+let flowLibrary = [];
+let currentFlowId;
+let currentFlowVersion;
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -247,19 +263,93 @@ function renderFlowSteps() {
         elements.flowSteps.append(row);
     });
 }
-async function runPortableFlow() {
-    const deviceUdid = elements.flowDevice.value;
+function currentFlowPayload() {
     const name = elements.flowName.value.trim();
-    if (!deviceUdid)
-        throw new Error('Choose a device first.');
     if (!name)
         throw new Error('Give the flow a name.');
+    return { name, steps: structuredClone(flowSteps) };
+}
+function updateFlowLibraryActions(detail) {
+    const saved = Boolean(currentFlowId);
+    elements.flowDuplicate.disabled = !saved;
+    elements.flowDelete.disabled = !saved;
+    elements.flowExport.disabled = !saved;
+    elements.flowExportMaestro.disabled = !saved;
+    elements.flowVersionField.hidden = !saved;
+    elements.flowRestore.hidden = !saved;
+    elements.flowSave.textContent = saved ? 'Save new version' : 'Save to library';
+    elements.flowSaveState.textContent = saved
+        ? `Saved · v${currentFlowVersion ?? detail?.currentVersion ?? 1}`
+        : 'Unsaved flow';
+    if (detail) {
+        elements.flowVersion.replaceChildren(...detail.versions.map(({ version, createdAt }) => (new Option(`v${version} · ${new Date(createdAt).toLocaleString()}`, String(version), false, version === detail.currentVersion))));
+    }
+    else
+        elements.flowVersion.replaceChildren();
+}
+function newFlow() {
+    currentFlowId = undefined;
+    currentFlowVersion = undefined;
+    elements.flowName.value = 'My mobile flow';
+    flowSteps = [{ action: 'launch', appId: '' }, { action: 'waitVisible', text: '', timeoutMs: 10000 }];
+    renderFlowSteps();
+    updateFlowLibraryActions();
+    renderFlowLibrary();
+}
+function renderFlowLibrary() {
+    elements.flowLibrary.innerHTML = '';
+    if (!flowLibrary.length) {
+        elements.flowLibrary.innerHTML = '<p class="empty-state-inline">No saved flows yet.</p>';
+        return;
+    }
+    for (const flow of flowLibrary) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `flow-library-item${flow.id === currentFlowId ? ' is-active' : ''}`;
+        button.innerHTML = `<strong>${escapeHtml(flow.name)}</strong><span>v${flow.currentVersion} · ${flow.payload.steps.length} steps · ${new Date(flow.updatedAt).toLocaleDateString()}</span>`;
+        button.addEventListener('click', () => void loadSavedFlow(flow.id));
+        elements.flowLibrary.append(button);
+    }
+}
+async function refreshFlowLibrary() {
+    const data = await jsonRequest('/api/flows');
+    flowLibrary = data.flows;
+    renderFlowLibrary();
+}
+async function loadSavedFlow(id, version) {
+    const suffix = version ? `?version=${encodeURIComponent(String(version))}` : '';
+    const data = await jsonRequest(`/api/flows/${encodeURIComponent(id)}${suffix}`);
+    currentFlowId = data.flow.id;
+    currentFlowVersion = data.flow.currentVersion;
+    elements.flowName.value = data.flow.payload.name;
+    flowSteps = structuredClone(data.flow.payload.steps);
+    renderFlowSteps();
+    updateFlowLibraryActions(data.flow);
+    renderFlowLibrary();
+}
+async function saveFlow() {
+    const payload = currentFlowPayload();
+    const data = await jsonRequest(currentFlowId ? `/api/flows/${encodeURIComponent(currentFlowId)}` : '/api/flows', {
+        method: currentFlowId ? 'PUT' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    currentFlowId = data.flow.id;
+    currentFlowVersion = data.flow.currentVersion;
+    await refreshFlowLibrary();
+    await loadSavedFlow(data.flow.id);
+}
+async function runPortableFlow() {
+    const deviceUdid = elements.flowDevice.value;
+    const payload = currentFlowPayload();
+    if (!deviceUdid)
+        throw new Error('Choose a device first.');
     return await jsonRequest('/api/schedules', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
             deviceUdid,
-            task: { pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload: { name, steps: flowSteps } },
+            task: { pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload },
             timing: { kind: 'now' },
             runWindowMinutes: 30,
         }),
@@ -411,6 +501,137 @@ elements.flowAdd.addEventListener('click', () => {
     flowSteps.push(defaultFlowStep('tap'));
     renderFlowSteps();
 });
+elements.flowNew.addEventListener('click', newFlow);
+elements.flowSave.addEventListener('click', async () => {
+    elements.flowSave.disabled = true;
+    elements.flowResult.textContent = 'Saving flow…';
+    try {
+        await saveFlow();
+        elements.flowResult.textContent = `Saved · v${currentFlowVersion}`;
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+    finally {
+        elements.flowSave.disabled = false;
+    }
+});
+elements.flowDuplicate.addEventListener('click', async () => {
+    if (!currentFlowId)
+        return;
+    const name = window.prompt('Name for the duplicate', `${elements.flowName.value} copy`);
+    if (name === null)
+        return;
+    try {
+        const data = await jsonRequest(`/api/flows/${encodeURIComponent(currentFlowId)}/duplicate`, {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+        });
+        await refreshFlowLibrary();
+        await loadSavedFlow(data.flow.id);
+        elements.flowResult.textContent = 'Duplicated.';
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
+elements.flowDelete.addEventListener('click', async () => {
+    if (!currentFlowId || !window.confirm(`Delete ${elements.flowName.value} and all of its saved versions?`))
+        return;
+    try {
+        await jsonRequest(`/api/flows/${encodeURIComponent(currentFlowId)}`, { method: 'DELETE' });
+        newFlow();
+        await refreshFlowLibrary();
+        elements.flowResult.textContent = 'Flow deleted.';
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
+elements.flowExport.addEventListener('click', async () => {
+    if (!currentFlowId)
+        return;
+    try {
+        const response = await fetch(`/api/flows/${encodeURIComponent(currentFlowId)}/export`);
+        if (!response.ok)
+            throw new Error(`Export failed (${response.status})`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${elements.flowName.value.replace(/[^a-z0-9._-]+/gi, '-') || 'flow'}.mobile-flow.json`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
+elements.flowExportMaestro.addEventListener('click', async () => {
+    if (!currentFlowId)
+        return;
+    try {
+        const response = await fetch(`/api/flows/${encodeURIComponent(currentFlowId)}/export/maestro`);
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || `Maestro export failed (${response.status})`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${elements.flowName.value.replace(/[^a-z0-9._-]+/gi, '-') || 'flow'}.maestro.yaml`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
+elements.flowRestore.addEventListener('click', async () => {
+    if (!currentFlowId)
+        return;
+    const version = Number(elements.flowVersion.value);
+    if (!Number.isInteger(version))
+        return;
+    if (!window.confirm(`Restore v${version} as a new current version?`))
+        return;
+    try {
+        const data = await jsonRequest(`/api/flows/${encodeURIComponent(currentFlowId)}/restore`, {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ version }),
+        });
+        await refreshFlowLibrary();
+        await loadSavedFlow(data.flow.id);
+        elements.flowResult.textContent = `Restored v${version} into v${data.flow.currentVersion}.`;
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
+elements.flowImport.addEventListener('click', async () => {
+    const file = elements.flowImportFile.files?.[0];
+    if (!file) {
+        elements.flowResult.textContent = 'Choose a Mobile Farm JSON export first.';
+        return;
+    }
+    try {
+        const text = await file.text();
+        const maestro = /\.ya?ml$/i.test(file.name) || file.type.includes('yaml');
+        const data = maestro
+            ? await jsonRequest('/api/flows/import/maestro', {
+                method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ yaml: text }),
+            })
+            : await jsonRequest('/api/flows/import', {
+                method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(JSON.parse(text)),
+            });
+        elements.flowImportFile.value = '';
+        await refreshFlowLibrary();
+        await loadSavedFlow(data.flow.id);
+        elements.flowResult.textContent = 'Imported into the library.';
+    }
+    catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    }
+});
 elements.flowRun.addEventListener('click', async () => {
     elements.flowRun.disabled = true;
     elements.flowResult.textContent = 'Queuing flow…';
@@ -519,10 +740,12 @@ void FLEET_VALUE;
 const requestedTemplate = params.get('template');
 selectTemplate(requestedTemplate === 'flow' ? 'flow' : (requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : ''), { refresh: false });
 renderFlowSteps();
+updateFlowLibraryActions();
 void loadDevices().then(() => {
     if (!elements.workspace.hidden)
         return refreshPipeline();
 }).catch((error) => {
     elements.status.textContent = errorMessage(error);
 });
+void refreshFlowLibrary().catch((error) => { elements.flowLibrary.textContent = errorMessage(error); });
 export {};

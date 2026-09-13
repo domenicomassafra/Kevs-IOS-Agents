@@ -150,6 +150,21 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
             .type(upstream.headers.get('content-type') ?? 'multipart/x-mixed-replace; boundary=--BoundaryString')
             .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
     });
+    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/h264', async (request, reply) => {
+        if (!remote.getH264Stream) return reply.code(501).send({ error: 'Optimized H.264 transport is unavailable' });
+        const abort = new AbortController();
+        request.raw.once('close', () => abort.abort());
+        try {
+            const upstream = await remote.getH264Stream(request.params.udid, abort.signal);
+            if (!upstream.body) return reply.code(503).send({ error: 'H.264 stream is unavailable' });
+            return reply.header('cache-control', 'no-store, no-cache, must-revalidate')
+                .header('x-mobile-farm-video-backend', upstream.headers.get('x-mobile-farm-video-backend') ?? 'h264')
+                .type(upstream.headers.get('content-type') ?? 'video/h264')
+                .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
+        } catch (error) {
+            return reply.code(503).send({ error: error instanceof Error ? error.message : String(error) });
+        }
+    });
     app.post<{ Params: { udid: string }; Body: RemoteAction }>('/v1/devices/:udid/action', async (request) => {
         await remote.performAction(request.params.udid, request.body);
         return { ok: true };

@@ -86,15 +86,36 @@
             <div class="section-heading">
                 <div><span class="eyebrow">Portable flow</span><h2>Flow builder</h2><p>Prefer semantic steps. They survive screen-size changes and work across XCUITest/WDA and UiAutomator2 accessibility trees.</p></div>
             </div>
-            <div class="flow-toolbar">
-                <label class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>
-                <label class="field"><span>Flow name</span><input id="flow-name" type="text" maxlength="120" value="My mobile flow"></label>
-                <button id="flow-add" class="button secondary" type="button">Add step</button>
-            </div>
-            <div id="flow-steps" class="flow-steps" aria-live="polite"></div>
-            <div class="form-actions">
-                <span id="flow-result" class="run-meta"></span><span class="spacer"></span>
-                <button id="flow-run" class="button primary" type="button">Run now</button>
+            <div class="flow-studio-grid">
+                <aside class="flow-library-panel">
+                    <div class="flow-library-head"><div><span class="eyebrow">Library</span><h3>Saved flows</h3></div><button id="flow-new" class="icon-button" type="button">New</button></div>
+                    <div id="flow-library" class="flow-library-list"><span class="run-meta">Loading flows…</span></div>
+                    <label class="flow-import-label">Import flow<input id="flow-import-file" type="file" accept="application/json,.json,.yaml,.yml,text/yaml,application/yaml"></label>
+                    <button id="flow-import" class="button secondary" type="button">Import flow</button>
+                </aside>
+                <div class="flow-editor-panel">
+                    <div class="flow-toolbar">
+                        <label class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>
+                        <label class="field"><span>Flow name</span><input id="flow-name" type="text" maxlength="120" value="My mobile flow"></label>
+                        <button id="flow-add" class="button secondary" type="button">Add step</button>
+                    </div>
+                    <div class="flow-version-bar">
+                        <span id="flow-save-state" class="run-meta">Unsaved flow</span>
+                        <span class="spacer"></span>
+                        <label id="flow-version-field" hidden>Version <select id="flow-version"></select></label>
+                        <button id="flow-restore" class="button secondary" type="button" hidden>Restore</button>
+                        <button id="flow-export" class="button secondary" type="button" disabled>Export</button>
+                        <button id="flow-export-maestro" class="button secondary" type="button" disabled>Maestro YAML</button>
+                        <button id="flow-duplicate" class="button secondary" type="button" disabled>Duplicate</button>
+                        <button id="flow-delete" class="button secondary danger-outline" type="button" disabled>Delete</button>
+                        <button id="flow-save" class="button secondary" type="button">Save</button>
+                    </div>
+                    <div id="flow-steps" class="flow-steps" aria-live="polite"></div>
+                    <div class="form-actions">
+                        <span id="flow-result" class="run-meta"></span><span class="spacer"></span>
+                        <button id="flow-run" class="button primary" type="button">Run now</button>
+                    </div>
+                </div>
             </div>
         </section>
 
