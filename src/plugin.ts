@@ -20,6 +20,8 @@ export interface DeviceAutomation {
     screenshot(): Promise<Buffer>;
     tap(x: number, y: number): Promise<void>;
     swipe(startX: number, startY: number, endX: number, endY: number, durationMs: number): Promise<void>;
+    typeText(text: string): Promise<void>;
+    system(action: 'home' | 'lock' | 'wake' | 'unlock' | 'volumeUp' | 'volumeDown'): Promise<void>;
 }
 
 export interface TaskValidationContext {

@@ -2,17 +2,20 @@
 
 ## Product thesis
 
-Build a local-first control plane for a fleet of owner-controlled physical iPhones and social accounts. The product should make deterministic, repeatable workflows cheap and reliable, while exposing a separate semantic/agent layer for novel tasks. The fleet core must remain useful when every LLM is disconnected.
+Build a local-first control plane for owner-controlled mobile devices and accounts: physical iPhones, physical Android phones, iOS Simulators and Android emulators. The product should make deterministic, repeatable workflows cheap and reliable, while exposing a separate semantic/agent layer for novel tasks. The fleet core must remain useful when every LLM is disconnected.
 
-The production authority is the always-on Linux MiniPC. macOS hosts are physical-device execution nodes because Apple signing, Xcode and WebDriverAgent remain macOS-only concerns. The split must not change the operator experience: browser and agent clients talk to the MiniPC while device input/video is securely proxied to the Mac that owns each iPhone.
+The production authority is the always-on Linux MiniPC. Execution hosts own the device-specific runtime: macOS is required for Apple signing/WDA and iOS Simulator, while Android execution can use ADB/Appium. The split must not change the operator experience: browser and agent clients talk to the MiniPC while device input/video is securely proxied to the host that owns each runtime.
 
 ## Primary outcome
 
-From one dashboard/API, the owner can see every iPhone, the accounts configured on it, device/account readiness, queued and scheduled work, content waiting to publish, and execution evidence. Known workflows run deterministically. Unknown workflows can be delegated to an agent adapter without coupling the scheduler to a model vendor.
+From one dashboard/API, the owner can see every real or virtual mobile device, its execution host/capabilities, configured accounts, readiness, queued and scheduled work, content waiting to publish and execution evidence. Known workflows run deterministically. Portable flows and semantic-agent adapters cover new workflows without coupling the scheduler to a model vendor.
 
 ## Initial product surface
 
 - Physical iPhone registration, signing, WDA/Appium supervision and remote control.
+- Fast attach for iOS Simulators and Android physical/emulated runtimes through an isolated Appium 3 sidecar.
+- Execution-host capability inventory (`simctl`, `adb`, WDA, Appium) surfaced in the dashboard.
+- Portable Automation Studio with versioned scheduler-backed flows shared across supported runtimes.
 - Per-device serialized scheduler and execution history.
 - Canonical cross-device inventory of TikTok and Instagram accounts.
 - Explicit account binding: a task cannot target a handle that is not configured on that phone.
@@ -38,4 +41,5 @@ From one dashboard/API, the owner can see every iPhone, the accounts configured 
 4. A scheduled task with an unconfigured account is rejected before persistence.
 5. A live acceptance run can prove registration → WDA → stream → touch → account switch → scheduled task on a physical iPhone.
 6. Agent/semantic automation can be added without changing scheduler contracts.
-7. The MiniPC can remain online with a Mac worker offline and automatically recover its device inventory/configuration when that worker reconnects.
+7. The MiniPC can remain online with an execution worker offline and automatically recover its device inventory/configuration when that worker reconnects.
+8. Android/Appium and iOS Simulator page sources normalize into the same stable-ref semantic interface used by agents.

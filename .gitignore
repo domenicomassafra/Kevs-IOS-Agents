@@ -11,6 +11,7 @@ static/assets/
 *.log
 .appium2/
 .appium-next/
+.appium-runtime/
 .runtime/
 logs/
 

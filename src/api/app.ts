@@ -34,6 +34,8 @@ import { SemanticController } from '../semantic/controller.js';
 import { planCampaign, type CreateCampaignInput } from '../campaigns.js';
 import { buildFleetHealth } from '../analytics.js';
 import { StreamTokenService } from '../security/stream-token.js';
+import type { HostSnapshot } from '../hosts/capabilities.js';
+import type { RuntimeDevice } from '../devices/runtime-discovery.js';
 
 export interface CreateAppOptions {
     plugins: PluginRegistry;
@@ -51,6 +53,9 @@ export interface CreateAppOptions {
     connectionStatus?: (udid: string) => Promise<DeviceConnectionStatus | undefined>;
     reconnectDevice?: (udid: string) => Promise<DeviceConnectionStatus | undefined>;
     syncDeviceConfiguration?: (device: RegisteredDevice) => Promise<void>;
+    listHosts?: () => Promise<HostSnapshot[]> | HostSnapshot[];
+    runtimeCandidates?: () => Promise<Array<RuntimeDevice & { workerId?: string }>>;
+    registerRuntime?: (workerId: string | undefined, udid: string, name?: string) => Promise<void>;
 }
 
 export interface DashboardTheme {
@@ -351,6 +356,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         tasks: plugin.tasks.map(({ type, version, displayName }) => ({ type, version, displayName })),
     })));
     app.get('/api/devices', async () => registeredWithStatus(discoverDevices));
+    app.get('/api/hosts', async () => ({ hosts: await options.listHosts?.() ?? [] }));
     app.get('/api/accounts', async () => ({ accounts: listFleetAccounts(await loadRegisteredDevices()) }));
     app.get('/api/fleet/health', async () => {
         const [devices, registered, schedules, executions] = await Promise.all([
@@ -402,6 +408,13 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         return { account };
     });
     app.get('/api/devices/discovered', async () => discoverDevices());
+    app.get('/api/runtime-devices/discovered', async () => ({ devices: await options.runtimeCandidates?.() ?? [] }));
+    app.post<{ Body: { workerId?: string; udid?: string; name?: string } }>('/api/runtime-devices', async (request, reply) => {
+        if (!options.registerRuntime) return reply.code(503).send({ error: 'Runtime registration is not configured' });
+        if (!request.body.udid?.trim()) return reply.code(400).send({ error: 'Runtime device UDID is required' });
+        await options.registerRuntime(request.body.workerId, request.body.udid.trim(), request.body.name?.trim());
+        return reply.code(201).send({ ok: true });
+    });
     app.get('/api/device-registrations/candidates', async (_request, reply) => {
         if (!options.registrations) return reply.code(503).send({ error: 'Device registration is not configured' });
         return { devices: await options.registrations.candidates() };
@@ -747,6 +760,11 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         const device = (await loadRegisteredDevices()).find(({ udid }) => udid === request.body.deviceUdid);
         if (!device) return reply.code(404).send({ error: 'Device not found' });
         if (device.disabled) return reply.code(409).send({ error: 'This device is disabled — activate it before scheduling automation' });
+        const backend = device.automationBackend
+            ?? ((device.platform ?? 'ios') === 'ios' && (device.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+        if (backend === 'appium' && ['com.git-agni.tiktok', 'com.git-agni.instagram'].includes(request.body.task.pluginId)) {
+            return reply.code(409).send({ error: 'This social recipe is currently iOS/WDA-specific. Use a Portable Flow on Appium runtimes.' });
+        }
         const schedule = await options.scheduler.createTask(
             request.body, device.pluginData[request.body.task.pluginId] ?? {}, new Date(), request.body.assetIds ?? [],
         );
@@ -891,7 +909,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         app.get('/assets/register-device.js', asset('text/javascript', theme.registerDeviceScript));
         app.get('/assets/htmx.min.js', asset('text/javascript', theme.htmx));
         app.get('/api/fragments/devices', async (_request, reply) => {
-            const devices = await registeredWithStatus();
+            const devices = await registeredWithStatus(discoverDevices);
             const active = devices.filter((device) => !device.disabled);
             const disabled = devices.filter((device) => device.disabled);
             const toggleButton = (udid: string, label: string, next: boolean) =>
@@ -899,6 +917,10 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const renameButton = (udid: string) =>
                 `<button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(udid)}">Rename</button>`;
             const cards = active.map((device) => {
+                const platform = device.platform ?? 'ios';
+                const kind = device.kind ?? 'physical';
+                const runtime = `${platform === 'ios' ? 'iOS' : 'Android'} · ${kind}`;
+                const host = device.workerId ? ` · ${device.workerId}` : '';
                 const accounts = Object.values(device.pluginData).flatMap((value) => {
                     const candidate = value.accounts;
                     return Array.isArray(candidate) ? candidate.filter((entry) => typeof entry === 'string') : [];
@@ -909,7 +931,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 const preview = device.connected
                     ? `<div class="device-preview-frame"><img class="device-preview" src="/api/devices/${encodeURIComponent(device.udid)}/remote/screenshot?t=${Date.now()}" alt="Screen of ${escapeHtml(device.name)}" draggable="false" onerror="this.style.visibility='hidden'"></div>`
                     : '<div class="device-preview-frame unavailable" aria-hidden="true"><div class="device-icon"></div></div>';
-                return `<article class="device-card">${preview}<div class="device-copy"><h2 class="device-name">${escapeHtml(device.name)}</h2><p>${device.connected ? `iOS ${escapeHtml(device.connected.osVersion)}` : escapeHtml(device.udid)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${renameButton(device.udid)}${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
+                return `<article class="device-card">${preview}<div class="device-copy"><h2 class="device-name">${escapeHtml(device.name)}</h2><p>${escapeHtml(runtime)}${device.connected ? ` · ${escapeHtml(device.connected.osVersion)}` : ''}${escapeHtml(host)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span><div class="connection-chips"><span class="connection-chip">${escapeHtml(platform)}</span><span class="connection-chip">${escapeHtml(kind)}</span>${device.workerId ? `<span class="connection-chip">${escapeHtml(device.workerId)}</span>` : ''}</div>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${renameButton(device.udid)}${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
             }).join('');
             const disabledPanel = disabled.length
                 ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span class="device-name">${escapeHtml(device.name)}</span><span class="inline-actions">${renameButton(device.udid)}${toggleButton(device.udid, 'Reconnect', false)}</span></li>`).join('')}</ul></details>`
@@ -917,9 +939,17 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const deviceListScript = `<script>if(!window.__deviceListActions){window.__deviceListActions=1;document.addEventListener('click',async function(e){var rename=e.target.closest('[data-rename-device]');if(rename){e.preventDefault();var root=rename.closest('.device-card,li')||rename.parentElement;var title=root&&root.querySelector('.device-name');var current=(title&&title.textContent||'').replace(/\\s+/g,' ').trim();var next=window.prompt('Rename this phone for the farm grid',current);if(next===null)return;next=next.replace(/\\s+/g,' ').trim();if(!next){alert('Name cannot be empty');return}rename.disabled=true;var rr=await fetch('/api/devices/'+rename.dataset.renameDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name:next})});if(rr.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{rename.disabled=false;var err=((await rr.json().catch(function(){return{}}))||{}).error||('Rename failed ('+rr.status+')');alert(err)}return}var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
             return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${deviceListScript}</section>`);
         });
+        app.get('/api/fragments/hosts', async (_request, reply) => {
+            const hosts = await options.listHosts?.() ?? [];
+            const cards = hosts.map((host) => {
+                const capabilities = host.capabilities.map((capability) => `<span class="connection-chip ready">${escapeHtml(capability)}</span>`).join('');
+                return `<article class="host-card"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div><div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">no mobile capabilities</span>'}</div></article>`;
+            }).join('');
+            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${hosts.length} connected node${hosts.length === 1 ? '' : 's'}</p></div><div class="host-grid">${cards || '<div class="empty-state"><h2>No execution hosts connected</h2><p>Pair a Mac/PC worker with the control plane to expose real or virtual devices.</p></div>'}</div></section>`);
+        });
         app.get('/api/fragments/fleet-health', async (_request, reply) => {
             const [devices, registered, schedules, executions, campaignRows] = await Promise.all([
-                registeredWithStatus(),
+                registeredWithStatus(discoverDevices),
                 loadRegisteredDevices(),
                 options.scheduler.listSchedules(500),
                 options.scheduler.listExecutions(500),
@@ -962,11 +992,16 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 if (!registered) {
                     return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
                 }
-                return reply.type('text/html').send(`<section id="device-summary" class="device-summary"><div><span class="eyebrow">Registered device</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(registered.name)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(registered.udid)}">Rename</button></div><p>Offline · reconnect USB to control this phone</p></div><code>${escapeHtml(registered.udid)}</code></section>`);
+                const platform = registered.platform ?? 'ios';
+                const kind = registered.kind ?? 'physical';
+                return reply.type('text/html').send(`<section id="device-summary" class="device-summary"><div><span class="eyebrow">Registered ${escapeHtml(kind)}</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(registered.name)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(registered.udid)}">Rename</button></div><p>Offline · ${platform === 'ios' && kind === 'physical' ? 'reconnect USB' : 'start or reconnect the runtime'} · ${escapeHtml(platform)} / ${escapeHtml(kind)}</p></div><code>${escapeHtml(registered.udid)}</code></section>`);
             }
             const displayName = registered?.name ?? connected.name;
             const screen = await remote.getScreenInfo(connected.udid);
-            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected device</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(displayName)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(connected.udid)}">Rename</button></div><p>iOS ${escapeHtml(connected.osVersion)} · ${screen.screenSize.width} × ${screen.screenSize.height} points · ${screen.scale}×</p></div><code>${escapeHtml(connected.udid)}</code></section>`);
+            const platform = registered?.platform ?? connected.platform ?? 'ios';
+            const kind = registered?.kind ?? connected.kind ?? 'physical';
+            const backend = registered?.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
+            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected ${escapeHtml(kind)}</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(displayName)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(connected.udid)}">Rename</button></div><p>${platform === 'ios' ? 'iOS' : 'Android'} ${escapeHtml(connected.osVersion)} · ${escapeHtml(kind)} · ${escapeHtml(backend)} · ${screen.screenSize.width} × ${screen.screenSize.height}</p></div><code>${escapeHtml(connected.udid)}</code></section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/activity', async (request, reply) => {
             return reply.type('text/html').send(await renderActivity(request.params.udid));
@@ -975,7 +1010,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
 
     app.get('/', async (_request, reply) => {
         if (themed) return reply.type('text/html').send(themed.indexHtml);
-        const devices = await registeredWithStatus();
+        const devices = await registeredWithStatus(discoverDevices);
         const cards = devices.map((device) => `<div class="card"><h2>${escapeHtml(device.name)}</h2><p class="muted"><code>${escapeHtml(device.udid)}</code></p><p>${device.disabled ? 'Disconnected' : device.connected ? `Online · iOS ${escapeHtml(device.connected.osVersion)}` : 'Offline'}</p><a class="button" href="/devices/${encodeURIComponent(device.udid)}">Open device</a></div>`).join('');
         const connected = await discoverDevices();
         const registeredIds = new Set(devices.map(({ udid }) => udid));

@@ -2,6 +2,11 @@ export {};
 
 type CheckState = 'pending' | 'checking' | 'blocked' | 'passed' | 'failed';
 interface Device { name: string; osVersion: string; udid: string }
+interface RuntimeDevice extends Device {
+    platform: 'ios' | 'android';
+    kind: 'physical' | 'simulator' | 'emulator';
+    workerId?: string;
+}
 interface RegistrationCheck { state: CheckState; message: string; updatedAt: string }
 interface Snapshot {
     id: string; device: Device & { productType?: string; modelName?: string }; name: string; coordinateProfile?: string;
@@ -13,6 +18,7 @@ interface Snapshot {
 
 const candidatePanel = document.querySelector<HTMLElement>('#candidate-panel')!;
 const candidateList = document.querySelector<HTMLElement>('#candidate-list')!;
+const runtimeList = document.querySelector<HTMLElement>('#runtime-list')!;
 const registrationPanel = document.querySelector<HTMLElement>('#registration-panel')!;
 const title = document.querySelector<HTMLElement>('#registration-title')!;
 const busy = document.querySelector<HTMLElement>('#registration-busy')!;
@@ -64,6 +70,51 @@ async function candidates(): Promise<void> {
             card.append(copy, button); return card;
         }));
     } catch (error) { candidateList.textContent = ''; showError(error); }
+}
+
+async function runtimeCandidates(): Promise<void> {
+    runtimeList.textContent = 'Scanning execution hosts…';
+    try {
+        const data = await request<{ devices: RuntimeDevice[] }>('/api/runtime-devices/discovered');
+        const devices = (data.devices ?? []).filter((device) => !(device.platform === 'ios' && device.kind === 'physical'));
+        if (!devices.length) {
+            runtimeList.innerHTML = '<div class="empty-state"><h3>No virtual/Android runtime detected</h3><p>Start an iOS Simulator or Android Emulator, or attach an Android phone with USB debugging enabled.</p></div>';
+            return;
+        }
+        runtimeList.replaceChildren(...devices.map((device) => {
+            const card = document.createElement('article');
+            card.className = 'candidate-card';
+            const copy = document.createElement('div');
+            const heading = document.createElement('h3');
+            heading.textContent = device.name;
+            const meta = document.createElement('p');
+            meta.textContent = `${device.platform} · ${device.kind} · ${device.osVersion || 'unknown OS'}${device.workerId ? ` · ${device.workerId}` : ''}`;
+            copy.append(heading, meta);
+            const button = document.createElement('button');
+            button.className = 'button primary';
+            button.type = 'button';
+            button.textContent = 'Attach to farm';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                button.textContent = 'Attaching…';
+                try {
+                    await request('/api/runtime-devices', {
+                        method: 'POST', headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ workerId: device.workerId, udid: device.udid, name: device.name }),
+                    });
+                    window.location.assign(`/devices/${encodeURIComponent(device.udid)}`);
+                } catch (error) {
+                    button.disabled = false;
+                    button.textContent = 'Attach to farm';
+                    showError(error);
+                }
+            });
+            card.append(copy, button);
+            return card;
+        }));
+    } catch (error) {
+        runtimeList.textContent = error instanceof Error ? error.message : String(error);
+    }
 }
 
 async function create(udid: string): Promise<void> {
@@ -128,6 +179,7 @@ async function action(name: 'refresh' | 'prepare' | 'verify' | 'finalize'): Prom
 }
 
 document.querySelector<HTMLButtonElement>('#refresh-candidates')!.addEventListener('click', () => void candidates());
+document.querySelector<HTMLButtonElement>('#refresh-runtimes')!.addEventListener('click', () => void runtimeCandidates());
 document.querySelector<HTMLButtonElement>('#action-refresh')!.addEventListener('click', () => void action('refresh'));
 document.querySelector<HTMLButtonElement>('#action-prepare')!.addEventListener('click', () => {
     if (!authorize.checked && !window.confirm('Continue without allowing automatic Apple Developer team device registration? Xcode may ask you to register it manually.')) return;
@@ -157,7 +209,7 @@ form.addEventListener('submit', async (event) => {
 });
 
 void (async () => {
-    await candidates();
+    await Promise.all([candidates(), runtimeCandidates()]);
     const requestedUdid = new URLSearchParams(window.location.search).get('udid');
     if (requestedUdid) await create(requestedUdid).catch(showError);
 })();

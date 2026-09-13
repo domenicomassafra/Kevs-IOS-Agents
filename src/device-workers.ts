@@ -2,6 +2,8 @@ import type { DeviceConnectionStatus } from './devices/connection-manager.js';
 import type { Device } from './devices/discovery.js';
 import { loadRegisteredDevices, mutateRegisteredDevices, type RegisteredDevice } from './devices/registry.js';
 import type { RemoteAction, RemoteControl, ScreenInfo } from './devices/wda-remote.js';
+import type { HostSnapshot } from './hosts/capabilities.js';
+import type { RuntimeDevice } from './devices/runtime-discovery.js';
 
 export interface DeviceWorkerDescriptor {
     id: string;
@@ -70,6 +72,20 @@ export class DeviceWorkerClient {
         return (await response.json() as { devices: DeviceWorkerDevice[] }).devices;
     }
 
+    async host(): Promise<HostSnapshot> {
+        return await (await this.request('/v1/host')).json() as HostSnapshot;
+    }
+
+    async runtimeDevices(): Promise<RuntimeDevice[]> {
+        return (await (await this.request('/v1/runtime-devices')).json() as { devices: RuntimeDevice[] }).devices;
+    }
+
+    async registerRuntimeDevice(udid: string, name?: string): Promise<void> {
+        await this.request(`/v1/runtime-devices/${encodeURIComponent(udid)}/register`, {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(name ? { name } : {}) }),
+        });
+    }
+
     async getScreenInfo(udid: string): Promise<ScreenInfo> {
         return await (await this.request(`/v1/devices/${encodeURIComponent(udid)}/info`)).json() as ScreenInfo;
     }
@@ -126,6 +142,7 @@ export class DeviceWorkerFleet implements RemoteControl {
     private readonly clients: Map<string, DeviceWorkerClient>;
     private readonly ownership = new Map<string, string>();
     private snapshots: DeviceWorkerDevice[] = [];
+    private hostSnapshots: HostSnapshot[] = [];
 
     constructor(descriptors: readonly DeviceWorkerDescriptor[], fetchImpl: typeof fetch = fetch) {
         this.clients = new Map(descriptors.map((descriptor) => [descriptor.id, new DeviceWorkerClient(descriptor, fetchImpl)]));
@@ -134,12 +151,15 @@ export class DeviceWorkerFleet implements RemoteControl {
     async refresh(): Promise<DeviceWorkerDevice[]> {
         const batches = await Promise.all(Array.from(this.clients.entries(), async ([id, client]) => {
             try {
-                return { id, devices: await client.devices() };
+                const devices = await client.devices();
+                const host = await client.host().catch(() => undefined);
+                return { id, devices, host };
             } catch (error) {
                 console.warn(`Device worker ${id} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-                return { id, devices: [] as DeviceWorkerDevice[] };
+                return { id, devices: [] as DeviceWorkerDevice[], host: undefined };
             }
         }));
+        this.hostSnapshots = batches.flatMap(({ host }) => host ? [host] : []);
         const ownership = new Map<string, string>();
         const snapshots: DeviceWorkerDevice[] = [];
         for (const batch of batches) {
@@ -159,6 +179,11 @@ export class DeviceWorkerFleet implements RemoteControl {
                 if (existing) {
                     existing.workerId = workerId;
                     existing.name = snapshot.registered.name;
+                    existing.osVersion = snapshot.registered.osVersion;
+                    existing.productType = snapshot.registered.productType;
+                    existing.platform = snapshot.registered.platform;
+                    existing.kind = snapshot.registered.kind;
+                    existing.automationBackend = snapshot.registered.automationBackend;
                     if (!existing.coordinateProfile && snapshot.registered.coordinateProfile) existing.coordinateProfile = snapshot.registered.coordinateProfile;
                     continue;
                 }
@@ -166,6 +191,11 @@ export class DeviceWorkerFleet implements RemoteControl {
                     name: snapshot.registered.name,
                     udid: snapshot.registered.udid,
                     workerId,
+                    ...(snapshot.registered.osVersion ? { osVersion: snapshot.registered.osVersion } : {}),
+                    ...(snapshot.registered.productType ? { productType: snapshot.registered.productType } : {}),
+                    ...(snapshot.registered.platform ? { platform: snapshot.registered.platform } : {}),
+                    ...(snapshot.registered.kind ? { kind: snapshot.registered.kind } : {}),
+                    ...(snapshot.registered.automationBackend ? { automationBackend: snapshot.registered.automationBackend } : {}),
                     ...(snapshot.registered.coordinateProfile ? { coordinateProfile: snapshot.registered.coordinateProfile } : {}),
                     ...(snapshot.registered.coordinates ? { coordinates: snapshot.registered.coordinates } : {}),
                     ...(snapshot.registered.instagramCoordinates ? { instagramCoordinates: snapshot.registered.instagramCoordinates } : {}),
@@ -186,6 +216,23 @@ export class DeviceWorkerFleet implements RemoteControl {
             }
         });
         return snapshots;
+    }
+
+    hosts(): HostSnapshot[] { return this.hostSnapshots.map((host) => structuredClone(host)); }
+
+    async runtimeCandidates(): Promise<Array<RuntimeDevice & { workerId: string }>> {
+        const batches = await Promise.all(Array.from(this.clients.entries(), async ([workerId, client]) => {
+            try { return (await client.runtimeDevices()).map((device) => ({ ...device, workerId })); }
+            catch { return [] as Array<RuntimeDevice & { workerId: string }>; }
+        }));
+        return batches.flat();
+    }
+
+    async registerRuntime(workerId: string, udid: string, name?: string): Promise<void> {
+        const client = this.clients.get(workerId);
+        if (!client) throw Object.assign(new Error(`Unknown device worker ${workerId}`), { statusCode: 404 });
+        await client.registerRuntimeDevice(udid, name);
+        await this.refresh();
     }
 
     async discoverDevices(): Promise<Device[]> {

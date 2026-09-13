@@ -2,20 +2,30 @@ import { coordinatesForProfile } from './coordinates.js';
 import { loadRegisteredDevices } from './registry.js';
 import { WdaRemoteControl, type RemoteAction, type RemoteControl, type ScreenInfo } from './wda-remote.js';
 import { passcodeForDevice } from './secrets.js';
+import { AppiumRemoteControl } from './appium-remote.js';
 
 export class RegistryWdaRemoteControl implements RemoteControl {
-    private readonly controls = new Map<string, WdaRemoteControl>();
+    private readonly controls = new Map<string, WdaRemoteControl | AppiumRemoteControl>();
 
     /** Forget the cached client so the next call rebuilds it from devices.json (passcode, ports, profile). */
     forget(udid: string): void {
+        const current = this.controls.get(udid);
+        if (current instanceof AppiumRemoteControl) current.forget();
         this.controls.delete(udid);
     }
 
-    async control(udid: string): Promise<WdaRemoteControl> {
+    async control(udid: string): Promise<WdaRemoteControl | AppiumRemoteControl> {
         const cached = this.controls.get(udid);
         if (cached) return cached;
         const device = (await loadRegisteredDevices()).find((candidate) => candidate.udid === udid);
         if (!device) return new WdaRemoteControl();
+        const backend = device.automationBackend
+            ?? ((device.platform ?? 'ios') === 'ios' && (device.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+        if (backend === 'appium') {
+            const control = new AppiumRemoteControl(device);
+            this.controls.set(udid, control);
+            return control;
+        }
         const control = new WdaRemoteControl({
             deviceUdid: udid,
             passcode: device.passcode ?? await passcodeForDevice(udid),

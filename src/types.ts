@@ -2,16 +2,26 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
+export type MobilePlatform = 'ios' | 'android';
+export type MobileDeviceKind = 'physical' | 'simulator' | 'emulator';
+export type MobileAutomationBackend = 'wda' | 'appium';
+
 export interface DeviceIdentity {
     udid: string;
     name: string;
+    /** Legacy entries omit this and are interpreted as iOS. */
+    platform?: MobilePlatform;
+    /** Legacy entries omit this and are interpreted as physical devices. */
+    kind?: MobileDeviceKind;
+    /** Execution host/node that owns the device transport. */
+    workerId?: string;
     osVersion?: string;
     productType?: string;
 }
 
 export interface RegisteredDevice extends DeviceIdentity {
-    /** Execution node that owns this physical iPhone in distributed deployments. */
-    workerId?: string;
+    /** Legacy iPhone entries use WDA; generic runtimes use Appium. */
+    automationBackend?: MobileAutomationBackend;
     wdaLocalPort?: number;
     mjpegLocalPort?: number;
     /** Compiled tap-layout key; canonical here, not in pluginData. */

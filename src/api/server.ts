@@ -7,10 +7,13 @@ import { createSchedulerRuntime } from '../scheduler/runtime.js';
 import { assertSafeBind, isLoopbackHost } from '../security.js';
 import { createTikTokPlugin } from '../tiktok-plugin.js';
 import { createInstagramPlugin } from '../instagram-plugin.js';
+import { portableFlowPlugin } from '../flow-plugin.js';
 import { defaultDashboardTheme } from '../dashboard-theme.js';
 import { DeviceRegistrationService } from '../devices/registration.js';
 import { configuredDeviceWorkers, DeviceWorkerFleet } from '../device-workers.js';
 import { createApp, type DashboardTheme } from './app.js';
+import { detectHostCapabilities } from '../hosts/capabilities.js';
+import { discoverRuntimeDevices, registerRuntimeDevice } from '../devices/runtime-discovery.js';
 
 export interface StartServerOptions {
     plugins?: readonly PhoneFarmPlugin[];
@@ -22,6 +25,7 @@ export interface StartServerOptions {
 
 export async function defaultPlugins(): Promise<PhoneFarmPlugin[]> {
     return [
+        portableFlowPlugin,
         createTikTokPlugin({ bundleId: process.env.TIKTOK_BUNDLE_ID }),
         createInstagramPlugin({ bundleId: process.env.INSTAGRAM_BUNDLE_ID }),
         ...await loadPlugins(configuredPluginModules()),
@@ -57,10 +61,21 @@ export async function startServer(options: StartServerOptions = {}) {
         ...(workerFleet ? {
             remote: workerFleet,
             discoverDevices: () => workerFleet.discoverDevices(),
+            listHosts: () => workerFleet.hosts(),
+            runtimeCandidates: () => workerFleet.runtimeCandidates(),
+            registerRuntime: (workerId, udid, name) => {
+                if (!workerId) throw Object.assign(new Error('Choose an execution worker for this runtime'), { statusCode: 400 });
+                return workerFleet.registerRuntime(workerId, udid, name);
+            },
             connectionStatus: (udid: string) => workerFleet.connectionStatus(udid),
             reconnectDevice: (udid: string) => workerFleet.reconnectDevice(udid),
             syncDeviceConfiguration: (device) => workerFleet.syncDeviceConfiguration(device),
-        } : {}),
+        } : {
+            listHosts: async () => [await detectHostCapabilities({ id: process.env.PHONE_FARM_WORKER_ID ?? 'local' })],
+            discoverDevices: discoverRuntimeDevices,
+            runtimeCandidates: discoverRuntimeDevices,
+            registerRuntime: async (_workerId, udid, name) => { await registerRuntimeDevice(udid, { name }); },
+        }),
     });
     await app.listen({ host, port });
     const address = app.server.address() as AddressInfo;

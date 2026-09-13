@@ -85,7 +85,12 @@ function clean(value: unknown, max = 120): string {
 
 function shortType(value: unknown): string {
     if (typeof value !== 'string' || !value) return 'Other';
-    return value.replace(/^XCUIElementType/, '');
+    const raw = value.replace(/^XCUIElementType/, '').split('.').at(-1) ?? value;
+    const aliases: Record<string, string> = {
+        EditText: 'TextField', TextView: 'StaticText', ImageView: 'Image', ImageButton: 'Button',
+        RecyclerView: 'CollectionView', ListView: 'Table', ViewPager: 'ScrollView',
+    };
+    return aliases[raw] ?? raw;
 }
 
 function rect(value: unknown): SemanticRect | undefined {

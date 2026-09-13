@@ -145,7 +145,11 @@ export class DeviceConnectionManager implements DeviceConnections {
             this.appium = appiumReady ? 'ready' : 'unavailable';
             // Disabled devices are supervised exactly like unregistered ones:
             // their WDA child is stopped and their runtime forgotten.
-            const devices = activeDevices(allDevices);
+            const devices = activeDevices(allDevices).filter((device) => {
+                const backend = device.automationBackend
+                    ?? ((device.platform ?? 'ios') === 'ios' && (device.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+                return backend === 'wda';
+            });
             const registered = new Set(devices.map(({ udid }) => udid));
             for (const [udid, runtime] of this.runtimes) {
                 if (!registered.has(udid)) {

@@ -19,6 +19,7 @@ Review the 37 npm advisories from clean install, group direct/transitive exposur
 - Production-only audit: 6 high findings, all in the current WebdriverIO chain (`webdriverio` / `webdriver` / `@wdio/*` → `@puppeteer/browsers` → `extract-zip`).
 - `webdriverio@9.31.8` is already the current registry release checked during this tranche; `extract-zip@2.0.1` is also the latest release available on its package line.
 - `npm audit fix --dry-run` proposes zero bounded changes. npm's advertised alternative for this chain is a forced WebdriverIO downgrade, which is not acceptable without Appium/iPhone regression proof.
-- The remaining full-tree findings include the pinned Appium 2 toolchain. The already-researched Appium 3 + modern XCUITest path installs in isolation but requires porting the farm's custom WDA endpoints before it can replace the canonical runtime.
+- The remaining full-tree findings include the pinned Appium 2 toolchain. A modern Appium 3.7.0 runtime is now deliberately installed **side-by-side** for FARM-019 (`:4726`, `.appium-runtime`) with XCUITest 12.12.3 and UiAutomator2 8.6.4. This proves modern Appium can coexist without replacing the physical-iPhone lane.
+- The physical-iPhone canonical lane still cannot switch wholesale: its custom WDA endpoints must be ported and live-regression-tested first. The sidecar therefore reduces cross-platform blocking but does **not** close this dependency-remediation ticket.
 
 No `--force` remediation was applied. Close this ticket only after the modern WDA/Appium compatibility port and physical-device regression gate are green.

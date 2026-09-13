@@ -1,8 +1,10 @@
 # Architecture — what does what
 
-Phone Farm iOS is four cooperating processes over one PostgreSQL database and a
-few local state files. There is no client framework: the dashboard is
-server‑rendered HTML with HTMX, and live video is MJPEG, not WebSockets.
+Mobile Farm is a control plane plus execution-host runtimes over one PostgreSQL
+database and a few local state files. There is no client framework: the
+dashboard is server-rendered HTML with HTMX. Physical iPhones keep their
+specialized WDA video/control path, while generic Appium runtimes expose the
+same dashboard contract through screenshot streaming and shared input methods.
 
 ```
                          ┌───────────────────────────────┐
@@ -19,8 +21,9 @@ server‑rendered HTML with HTMX, and live video is MJPEG, not WebSockets.
         └───────▲────────────────────┘   └───────────┬──────────────┘
                 │ SQL / pg-boss                      │ USB
         ┌───────┴────────────┐              ┌────────▼─────────┐
-        │ worker             │── Appium ───▶│ Appium :4725     │──▶ iPhone
-        │  runs due tasks    │   (webdriverio in task procs)   │
+        │ worker             │─────────────▶│ Appium 2 :4725   │──▶ physical iPhone/WDA recipes
+        │  runs due tasks    │              ├──────────────────┤
+        │                    │─────────────▶│ Appium 3 :4726   │──▶ iOS Simulator / Android
         └────────────────────┘              └──────────────────┘
 ```
 
@@ -48,14 +51,13 @@ Fastify app on `WEB_PORT` (default 3000).
 ### `worker` — `src/scheduler/worker.ts` → `startWorker()`
 Headless. Owns task execution.
 
-- One pg-boss worker per **active** registered device, queue
-  `ios-device-<hash(udid)>`. A device with `disabled: true` in `devices.json`
+- One pg-boss worker per **active** registered device. A device with `disabled: true` in `devices.json`
   is skipped here and by `wda-service` — the entry stays but nothing supervises
   it.
 - Every 5 s, `materializeDue()` turns due schedules into `executions` rows and
   enqueues jobs; every 30 s it picks up newly registered devices.
-- For each job: `executeAutomation()` (`src/scheduler/executor.ts`) waits for
-  the device + WDA + Appium to be ready, builds a `TaskExecutionContext`, and
+- For each job: `executeAutomation()` (`src/scheduler/executor.ts`) resolves the
+  device backend (WDA or generic Appium), waits for the required runtime, builds a `TaskExecutionContext`, and
   calls the task's `execute()`. Handles attempts, retry policy, stop requests,
   and the run‑window deadline.
 - Must load the **same plugin versions** as `web`.
@@ -71,11 +73,22 @@ Persistent WebDriverAgent supervisor, controlled over a Unix socket
   message }`. States: `ready`, `unlock-required`, `error`, …
 - Single‑supervisor by design; a lock prevents duplicates.
 
-### `appium` — `appium --address 127.0.0.1 --port 4725`
-Appium 3 with the XCUITest driver, isolated in `APPIUM_HOME=.appium2`. Task
-subprocesses (e.g. `src/tiktok/doomscroll.ts`) connect to it with
-`webdriverio`. The dashboard's remote control does **not** go through Appium —
-it talks to WDA directly. Binds loopback only.
+### `appium` legacy lane — `:4725`
+The existing Appium 2 + pinned XCUITest/WDA stack is isolated in
+`APPIUM_HOME=.appium2`. Physical-iPhone social recipes still depend on custom
+WDA endpoints, so this lane is deliberately retained until FARM-017 ports those
+extensions to modern WDA. Dashboard control for this lane talks directly to WDA.
+
+### `appium-runtime` modern lane — `:4726`
+Appium 3 lives side-by-side under `APPIUM_HOME=.appium-runtime`, with modern
+XCUITest for iOS Simulator and UiAutomator2 for Android. `AppiumRemoteControl`
+provides screen info, screenshots, input, app lifecycle and a bounded
+screenshot stream. Its XML page source is normalized into the same semantic
+snapshot/ref model used by WDA, so Hermes/MCP do not need a second selector API.
+
+Workers discover iOS Simulators through `xcrun simctl` and Android
+physical/emulated devices through `adb`; the dashboard can attach those
+runtimes without hand-editing `devices.json`.
 
 ## Xcode, signing, and device pairing
 
@@ -117,11 +130,12 @@ without the UI, for scripted or bulk (`--all`) setup.
 | PostgreSQL `scheduler.*` | `schedules`, `executions`, `execution_attempts`, `execution_logs`, `assets`. Drizzle ORM; migrations in `drizzle/`. |
 | PostgreSQL `pgboss.*` | Job queue (one partitioned queue per device). |
 | PostgreSQL `drizzle.*` | Applied‑migration ledger. |
-| `devices.json` | Registered devices: `udid`, `name`, ports, `coordinateProfile`, per‑device `coordinates` overrides, `passcode`, `disabled`, `pluginData`. Git‑ignored, `0600`. |
+| `devices.json` | Registered devices: `udid`, `name`, `platform`, `kind`, `automationBackend`, owner `workerId`, optional WDA ports/coordinates/passcode and `pluginData`. Git-ignored, `0600`. |
 | `.env` | Configuration and secrets (DB URL, signing IDs, auth keys). Git‑ignored. Device passcodes live in `devices.json`, not here. |
 | `.scheduler-data/assets/` | Uploaded media for `post`‑style tasks, content‑addressed. |
 | `.wda/` | wda-service socket and locks. |
 | `.appium2/` | Isolated Appium home with the pinned XCUITest driver. |
+| `.appium-runtime/` | Isolated Appium 3 home with modern XCUITest + UiAutomator2 drivers. |
 
 ## The task model
 
@@ -138,6 +152,11 @@ payload : jsonb          validated, version-specific shape
 to a `TaskDefinition`. Because the version is stored, **an old schedule can
 never silently run a new contract** — if `taskVersion` 1 is no longer
 installed, that schedule fails loudly instead of executing v2 logic.
+
+`com.phone-farm.flow/flow@1` is the generic cross-platform contract. Its payload
+is an ordered list of portable actions (app launch/terminate, wait, tap, swipe,
+type, system buttons and screenshot), authored in Automation Studio and queued
+through the exact same scheduler/evidence path as plugin-specific tasks.
 
 ## Scheduling
 
@@ -162,7 +181,10 @@ in `src/scheduler/recurrence.ts`; the next occurrence is written to
 | `src/api/` | Fastify app factory, controllers, middleware, HTTP routes |
 | `src/scheduler/` | runtime, repository, pg-boss queue, recurrence, worker, executor |
 | `src/database/` | Drizzle client, schema, migrate/setup entrypoints |
-| `src/devices/` | discovery, registry (`devices.json`), registration flow, WDA remote, wda-service, coordinate profiles, passcode lookup |
+| `src/devices/` | physical/virtual discovery, registry (`devices.json`), WDA and Appium remotes, registration flow, wda-service, coordinate profiles, passcode lookup |
+| `src/hosts/` | execution-host capability detection (`simctl`, `adb`, Appium, WDA) |
+| `src/semantic/` | normalized WDA/Appium accessibility snapshots, stable refs and semantic actions |
+| `src/flow-plugin.ts` | built-in portable cross-platform flow task |
 | `src/devices/wda/` | `prepare.ts` (patch + build + sign WDA), `start.ts` (single-device WDA supervisor), `target-device.ts` (resolve which device a CLI command targets), diagnostics |
 | `src/tiktok/` | TikTok automation entrypoints (`doomscroll.ts`, `post.ts`), OCR, coordinates |
 | `src/tiktok-plugin.ts` | Built‑in TikTok plugin: task definitions, device panel, routes |

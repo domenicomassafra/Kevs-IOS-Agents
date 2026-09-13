@@ -2,12 +2,19 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { coordinatesForProfile, validateCoordinateOverrides, type DeviceCoordinateOverrides, type DeviceProfileName } from './coordinates.js';
-import type { JsonObject } from '../types.js';
+import type { JsonObject, MobileAutomationBackend, MobileDeviceKind, MobilePlatform } from '../types.js';
 
 export interface RegisteredDevice {
     name: string;
     udid: string;
-    /** Execution node that owns the physical USB/WDA connection. Omitted in standalone mode. */
+    osVersion?: string;
+    productType?: string;
+    /** Legacy entries omit platform/kind and remain iOS physical devices. */
+    platform?: MobilePlatform;
+    kind?: MobileDeviceKind;
+    /** Legacy iPhone entries use WDA; generic runtimes use Appium. */
+    automationBackend?: MobileAutomationBackend;
+    /** Execution node that owns the local device transport. Omitted in standalone mode. */
     workerId?: string;
     coordinateProfile?: DeviceProfileName;
     wdaLocalPort?: number;
@@ -53,13 +60,21 @@ export async function loadRegisteredDevices(registryPath = defaultRegistryPath):
         throw new Error(`${registryPath} contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
     for (const device of devices) {
-        // Unknown profiles used to throw here and turn every PATCH (including
-        // rename) into a generic 400. Fall back so the rest of the farm stays usable.
-        try {
-            coordinatesForProfile(device.coordinateProfile);
-        } catch {
-            delete device.coordinateProfile;
-            coordinatesForProfile(device.coordinateProfile);
+        const platform = device.platform ?? 'ios';
+        const kind = device.kind ?? 'physical';
+        const backend = device.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
+        if (!['ios', 'android'].includes(platform)) throw new Error(`Device ${device.udid} has invalid platform ${platform}`);
+        if (!['physical', 'simulator', 'emulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid kind ${kind}`);
+        if (!['wda', 'appium'].includes(backend)) throw new Error(`Device ${device.udid} has invalid automation backend ${backend}`);
+        if (platform === 'ios') {
+            // Unknown profiles used to throw here and turn every PATCH (including
+            // rename) into a generic 400. Fall back so the rest of the farm stays usable.
+            try {
+                coordinatesForProfile(device.coordinateProfile);
+            } catch {
+                delete device.coordinateProfile;
+                coordinatesForProfile(device.coordinateProfile);
+            }
         }
         device.pluginData ??= {};
     }
@@ -69,15 +84,21 @@ export async function loadRegisteredDevices(registryPath = defaultRegistryPath):
 export async function saveRegisteredDevices(devices: RegisteredDevice[], registryPath = defaultRegistryPath): Promise<void> {
     const unique = new Set<string>();
     for (const device of devices) {
-        coordinatesForProfile(device.coordinateProfile);
+        const platform = device.platform ?? 'ios';
+        const kind = device.kind ?? 'physical';
+        const backend = device.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
+        if (!['ios', 'android'].includes(platform)) throw new Error(`Device ${device.udid} has invalid platform ${platform}`);
+        if (!['physical', 'simulator', 'emulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid kind ${kind}`);
+        if (!['wda', 'appium'].includes(backend)) throw new Error(`Device ${device.udid} has invalid automation backend ${backend}`);
+        if (platform === 'ios') coordinatesForProfile(device.coordinateProfile);
         if (device.passcode !== undefined && !PASSCODE_PATTERN.test(device.passcode)) {
             throw new Error(`Device ${device.udid} passcode must contain at least four digits`);
         }
-        if (device.coordinates !== undefined) {
+        if (platform === 'ios' && device.coordinates !== undefined) {
             device.coordinates = validateCoordinateOverrides(device.coordinates, device.coordinateProfile);
             if (Object.keys(device.coordinates).length === 0) delete device.coordinates;
         }
-        if (device.instagramCoordinates !== undefined) {
+        if (platform === 'ios' && device.instagramCoordinates !== undefined) {
             device.instagramCoordinates = validateCoordinateOverrides(
                 device.instagramCoordinates,
                 device.coordinateProfile,

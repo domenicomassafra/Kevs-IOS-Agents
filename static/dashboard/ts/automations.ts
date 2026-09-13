@@ -4,7 +4,18 @@ interface DeviceRow {
     udid: string;
     name: string;
     disabled?: boolean;
+    platform?: 'ios' | 'android';
+    kind?: 'physical' | 'simulator' | 'emulator';
+    workerId?: string;
 }
+
+type FlowStep =
+    | { action: 'launch' | 'terminate'; appId: string }
+    | { action: 'wait'; milliseconds: number }
+    | { action: 'tap'; x: number; y: number }
+    | { action: 'swipe'; startX: number; startY: number; endX: number; endY: number; durationMs: number }
+    | { action: 'type'; text: string }
+    | { action: 'home' | 'lock' | 'wake' | 'unlock' | 'volumeUp' | 'volumeDown' | 'screenshot' };
 
 interface PipelineItem {
     id: string;
@@ -42,6 +53,13 @@ const params = new URLSearchParams(location.search);
 const elements = {
     templates: Array.from(document.querySelectorAll<HTMLButtonElement>('.automation-template[data-template]')),
     workspace: document.querySelector<HTMLElement>('#pipeline-workspace')!,
+    flowWorkspace: document.querySelector<HTMLElement>('#flow-workspace')!,
+    flowDevice: document.querySelector<HTMLSelectElement>('#flow-device')!,
+    flowName: document.querySelector<HTMLInputElement>('#flow-name')!,
+    flowAdd: document.querySelector<HTMLButtonElement>('#flow-add')!,
+    flowSteps: document.querySelector<HTMLElement>('#flow-steps')!,
+    flowRun: document.querySelector<HTMLButtonElement>('#flow-run')!,
+    flowResult: document.querySelector<HTMLElement>('#flow-result')!,
     device: document.querySelector<HTMLSelectElement>('#pipeline-device')!,
     fleet: document.querySelector<HTMLInputElement>('#pipeline-fleet')!,
     fleetHint: document.querySelector<HTMLElement>('#pipeline-fleet-hint')!,
@@ -60,6 +78,10 @@ const elements = {
 
 let devicesCache: DeviceRow[] = [];
 let fleetPreview: FleetPreviewRow[] = [];
+let flowSteps: FlowStep[] = [
+    { action: 'launch', appId: 'com.apple.Preferences' },
+    { action: 'wait', milliseconds: 1000 },
+];
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -113,11 +135,18 @@ function selectTemplate(id: string, options: { refresh?: boolean } = {}): void {
         button.classList.toggle('is-active', active);
     }
     elements.workspace.hidden = id !== 'pipeline';
+    elements.flowWorkspace.hidden = id !== 'flow';
     if (id === 'pipeline') {
         const next = new URL(location.href);
         next.searchParams.set('template', 'pipeline');
         history.replaceState(null, '', next);
         if (options.refresh !== false) void refreshPipeline();
+    }
+    if (id === 'flow') {
+        const next = new URL(location.href);
+        next.searchParams.set('template', 'flow');
+        history.replaceState(null, '', next);
+        renderFlowSteps();
     }
 }
 
@@ -125,15 +154,128 @@ async function loadDevices(): Promise<void> {
     devicesCache = (await jsonRequest('/api/devices') as DeviceRow[]).filter((entry) => !entry.disabled);
     const preferred = params.get('device') ?? '';
     elements.device.innerHTML = '<option value="">Select an iPhone…</option>';
+    elements.flowDevice.innerHTML = '<option value="">Select a device…</option>';
     for (const device of devicesCache) {
         elements.device.add(new Option(device.name, device.udid));
+        const platform = device.platform ?? 'ios';
+        const kind = device.kind ?? 'physical';
+        const host = device.workerId ? ` · ${device.workerId}` : '';
+        elements.flowDevice.add(new Option(`${device.name} · ${platform}/${kind}${host}`, device.udid));
     }
     if (preferred && [...elements.device.options].some((option) => option.value === preferred)) {
         elements.device.value = preferred;
     } else if (devicesCache[0]) {
         elements.device.value = devicesCache[0].udid;
     }
+    if (preferred && [...elements.flowDevice.options].some((option) => option.value === preferred)) {
+        elements.flowDevice.value = preferred;
+    } else if (devicesCache[0]) {
+        elements.flowDevice.value = devicesCache[0].udid;
+    }
     updateFleetHint();
+}
+
+const FLOW_ACTIONS: FlowStep['action'][] = [
+    'launch', 'terminate', 'wait', 'tap', 'swipe', 'type',
+    'home', 'lock', 'wake', 'unlock', 'volumeUp', 'volumeDown', 'screenshot',
+];
+
+function defaultFlowStep(action: FlowStep['action']): FlowStep {
+    if (action === 'launch' || action === 'terminate') return { action, appId: '' };
+    if (action === 'wait') return { action, milliseconds: 1000 };
+    if (action === 'tap') return { action, x: 100, y: 100 };
+    if (action === 'swipe') return { action, startX: 200, startY: 600, endX: 200, endY: 200, durationMs: 350 };
+    if (action === 'type') return { action, text: '' };
+    return { action };
+}
+
+function flowParamInput(step: Record<string, unknown>, key: string, type: 'number' | 'text' = 'number'): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = type;
+    input.placeholder = key;
+    input.title = key;
+    input.value = String(step[key] ?? '');
+    if (type === 'number') input.step = '1';
+    input.addEventListener('input', () => {
+        step[key] = type === 'number' ? Number(input.value) : input.value;
+    });
+    return input;
+}
+
+function flowParams(step: FlowStep): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'flow-step-params';
+    const values = step as unknown as Record<string, unknown>;
+    if (step.action === 'launch' || step.action === 'terminate') box.append(flowParamInput(values, 'appId', 'text'));
+    else if (step.action === 'wait') box.append(flowParamInput(values, 'milliseconds'));
+    else if (step.action === 'tap') box.append(flowParamInput(values, 'x'), flowParamInput(values, 'y'));
+    else if (step.action === 'swipe') box.append(
+        flowParamInput(values, 'startX'), flowParamInput(values, 'startY'), flowParamInput(values, 'endX'),
+        flowParamInput(values, 'endY'), flowParamInput(values, 'durationMs'),
+    );
+    else if (step.action === 'type') box.append(flowParamInput(values, 'text', 'text'));
+    else {
+        const hint = document.createElement('span');
+        hint.className = 'run-meta';
+        hint.textContent = 'No parameters';
+        box.append(hint);
+    }
+    return box;
+}
+
+function renderFlowSteps(): void {
+    elements.flowSteps.innerHTML = '';
+    flowSteps.forEach((step, index) => {
+        const row = document.createElement('article');
+        row.className = 'flow-step';
+        const badge = document.createElement('span');
+        badge.className = 'flow-step-index';
+        badge.textContent = String(index + 1);
+        const action = document.createElement('select');
+        for (const name of FLOW_ACTIONS) action.add(new Option(name, name));
+        action.value = step.action;
+        action.addEventListener('change', () => {
+            flowSteps[index] = defaultFlowStep(action.value as FlowStep['action']);
+            renderFlowSteps();
+        });
+        const actions = document.createElement('div');
+        actions.className = 'flow-step-actions';
+        const up = document.createElement('button');
+        up.type = 'button'; up.className = 'icon-button'; up.textContent = '↑'; up.disabled = index === 0;
+        up.addEventListener('click', () => {
+            [flowSteps[index - 1], flowSteps[index]] = [flowSteps[index]!, flowSteps[index - 1]!];
+            renderFlowSteps();
+        });
+        const down = document.createElement('button');
+        down.type = 'button'; down.className = 'icon-button'; down.textContent = '↓'; down.disabled = index === flowSteps.length - 1;
+        down.addEventListener('click', () => {
+            [flowSteps[index], flowSteps[index + 1]] = [flowSteps[index + 1]!, flowSteps[index]!];
+            renderFlowSteps();
+        });
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'icon-button'; remove.textContent = '×'; remove.disabled = flowSteps.length === 1;
+        remove.addEventListener('click', () => { flowSteps.splice(index, 1); renderFlowSteps(); });
+        actions.append(up, down, remove);
+        row.append(badge, action, flowParams(step), actions);
+        elements.flowSteps.append(row);
+    });
+}
+
+async function runPortableFlow(): Promise<{ id?: string }> {
+    const deviceUdid = elements.flowDevice.value;
+    const name = elements.flowName.value.trim();
+    if (!deviceUdid) throw new Error('Choose a device first.');
+    if (!name) throw new Error('Give the flow a name.');
+    return await jsonRequest('/api/schedules', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            deviceUdid,
+            task: { pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload: { name, steps: flowSteps } },
+            timing: { kind: 'now' },
+            runWindowMinutes: 30,
+        }),
+    }) as { id?: string };
 }
 
 function statusLabel(status: string): string {
@@ -274,6 +416,23 @@ for (const button of elements.templates) {
     button.addEventListener('click', () => selectTemplate(button.dataset.template ?? 'pipeline'));
 }
 
+elements.flowAdd.addEventListener('click', () => {
+    flowSteps.push(defaultFlowStep('tap'));
+    renderFlowSteps();
+});
+elements.flowRun.addEventListener('click', async () => {
+    elements.flowRun.disabled = true;
+    elements.flowResult.textContent = 'Queuing flow…';
+    try {
+        const schedule = await runPortableFlow();
+        elements.flowResult.textContent = `Queued · ${schedule.id ?? 'ready to run'}`;
+    } catch (error) {
+        elements.flowResult.textContent = errorMessage(error);
+    } finally {
+        elements.flowRun.disabled = false;
+    }
+});
+
 elements.device.addEventListener('change', () => void refreshPipeline());
 elements.fleet.addEventListener('change', () => {
     updateFleetHint();
@@ -356,10 +515,12 @@ elements.checkNow.addEventListener('click', async () => {
 });
 
 void FLEET_VALUE;
+const requestedTemplate = params.get('template');
 selectTemplate(
-    params.get('template') === 'pipeline' || params.has('device') ? 'pipeline' : '',
+    requestedTemplate === 'flow' ? 'flow' : (requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : ''),
     { refresh: false },
 );
+renderFlowSteps();
 void loadDevices().then(() => {
     if (!elements.workspace.hidden) return refreshPipeline();
 }).catch((error) => {

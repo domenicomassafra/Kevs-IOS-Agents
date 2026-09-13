@@ -3,21 +3,21 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Device · IOS AGENTS</title>
+    <title>Device · Mobile Farm</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/styles.css">
     <script src="/assets/htmx.min.js" defer></script>
 </head>
-<body>
+<body data-runtime-platform="__DEVICE_PLATFORM__" data-runtime-kind="__DEVICE_KIND__" data-runtime-backend="__DEVICE_BACKEND__">
     <header class="topbar">
         <div class="topbar-inner">
             <a class="brand" href="/">
                 <span class="brand-mark" aria-hidden="true"></span>
                 <span class="brand-text">
-                    <span class="brand-name">IOS AGENTS</span>
-                    <span class="brand-by">by kevbuilds apps</span>
+                    <span class="brand-name">MOBILE FARM</span>
+                    <span class="brand-by">real + virtual device control</span>
                 </span>
             </a>
             <nav class="topbar-nav">
@@ -25,10 +25,10 @@
                 <a class="crumb" href="/automations">Automations</a>
                 <a class="crumb" href="/tasks">Tasks</a>
                 <button id="open-tasks" class="button secondary" type="button">Tasks &amp; schedules</button>
-                <button id="open-accounts" class="button secondary" type="button">TikTok accounts</button>
-                <button id="open-instagram-accounts" class="button secondary" type="button">Instagram accounts</button>
-                <button id="open-passcode" class="button secondary" type="button">Passcode</button>
-                <button id="open-calibrate" class="button secondary" type="button">Touch points</button>
+                <button id="open-accounts" class="button secondary ios-social-only" type="button">TikTok accounts</button>
+                <button id="open-instagram-accounts" class="button secondary ios-social-only" type="button">Instagram accounts</button>
+                <button id="open-passcode" class="button secondary ios-social-only" type="button">Passcode</button>
+                <button id="open-calibrate" class="button secondary ios-social-only" type="button">Touch points</button>
                 <button id="open-remove" class="button danger" type="button">Remove device</button>
                 __PLUGIN_NAV____AUTH_NAV__
             </nav>
@@ -51,7 +51,7 @@
                     </div>
                 </div>
                 <div class="stream-workspace">
-                    <div class="phone"><img id="screen" alt="Live screen from the connected iPhone" draggable="false"></div>
+                    <div class="phone"><img id="screen" alt="Live screen from the connected mobile device" draggable="false"></div>
                     <div class="remote-controls" aria-label="Device navigation controls">
                         <div class="swipe-pad">
                             <button class="remote-button up" type="button" data-remote-action="up" aria-label="Swipe up">↑</button>
@@ -71,14 +71,14 @@
                     </div>
                 </div>
                 <div id="status" class="stream-status"><span class="dot"></span><span>Waiting for device details…</span></div>
-                <p class="hint">Click to tap and drag to swipe. Remote input pauses while a warmup or engagement session is running. Live video stays on for warmups; it pauses automatically during post/upload (heavier on WDA). <strong>Record screen</strong> captures the live view in-browser (WebM) so you can attach it when briefing an agent.</p>
-                <div class="train-bar">
+                <p class="hint">Click to tap and drag to swipe. The control plane routes input through the device backend selected for this runtime. <strong>Record screen</strong> captures the live view in-browser (WebM) so you can attach it when briefing an agent.</p>
+                <div class="train-bar ios-social-only">
                     <button id="train-toggle" class="button secondary" type="button">Train workflow</button>
                     <button id="train-save" class="button primary" type="button" hidden>Save recording</button>
                     <button id="train-clear" class="button secondary" type="button" hidden>Clear</button>
                     <span id="train-status" class="run-meta" aria-live="polite"></span>
                 </div>
-                <ol id="train-steps" class="train-steps" hidden></ol>
+                <ol id="train-steps" class="train-steps ios-social-only" hidden></ol>
             </section>
             <div class="action-stack">
                 <section class="panel workflows-panel">
@@ -88,6 +88,16 @@
                     <p class="workflows-lead">Pick a job — configure opens in a dialog. Live screen stays on the left.</p>
 
                     <div class="workflow-group">
+                        <h3 class="workflow-group-label">Portable</h3>
+                        <div class="workflow-grid">
+                            <a class="workflow-tile" href="/automations?template=flow&amp;device=__DEVICE_UDID__">
+                                <span class="workflow-tile-title">Build a flow</span>
+                                <span class="workflow-tile-desc">Launch · tap · swipe · type · wait · system actions</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="workflow-group ios-social-only">
                         <h3 class="workflow-group-label">TikTok</h3>
                         <div class="workflow-rows">
                             <article class="workflow-row">
@@ -153,7 +163,7 @@
                         </div>
                     </div>
 
-                    <div class="workflow-group">
+                    <div class="workflow-group ios-social-only">
                         <h3 class="workflow-group-label">Instagram</h3>
                         <div class="workflow-grid">
                             <button id="open-instagram-doomscroll" class="workflow-tile" type="button">
@@ -171,7 +181,7 @@
                         </div>
                     </div>
 
-                    <div class="workflow-group trained-workflows">
+                    <div class="workflow-group trained-workflows ios-social-only">
                         <div class="section-heading">
                             <div><span class="eyebrow">Trained</span><h3 class="workflow-group-heading">Custom patterns</h3></div>
                             <button id="refresh-workflows" class="icon-button" type="button">Refresh</button>

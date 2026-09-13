@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Devices · IOS AGENTS</title>
+    <title>Mobile Farm</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
@@ -16,23 +16,26 @@
             <a class="brand" href="/">
                 <span class="brand-mark" aria-hidden="true"></span>
                 <span class="brand-text">
-                    <span class="brand-name">IOS AGENTS</span>
-                    <span class="brand-by">by kevbuilds apps</span>
+                    <span class="brand-name">MOBILE FARM</span>
+                    <span class="brand-by">real + virtual device control</span>
                 </span>
             </a>
-            <nav class="topbar-nav"><a class="button primary" href="/devices/register">Register device</a><a class="button secondary" href="/demo/devices">Fleet demo</a><a class="button secondary" href="/automations">Automations</a><a class="button secondary" href="/tasks">Tasks</a><button class="button secondary" type="button" hx-get="/api/fragments/devices" hx-target="#device-list" hx-swap="outerHTML">Refresh</button>__PLUGIN_NAV____AUTH_NAV__</nav>
+            <nav class="topbar-nav"><a class="button primary" href="/devices/register">Add iPhone</a><a class="button secondary" href="/demo/devices">Fleet view</a><a class="button secondary" href="/automations">Automation Studio</a><a class="button secondary" href="/tasks">Runs</a><button class="button secondary" type="button" hx-get="/api/fragments/devices" hx-target="#device-list" hx-swap="outerHTML">Refresh</button>__PLUGIN_NAV____AUTH_NAV__</nav>
         </div>
     </header>
     <main class="shell">
         <header class="page-header">
             <div>
-                <span class="eyebrow">Fleet control</span>
-                <h1>Your <em>devices</em></h1>
-                <p>Pick a connected iPhone to drive it live or queue automation.</p>
+                <span class="eyebrow">Mobile control plane</span>
+                <h1>Your <em>mobile lab</em></h1>
+                <p>One place for real phones, iOS simulators, Android emulators, execution hosts, accounts and automations.</p>
             </div>
         </header>
         <section id="fleet-health" class="fleet-health-panel" hx-get="/api/fragments/fleet-health" hx-trigger="load, every 10s" hx-swap="outerHTML" aria-live="polite">
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Loading fleet health…</div>
+        </section>
+        <section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="load, every 15s" hx-swap="outerHTML" aria-live="polite">
+            <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Loading execution hosts…</div>
         </section>
         <section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="load" hx-swap="outerHTML" aria-live="polite">
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Looking for connected devices…</div>

@@ -3,13 +3,14 @@ import { Readable } from 'node:stream';
 
 import Fastify from 'fastify';
 
-import { discoverConnectedDevices } from './devices/discovery.js';
 import { loadRegisteredDevices, mutateRegisteredDevices, redactDevice, type RegisteredDevice } from './devices/registry.js';
 import { RegistryWdaRemoteControl } from './devices/registry-remote.js';
 import { requestWdaService } from './devices/wda-service-client.js';
 import type { DeviceConnectionStatus } from './devices/connection-manager.js';
 import type { RemoteAction } from './devices/wda-remote.js';
 import type { JsonObject } from './types.js';
+import { detectHostCapabilities } from './hosts/capabilities.js';
+import { discoverRuntimeDevices, registerRuntimeDevice } from './devices/runtime-discovery.js';
 
 function safeEqual(left: string, right: string): boolean {
     const a = Buffer.from(left);
@@ -31,7 +32,31 @@ async function localConnectionStatus(udid: string): Promise<DeviceConnectionStat
     } catch { /* fall through to direct probes */ }
     const registered = (await loadRegisteredDevices()).find((device) => device.udid === udid);
     if (!registered) throw Object.assign(new Error('Device is not registered on this worker'), { statusCode: 404 });
-    const connected = (await discoverConnectedDevices()).some((device) => device.udid === udid);
+    const connected = (await discoverRuntimeDevices()).some((device) => device.udid === udid);
+    const backend = registered.automationBackend
+        ?? ((registered.platform ?? 'ios') === 'ios' && (registered.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+    const appiumHost = backend === 'appium'
+        ? (process.env.APPIUM_RUNTIME_HOST ?? '127.0.0.1')
+        : (process.env.APPIUM_HOST ?? '127.0.0.1');
+    const appiumPort = backend === 'appium'
+        ? Number(process.env.APPIUM_RUNTIME_PORT ?? 4726)
+        : Number(process.env.APPIUM_PORT ?? 4725);
+    const appiumReady = await fetch(`http://${appiumHost}:${appiumPort}/status`, {
+        signal: AbortSignal.timeout(2_000),
+    }).then((response) => response.ok).catch(() => false);
+    if (backend === 'appium') {
+        const ready = connected && appiumReady;
+        return {
+            udid,
+            physical: connected ? 'connected' : 'disconnected',
+            wda: ready ? 'ready' : connected ? 'connecting' : 'disconnected',
+            appium: appiumReady ? 'ready' : 'unavailable',
+            managed: false,
+            message: ready ? 'Appium runtime is ready' : connected ? 'Waiting for Appium' : 'Start or reconnect this runtime',
+            retryCount: 0,
+            updatedAt: new Date().toISOString(),
+        };
+    }
     let wda = false;
     try {
         wda = (await fetch(`http://127.0.0.1:${registered.wdaLocalPort ?? 8100}/status`, { signal: AbortSignal.timeout(2_000) })).ok;
@@ -40,7 +65,7 @@ async function localConnectionStatus(udid: string): Promise<DeviceConnectionStat
         udid,
         physical: connected ? 'connected' : 'disconnected',
         wda: wda ? 'ready' : connected ? 'connecting' : 'disconnected',
-        appium: 'unavailable',
+        appium: appiumReady ? 'ready' : 'unavailable',
         managed: false,
         message: wda ? 'WDA is ready' : connected ? 'Waiting for WDA' : 'Reconnect the USB cable',
         retryCount: 0,
@@ -74,8 +99,14 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     });
 
     app.get('/health', async () => ({ ok: true, role: 'device-worker', workerId }));
+    app.get('/v1/host', async () => detectHostCapabilities({ id: workerId }));
+    app.get('/v1/runtime-devices', async () => ({ devices: await discoverRuntimeDevices() }));
+    app.post<{ Params: { udid: string }; Body: { name?: string } }>('/v1/runtime-devices/:udid/register', async (request, reply) => {
+        const device = await registerRuntimeDevice(request.params.udid, { name: request.body?.name });
+        return reply.code(201).send({ device: redactDevice(device) });
+    });
     app.get('/v1/devices', async () => {
-        const [registered, connected] = await Promise.all([loadRegisteredDevices(), discoverConnectedDevices()]);
+        const [registered, connected] = await Promise.all([loadRegisteredDevices(), discoverRuntimeDevices()]);
         const online = new Map(connected.map((device) => [device.udid, device]));
         const statuses = await Promise.all(registered.map(async (device) => {
             try { return await localConnectionStatus(device.udid); } catch { return undefined; }
@@ -91,7 +122,7 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     });
 
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/info', async (request, reply) => {
-        const device = (await discoverConnectedDevices()).find(({ udid }) => udid === request.params.udid);
+        const device = (await discoverRuntimeDevices()).find(({ udid }) => udid === request.params.udid);
         if (!device) return reply.code(404).send({ error: 'Device is not connected to this worker' });
         return remote.getScreenInfo(device.udid);
     });
@@ -115,6 +146,13 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/locked', async (request) => ({ locked: await remote.isLocked(request.params.udid) }));
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/connection', async (request) => localConnectionStatus(request.params.udid));
     app.post<{ Params: { udid: string } }>('/v1/devices/:udid/reconnect', async (request, reply) => {
+        const registered = (await loadRegisteredDevices()).find((device) => device.udid === request.params.udid);
+        const backend = registered?.automationBackend
+            ?? ((registered?.platform ?? 'ios') === 'ios' && (registered?.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+        if (backend === 'appium') {
+            remote.forget(request.params.udid);
+            return reply.code(202).send(await localConnectionStatus(request.params.udid));
+        }
         try {
             const response = await requestWdaService(`/devices/${encodeURIComponent(request.params.udid)}/reconnect`, { method: 'POST', timeoutMs: 7_000 });
             if (response.statusCode === 404) return reply.code(404).send({ error: 'Device is not supervised on this worker' });

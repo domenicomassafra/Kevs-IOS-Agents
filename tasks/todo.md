@@ -16,7 +16,9 @@
 - [x] FARM-012 Health/analytics.
 - [x] FARM-014 Signed expiring remote stream/session capabilities.
 - [x] FARM-018 Distributed Linux MiniPC control plane + macOS device-worker architecture (source implementation).
-- [x] FARM-018 source regression gate: `npm run check` => 102/102 tests + TypeScript green (2026-09-13).
+- [x] FARM-019 Unified real + virtual iOS/Android runtime layer (source implementation).
+- [x] FARM-020 Portable Automation Studio + scheduler-backed flow contract.
+- [x] Current source regression gate: `npm run check` => 110/110 tests + TypeScript green (2026-09-13).
 
 ## Live-gated
 
@@ -26,6 +28,8 @@
 - [ ] FARM-016 Physical-iPhone end-to-end acceptance: receipt-producing harness implemented; execution waits for full Xcode + PostgreSQL + physical iPhone.
 - [ ] FARM-017 Dependency remediation: triaged; current advisories require an Appium/Webdriver compatibility move that must be live-regression-tested rather than force-applied.
 - [ ] FARM-018 device half: production secret pairing + Mac worker launchd + signed WDA/iPhone acceptance after full Xcode and device registration exist.
+- [ ] FARM-019 live runtime matrix: iOS Simulator + Android emulator + physical Android + distributed proxy receipt.
+- [ ] FARM-021 Cross-platform video bake-off: scrcpy/Baguette versus generic screenshot fallback.
 
 ## Git closeout
 

@@ -7,6 +7,7 @@ import { discoverConnectedDevices, type Device } from '../devices/discovery.js';
 import { loadRegisteredDevices, type RegisteredDevice } from '../devices/registry.js';
 import { passcodeForDevice } from '../devices/secrets.js';
 import { WdaRemoteControl } from '../devices/wda-remote.js';
+import { AppiumRemoteControl } from '../devices/appium-remote.js';
 import type { ExecutionRow } from '../database/schema.js';
 import type { PluginRegistry } from '../registry.js';
 import type { TaskExecutionResult } from '../types.js';
@@ -22,14 +23,28 @@ async function endpointReady(url: string): Promise<boolean> {
 
 async function waitForDevice(execution: ExecutionRow, registered: RegisteredDevice, signal: AbortSignal): Promise<Device> {
     const wdaPort = registered.wdaLocalPort ?? Number(process.env.WDA_LOCAL_PORT ?? 8100);
-    const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
-    const appiumPort = Number(process.env.APPIUM_PORT ?? 4725);
+    const backend = registered.automationBackend
+        ?? ((registered.platform ?? 'ios') === 'ios' && (registered.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+    const appiumHost = backend === 'appium'
+        ? (process.env.APPIUM_RUNTIME_HOST ?? '127.0.0.1')
+        : (process.env.APPIUM_HOST ?? '127.0.0.1');
+    const appiumPort = backend === 'appium'
+        ? Number(process.env.APPIUM_RUNTIME_PORT ?? 4726)
+        : Number(process.env.APPIUM_PORT ?? 4725);
     let lastProblem = 'device is offline';
     while (Date.now() <= execution.deadlineAt.getTime()) {
         if (signal.aborted) throw new Error('Execution stopped while waiting for the device');
-        const device = (await discoverConnectedDevices()).find(({ udid }) => udid === execution.deviceUdid);
+        const device: Device | undefined = backend === 'appium'
+            ? {
+                name: registered.name,
+                udid: registered.udid,
+                osVersion: registered.osVersion ?? '',
+                platform: registered.platform,
+                kind: registered.kind,
+            }
+            : (await discoverConnectedDevices()).find(({ udid }) => udid === execution.deviceUdid);
         if (!device) lastProblem = 'device is offline';
-        else if (!await endpointReady(`http://127.0.0.1:${wdaPort}/status`)) lastProblem = `WDA is unavailable on port ${wdaPort}`;
+        else if (backend === 'wda' && !await endpointReady(`http://127.0.0.1:${wdaPort}/status`)) lastProblem = `WDA is unavailable on port ${wdaPort}`;
         else if (!await endpointReady(`http://${appiumHost}:${appiumPort}/status`)) lastProblem = `Appium is unavailable on port ${appiumPort}`;
         else return device;
         await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -39,6 +54,31 @@ async function waitForDevice(execution: ExecutionRow, registered: RegisteredDevi
 
 function deviceAutomation(registered: RegisteredDevice, passcode: string | undefined): DeviceAutomation {
     const udid = registered.udid;
+    const backend = registered.automationBackend
+        ?? ((registered.platform ?? 'ios') === 'ios' && (registered.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+    if (backend === 'appium') {
+        const remote = new AppiumRemoteControl(registered);
+        return {
+            activateApp: (appId) => remote.activateApp(appId),
+            terminateApp: (appId) => remote.terminateApp(appId),
+            pause: (milliseconds, signal) => new Promise((resolve, reject) => {
+                if (signal?.aborted) return reject(signal.reason);
+                const onAbort = () => { clearTimeout(timer); reject(signal!.reason); };
+                const timer = setTimeout(() => {
+                    signal?.removeEventListener('abort', onAbort);
+                    resolve();
+                }, milliseconds);
+                signal?.addEventListener('abort', onAbort, { once: true });
+            }),
+            screenshot: () => remote.getScreenshot(udid),
+            tap: (x, y) => remote.performAction(udid, { type: 'tap', x, y }),
+            swipe: (startX, startY, endX, endY, durationMs) => remote.performAction(udid, {
+                type: 'swipe', startX, startY, endX, endY, durationMs,
+            }),
+            typeText: (text) => remote.performAction(udid, { type: 'type', text }),
+            system: (action) => remote.performAction(udid, { type: action }),
+        };
+    }
     const remote = new WdaRemoteControl({
         deviceUdid: udid,
         wdaUrl: `http://127.0.0.1:${registered.wdaLocalPort ?? Number(process.env.WDA_LOCAL_PORT ?? 8100)}`,
@@ -68,6 +108,8 @@ function deviceAutomation(registered: RegisteredDevice, passcode: string | undef
         swipe: (startX, startY, endX, endY, durationMs) => remote.performAction(udid, {
             type: 'swipe', startX, startY, endX, endY, durationMs,
         }),
+        typeText: (text) => remote.performAction(udid, { type: 'type', text }),
+        system: (action) => remote.performAction(udid, { type: action }),
     };
 }
 

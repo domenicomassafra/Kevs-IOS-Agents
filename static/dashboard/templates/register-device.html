@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Register · IOS AGENTS</title>
+    <title>Add device · Mobile Farm</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
@@ -16,8 +16,8 @@
             <a class="brand" href="/">
                 <span class="brand-mark" aria-hidden="true"></span>
                 <span class="brand-text">
-                    <span class="brand-name">IOS AGENTS</span>
-                    <span class="brand-by">by kevbuilds apps</span>
+                    <span class="brand-name">MOBILE FARM</span>
+                    <span class="brand-by">real + virtual device control</span>
                 </span>
             </a>
             <nav class="topbar-nav"><a class="button secondary" href="/">Back to devices</a><a class="button secondary" href="/automations">Automations</a>__PLUGIN_NAV____AUTH_NAV__</nav>
@@ -25,11 +25,17 @@
     </header>
     <main class="shell registration-shell">
         <header class="page-header">
-            <div><span class="eyebrow">Guided setup</span><h1>Register a <em>device</em></h1><p>Keep the phone connected and unlocked. Every requirement is rechecked before it is saved.</p></div>
+            <div><span class="eyebrow">Device onboarding</span><h1>Add or register a <em>device</em></h1><p>Attach Android phones/emulators and iOS simulators directly through Appium, or use the deeper WDA setup for a physical iPhone.</p></div>
         </header>
 
+        <section class="registration-panel" id="runtime-panel">
+            <div class="section-heading"><div><span class="eyebrow">Fast attach</span><h2>Virtual &amp; Android runtimes</h2></div><button class="button secondary" id="refresh-runtimes" type="button">Scan hosts</button></div>
+            <p>Detected Android devices/emulators and iOS Simulators can join the farm immediately. They use the shared Appium backend and become available to Portable Flows.</p>
+            <div id="runtime-list" class="candidate-list" aria-live="polite">Scanning execution hosts…</div>
+        </section>
+
         <section class="registration-panel" id="candidate-panel">
-            <div class="section-heading"><div><span class="eyebrow">Step 1</span><h2>Connect an unregistered device</h2></div><button class="button secondary" id="refresh-candidates" type="button">Recheck</button></div>
+            <div class="section-heading"><div><span class="eyebrow">Physical iPhone · WDA</span><h2>Guided iPhone setup</h2></div><button class="button secondary" id="refresh-candidates" type="button">Recheck</button></div>
             <p>Connect by USB, unlock it, and accept <strong>Trust This Computer</strong>. If Developer Mode has never been enabled, pairing with Xcode makes the setting appear.</p>
             <div id="candidate-list" class="candidate-list" aria-live="polite">Checking connected devices…</div>
         </section>

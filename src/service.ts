@@ -4,13 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type ServiceName = 'appium' | 'wda' | 'worker' | 'device-worker' | 'web';
+export type ServiceName = 'appium' | 'appium-runtime' | 'wda' | 'worker' | 'device-worker' | 'web';
 
-const SERVICES: ServiceName[] = ['appium', 'wda', 'worker', 'device-worker', 'web'];
+const SERVICES: ServiceName[] = ['appium', 'appium-runtime', 'wda', 'worker', 'device-worker', 'web'];
 
 export function servicesForRole(role = process.env.PHONE_FARM_ROLE ?? 'standalone'): ServiceName[] {
-    if (role === 'device-worker') return ['appium', 'wda', 'worker', 'device-worker'];
-    if (role === 'standalone') return ['appium', 'wda', 'worker', 'web'];
+    if (role === 'device-worker') return ['appium', 'appium-runtime', 'wda', 'worker', 'device-worker'];
+    if (role === 'standalone') return ['appium', 'appium-runtime', 'wda', 'worker', 'web'];
     if (role === 'control-plane') return [];
     throw new Error(`Unknown PHONE_FARM_ROLE: ${role}`);
 }
@@ -32,6 +32,11 @@ export function serviceSpecs(root = process.cwd(), node = process.execPath): Rec
             label: 'com.phone-farm.appium',
             args: [node, 'node_modules/appium/index.js', '--address', '127.0.0.1', '--base-path', '/', '--port', '4725', '--log-level', 'info'],
             env: { APPIUM_HOME: path.join(root, '.appium2') },
+        },
+        'appium-runtime': {
+            label: 'com.phone-farm.appium-runtime',
+            args: [node, 'node_modules/appium-runtime/index.js', '--address', '127.0.0.1', '--base-path', '/', '--port', '4726', '--log-level', 'info'],
+            env: { APPIUM_HOME: path.join(root, '.appium-runtime') },
         },
         wda: { label: 'com.phone-farm.wda', args: [node, ...common, 'src/devices/wda-service.ts'] },
         worker: { label: 'com.phone-farm.worker', args: [node, ...common, 'src/scheduler/worker.ts'] },

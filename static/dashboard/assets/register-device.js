@@ -1,5 +1,6 @@
 const candidatePanel = document.querySelector('#candidate-panel');
 const candidateList = document.querySelector('#candidate-list');
+const runtimeList = document.querySelector('#runtime-list');
 const registrationPanel = document.querySelector('#registration-panel');
 const title = document.querySelector('#registration-title');
 const busy = document.querySelector('#registration-busy');
@@ -60,6 +61,52 @@ async function candidates() {
     catch (error) {
         candidateList.textContent = '';
         showError(error);
+    }
+}
+async function runtimeCandidates() {
+    runtimeList.textContent = 'Scanning execution hosts…';
+    try {
+        const data = await request('/api/runtime-devices/discovered');
+        const devices = (data.devices ?? []).filter((device) => !(device.platform === 'ios' && device.kind === 'physical'));
+        if (!devices.length) {
+            runtimeList.innerHTML = '<div class="empty-state"><h3>No virtual/Android runtime detected</h3><p>Start an iOS Simulator or Android Emulator, or attach an Android phone with USB debugging enabled.</p></div>';
+            return;
+        }
+        runtimeList.replaceChildren(...devices.map((device) => {
+            const card = document.createElement('article');
+            card.className = 'candidate-card';
+            const copy = document.createElement('div');
+            const heading = document.createElement('h3');
+            heading.textContent = device.name;
+            const meta = document.createElement('p');
+            meta.textContent = `${device.platform} · ${device.kind} · ${device.osVersion || 'unknown OS'}${device.workerId ? ` · ${device.workerId}` : ''}`;
+            copy.append(heading, meta);
+            const button = document.createElement('button');
+            button.className = 'button primary';
+            button.type = 'button';
+            button.textContent = 'Attach to farm';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                button.textContent = 'Attaching…';
+                try {
+                    await request('/api/runtime-devices', {
+                        method: 'POST', headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ workerId: device.workerId, udid: device.udid, name: device.name }),
+                    });
+                    window.location.assign(`/devices/${encodeURIComponent(device.udid)}`);
+                }
+                catch (error) {
+                    button.disabled = false;
+                    button.textContent = 'Attach to farm';
+                    showError(error);
+                }
+            });
+            card.append(copy, button);
+            return card;
+        }));
+    }
+    catch (error) {
+        runtimeList.textContent = error instanceof Error ? error.message : String(error);
     }
 }
 async function create(udid) {
@@ -145,6 +192,7 @@ async function action(name) {
     }
 }
 document.querySelector('#refresh-candidates').addEventListener('click', () => void candidates());
+document.querySelector('#refresh-runtimes').addEventListener('click', () => void runtimeCandidates());
 document.querySelector('#action-refresh').addEventListener('click', () => void action('refresh'));
 document.querySelector('#action-prepare').addEventListener('click', () => {
     if (!authorize.checked && !window.confirm('Continue without allowing automatic Apple Developer team device registration? Xcode may ask you to register it manually.'))
@@ -186,7 +234,7 @@ form.addEventListener('submit', async (event) => {
     }
 });
 void (async () => {
-    await candidates();
+    await Promise.all([candidates(), runtimeCandidates()]);
     const requestedUdid = new URLSearchParams(window.location.search).get('udid');
     if (requestedUdid)
         await create(requestedUdid).catch(showError);

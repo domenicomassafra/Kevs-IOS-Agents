@@ -25,7 +25,13 @@ export const defaultDashboardTheme: DashboardTheme = {
     renderDevice(template, device) {
         const tiktok = accounts(device, tiktokPluginId);
         const instagram = accounts(device, instagramPluginId);
+        const platform = device.platform ?? 'ios';
+        const kind = device.kind ?? 'physical';
+        const backend = device.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
         return template
+            .replaceAll('__DEVICE_PLATFORM__', escapeHtml(platform))
+            .replaceAll('__DEVICE_KIND__', escapeHtml(kind))
+            .replaceAll('__DEVICE_BACKEND__', escapeHtml(backend))
             .replaceAll('__TIKTOK_ACCOUNT_OPTIONS__', accountOptions(tiktok))
             .replaceAll('__TIKTOK_ACCOUNTS_VALUE__', escapeHtml(tiktok.join(', ')))
             .replaceAll('__INSTAGRAM_ACCOUNT_OPTIONS__', accountOptions(instagram))

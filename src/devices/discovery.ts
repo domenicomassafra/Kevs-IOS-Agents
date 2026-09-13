@@ -15,6 +15,8 @@ export interface Device {
     name: string;
     osVersion: string;
     udid: string;
+    platform?: 'ios' | 'android';
+    kind?: 'physical' | 'simulator' | 'emulator';
     productType?: string;
     hardwareModel?: string;
     modelName?: string;
@@ -28,7 +30,7 @@ export async function discoverConnectedDevices(): Promise<Device[]> {
         ]);
         const modelName = modelNameForProductType(info.ProductType);
         return {
-            name, osVersion, udid,
+            name, osVersion, udid, platform: 'ios' as const, kind: 'physical' as const,
             ...(info.ProductType ? { productType: info.ProductType } : {}),
             ...(info.HardwareModel ? { hardwareModel: info.HardwareModel } : {}),
             ...(modelName ? { modelName } : {}),
