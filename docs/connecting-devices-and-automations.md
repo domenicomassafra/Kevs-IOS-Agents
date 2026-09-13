@@ -66,6 +66,12 @@ screenshot
 
 **Run now** creates a normal versioned scheduler task (`com.phone-farm.flow/flow@1`), so it gets the same queueing, stop behavior, logs and execution evidence as built-in tasks.
 
+Automation Studio can also choose **Any matching idle device**. Select platform, runtime kind and/or execution host; the control plane previews the least-loaded currently eligible runtime and converts that choice into a concrete device schedule when you submit. For recurring schedules that binding is intentionally stable rather than silently moving between devices.
+
+Flow timing supports immediate, once, daily, weekly and interval schedules. If the flow came from the saved Flow Library, the execution payload records the exact library ID and version that was scheduled.
+
+Open **Semantic Inspector** to read the target device's current accessibility tree. Filter by label/type/value, then use `+ Tap`, `+ Wait`, `+ Assert` or `+ Input` to add robust semantic steps directly to the builder. Inspecting is read-only; it does not touch the device until the resulting flow is actually run.
+
 TikTok/Instagram recipes remain intentionally tied to the physical-iPhone/WDA lane for now because they use calibrated iOS-specific behavior. Generic Appium devices use Portable Flows until those recipes are ported to semantic selectors.
 
 ## 7. Semantic/agent control

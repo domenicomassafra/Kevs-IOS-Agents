@@ -169,6 +169,12 @@ Execution workers expose both currently connected devices and known virtual-runt
 
 Android workers may additionally expose an optional raw-H.264 scrcpy path when ADB and an explicitly version-matched `scrcpy-server` artifact are present. That transport is video-only (`control=false`) and never replaces Appium/UiAutomator2 as the deterministic action API. It uses the same expiring stream-capability envelope through the worker/MiniPC proxy and currently feeds the benchmark harness, not the default browser renderer.
 
+### Capability-aware allocation
+
+The scheduler remains device-addressed, but the API may resolve a target immediately before schedule creation. The allocator filters the canonical device registry to connected/enabled devices matching optional platform, kind, worker and explicit-device bounds, then ranks current queued/running execution load and active schedules. By default only idle runtimes qualify. `/api/schedules/allocate` writes the selected UDID into the ordinary schedule, so later executions, logs and campaign evidence never depend on a floating pool name. Recurring schedules stay on that chosen device rather than silently roaming between hosts.
+
+Automation Studio exposes the same model as **Specific device** vs **Any matching idle device**. A preview endpoint shows the current first candidate before submission. The Semantic Inspector can inspect either that candidate or the selected concrete device and turn the normalized accessibility snapshot into authoring actions; inspection itself is read-only.
+
 `com.phone-farm.flow/flow@1` is the generic cross-platform contract. Its payload
 is an ordered list of portable actions (app launch/terminate, wait, tap, swipe,
 type, system buttons and screenshot), authored in Automation Studio and queued
@@ -195,6 +201,7 @@ in `src/scheduler/recurrence.ts`; the next occurrence is written to
 | Path | Responsibility |
 | --- | --- |
 | `src/api/` | Fastify app factory, controllers, middleware, HTTP routes |
+| `src/allocation.ts` | capability/load-aware device ranking used before materializing ordinary schedules |
 | `src/scheduler/` | runtime, repository, pg-boss queue, recurrence, worker, executor |
 | `src/database/` | Drizzle client, schema, migrate/setup entrypoints |
 | `src/devices/` | physical/virtual discovery, registry (`devices.json`), WDA/Appium remotes, optional scrcpy video source, registration flow, wda-service, coordinate profiles, passcode lookup |

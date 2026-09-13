@@ -25,7 +25,10 @@
 - [x] FARM-020 Maestro bridge: bounded/lossless YAML import/export subset over the same scheduler contract.
 - [x] FARM-021 Fleet operations: host/platform/kind grouping, multi-select and safe reconnect/enable/disable/clear-queue bulk actions.
 - [x] FARM-021 scrcpy source adapter: optional version-matched Android raw-H.264 path wired through signed stream capabilities and the benchmark harness.
-- [x] Current source regression gate: `npm run check` => 119/119 tests + TypeScript green (2026-09-14).
+- [x] FARM-022 capability-aware allocation: preview + least-loaded online/idle device selection above the existing scheduler.
+- [x] FARM-022 Flow Studio scheduling: now/once/daily/weekly/interval plus immutable saved-flow revision attribution.
+- [x] FARM-022 Semantic Inspector: live accessibility elements → tap/wait/assert/input authoring without hand-entering selectors.
+- [x] Current source regression gate: `npm run check` => 122/122 tests + TypeScript green (2026-09-14).
 
 ## Live-gated
 
@@ -37,6 +40,7 @@
 - [ ] FARM-018 device half: production secret pairing + Mac worker launchd + signed WDA/iPhone acceptance after full Xcode and device registration exist.
 - [ ] FARM-019 live runtime matrix: iOS Simulator + Android emulator + physical Android + distributed proxy receipt.
 - [ ] FARM-021 Cross-platform video bake-off: scrcpy adapter is implemented; live Android measurements + Baguette/qvh comparison remain pending.
+- [ ] FARM-022 live allocator/inspector proof across at least two matching runtimes after the device-worker matrix is online.
 
 ## Git closeout
 

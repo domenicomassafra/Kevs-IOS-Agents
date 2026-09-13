@@ -1764,13 +1764,31 @@ dialog#calibrate-dialog { width: min(760px, calc(100% - 28px)); }
 .button.danger-outline { border-color: rgb(255 92 122 / 35%); color: var(--danger); background: rgb(255 92 122 / 5%); }
 .flow-toolbar {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+    grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
     gap: 10px;
     align-items: end;
     margin-bottom: 14px;
 }
 .flow-toolbar .field { display: grid; gap: 6px; }
 .flow-toolbar .field > span { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.flow-pool-fields { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(130px, 1fr)); gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: rgb(255 255 255 / 2%); }
+.flow-pool-fields[hidden] { display: none; }
+.flow-allocation-hint { margin: -5px 0 12px; padding: 8px 10px; border-radius: 10px; background: rgb(61 214 140 / 6%); color: #a8d9c2; font-size: 11px; }
+.flow-allocation-hint[hidden] { display: none; }
+.flow-inspector-panel { margin: 0 0 12px; border: 1px solid var(--border); border-radius: 13px; background: rgb(255 255 255 / 1.5%); overflow: hidden; }
+.flow-inspector-panel > summary { display: flex; align-items: baseline; gap: 9px; padding: 10px 12px; cursor: pointer; font-size: 12px; font-weight: 700; }
+.flow-inspector-panel > summary small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.flow-inspector-panel[open] > summary { border-bottom: 1px solid var(--border); }
+.flow-inspector-toolbar { display: grid; grid-template-columns: minmax(160px, 1fr) auto auto; gap: 8px; align-items: center; padding: 10px 12px; }
+.flow-inspector-toolbar input { min-height: 36px; padding: 7px 9px; }
+.flow-inspector-list { display: grid; max-height: 360px; overflow: auto; border-top: 1px solid var(--border); }
+.flow-inspector-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid rgb(255 255 255 / 6%); }
+.flow-inspector-row:last-child { border-bottom: 0; }
+.flow-inspector-copy { min-width: 0; display: grid; gap: 2px; }
+.flow-inspector-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.flow-inspector-copy span { color: var(--muted); font-size: 10px; }
+.flow-inspector-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.flow-inspector-actions .icon-button { min-height: 29px; padding: 0 8px; }
 .flow-steps { display: grid; gap: 8px; }
 .flow-step {
     display: grid;
@@ -1797,10 +1815,25 @@ dialog#calibrate-dialog { width: min(760px, calc(100% - 28px)); }
 .flow-inline-check input { width: auto; min-height: 0; }
 .flow-step-actions { display: flex; gap: 5px; }
 .flow-step-actions button { min-height: 32px; padding: 0 9px; }
+.flow-schedule-bar { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 13px; background: rgb(255 255 255 / 2%); }
+.flow-schedule-bar .field { display: grid; gap: 6px; }
+.flow-schedule-bar .field > span, .flow-weekdays legend { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.flow-weekdays { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; }
+.flow-weekdays[hidden] { display: none; }
+.flow-weekdays legend { margin-bottom: 7px; }
+.flow-weekdays label { cursor: pointer; }
+.flow-weekdays input { position: absolute; opacity: 0; pointer-events: none; }
+.flow-weekdays span { display: grid; place-items: center; min-width: 46px; min-height: 32px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font-size: 11px; }
+.flow-weekdays input:checked + span { border-color: transparent; background: var(--accent-grad); color: white; }
+.flow-schedule-hint { margin: 7px 2px 0; color: var(--muted); font-size: 11px; }
 @media (max-width: 760px) {
     .flow-studio-grid { grid-template-columns: 1fr; }
     .flow-library-panel { position: static; }
     .flow-toolbar { grid-template-columns: 1fr; }
+    .flow-pool-fields { grid-template-columns: 1fr; }
+    .flow-schedule-bar { grid-template-columns: 1fr; }
+    .flow-inspector-toolbar, .flow-inspector-row { grid-template-columns: 1fr; }
+    .flow-inspector-actions { justify-content: flex-start; }
     .flow-step { grid-template-columns: 28px 1fr; }
     .flow-step-params, .flow-step-actions { grid-column: 2; }
 }

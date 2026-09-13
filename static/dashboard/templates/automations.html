@@ -95,10 +95,26 @@
                 </aside>
                 <div class="flow-editor-panel">
                     <div class="flow-toolbar">
-                        <label class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>
+                        <label class="field"><span>Target</span><select id="flow-target-mode"><option value="device">Specific device</option><option value="allocate">Any matching idle device</option></select></label>
+                        <label id="flow-device-field" class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>
+                        <div id="flow-pool-fields" class="flow-pool-fields" hidden>
+                            <label class="field"><span>Platform</span><select id="flow-pool-platform"><option value="">Any</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
+                            <label class="field"><span>Kind</span><select id="flow-pool-kind"><option value="">Any</option><option value="physical">Physical</option><option value="simulator">Simulator</option><option value="emulator">Emulator</option></select></label>
+                            <label class="field"><span>Host</span><select id="flow-pool-worker"><option value="">Any host</option></select></label>
+                        </div>
                         <label class="field"><span>Flow name</span><input id="flow-name" type="text" maxlength="120" value="My mobile flow"></label>
                         <button id="flow-add" class="button secondary" type="button">Add step</button>
                     </div>
+                    <p id="flow-allocation-hint" class="flow-allocation-hint" hidden></p>
+                    <details class="flow-inspector-panel">
+                        <summary><span>Semantic Inspector</span><small>Pick live accessibility elements instead of typing selectors by hand</small></summary>
+                        <div class="flow-inspector-toolbar">
+                            <input id="flow-inspector-query" type="text" placeholder="Filter text, type, value…">
+                            <button id="flow-inspector-refresh" class="button secondary" type="button">Inspect UI</button>
+                            <span id="flow-inspector-meta" class="run-meta"></span>
+                        </div>
+                        <div id="flow-inspector-list" class="flow-inspector-list"><p class="empty-state-inline">Choose a target and inspect its live accessibility tree.</p></div>
+                    </details>
                     <div class="flow-version-bar">
                         <span id="flow-save-state" class="run-meta">Unsaved flow</span>
                         <span class="spacer"></span>
@@ -111,6 +127,15 @@
                         <button id="flow-save" class="button secondary" type="button">Save</button>
                     </div>
                     <div id="flow-steps" class="flow-steps" aria-live="polite"></div>
+                    <div class="flow-schedule-bar">
+                        <label class="field"><span>Timing</span><select id="flow-timing-kind"><option value="now">Run now</option><option value="once">Once</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="interval">Interval</option></select></label>
+                        <label id="flow-once-field" class="field" hidden><span>Run at</span><input id="flow-run-at" type="datetime-local"></label>
+                        <label id="flow-time-field" class="field" hidden><span>Local time</span><input id="flow-local-time" type="time" value="09:00"></label>
+                        <label id="flow-timezone-field" class="field" hidden><span>Timezone</span><input id="flow-timezone" type="text" placeholder="Europe/Rome"></label>
+                        <label id="flow-interval-field" class="field" hidden><span>Every minutes</span><input id="flow-interval-minutes" type="number" min="1" max="10080" value="60"></label>
+                        <fieldset id="flow-weekdays" class="flow-weekdays" hidden><legend>Weekdays</legend><label><input type="checkbox" value="1" checked><span>Mon</span></label><label><input type="checkbox" value="2"><span>Tue</span></label><label><input type="checkbox" value="3"><span>Wed</span></label><label><input type="checkbox" value="4"><span>Thu</span></label><label><input type="checkbox" value="5"><span>Fri</span></label><label><input type="checkbox" value="6"><span>Sat</span></label><label><input type="checkbox" value="0"><span>Sun</span></label></fieldset>
+                    </div>
+                    <p id="flow-schedule-hint" class="flow-schedule-hint">Runs immediately through the normal device queue.</p>
                     <div class="form-actions">
                         <span id="flow-result" class="run-meta"></span><span class="spacer"></span>
                         <button id="flow-run" class="button primary" type="button">Run now</button>

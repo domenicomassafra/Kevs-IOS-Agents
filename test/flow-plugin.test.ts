@@ -24,6 +24,29 @@ test('portable flows validate bounded mobile steps', () => {
     }), /unsupported/);
 });
 
+test('saved-flow attribution is preserved only as a complete immutable revision reference', () => {
+    const registry = new PluginRegistry([portableFlowPlugin]);
+    const input = registry.validate({
+        deviceUdid: 'device-1', timing: { kind: 'now' },
+        task: {
+            pluginId: portableFlowPlugin.id, taskType: 'flow', taskVersion: 1,
+            payload: {
+                name: 'library run', steps: [{ action: 'wait', milliseconds: 100 }],
+                sourceFlowId: '11111111-1111-4111-8111-111111111111', sourceFlowVersion: 7,
+            },
+        },
+    });
+    assert.equal(input.task.payload.sourceFlowId, '11111111-1111-4111-8111-111111111111');
+    assert.equal(input.task.payload.sourceFlowVersion, 7);
+    assert.throws(() => registry.validate({
+        deviceUdid: 'device-1', timing: { kind: 'now' },
+        task: {
+            pluginId: portableFlowPlugin.id, taskType: 'flow', taskVersion: 1,
+            payload: { name: 'broken source', steps: [{ action: 'wait', milliseconds: 100 }], sourceFlowVersion: 2 },
+        },
+    }), /supplied together/);
+});
+
 test('portable flow executes shared automation primitives in order', async () => {
     const registry = new PluginRegistry([portableFlowPlugin]);
     const task = registry.task({ pluginId: portableFlowPlugin.id, taskType: 'flow', taskVersion: 1, payload: {} });

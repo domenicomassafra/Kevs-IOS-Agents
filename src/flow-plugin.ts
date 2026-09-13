@@ -19,6 +19,13 @@ export interface PortableFlowPayload extends JsonObject {
 }
 
 const APP_ID = /^[A-Za-z0-9._-]{2,255}$/;
+const FLOW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function flowSource(payload: PortableFlowPayload): { id?: string; version?: number } {
+    const id = typeof payload.sourceFlowId === 'string' ? payload.sourceFlowId : undefined;
+    const version = typeof payload.sourceFlowVersion === 'number' ? payload.sourceFlowVersion : undefined;
+    return { ...(id ? { id } : {}), ...(version !== undefined ? { version } : {}) };
+}
 
 function record(value: JsonValue, message: string): Record<string, JsonValue> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(message);
@@ -123,9 +130,26 @@ const portableFlowTask: TaskDefinition<PortableFlowPayload> = {
         const steps = payload.steps;
         if (typeof name !== 'string' || !name.trim() || name.length > 120) throw new Error('name must contain 1 to 120 characters');
         if (!Array.isArray(steps) || steps.length < 1 || steps.length > 100) throw new Error('steps must contain 1 to 100 actions');
-        return { name: name.trim(), steps: steps.map(parseStep) };
+        if ((payload.sourceFlowId === undefined) !== (payload.sourceFlowVersion === undefined)) {
+            throw new Error('sourceFlowId and sourceFlowVersion must be supplied together');
+        }
+        if (payload.sourceFlowId !== undefined && (typeof payload.sourceFlowId !== 'string' || !FLOW_ID.test(payload.sourceFlowId))) {
+            throw new Error('sourceFlowId must be a UUID');
+        }
+        if (payload.sourceFlowVersion !== undefined && (!Number.isInteger(payload.sourceFlowVersion) || Number(payload.sourceFlowVersion) < 1)) {
+            throw new Error('sourceFlowVersion must be a positive integer');
+        }
+        return {
+            name: name.trim(),
+            steps: steps.map(parseStep),
+            ...(payload.sourceFlowId ? { sourceFlowId: payload.sourceFlowId } : {}),
+            ...(payload.sourceFlowVersion !== undefined ? { sourceFlowVersion: Number(payload.sourceFlowVersion) } : {}),
+        };
     },
-    summarize: (payload) => `${payload.name} · ${payload.steps.length} steps`,
+    summarize: (payload) => {
+        const source = flowSource(payload);
+        return `${payload.name} · ${payload.steps.length} steps${source.version ? ` · library v${source.version}` : ''}`;
+    },
     estimateDurationMs: (payload) => payload.steps.reduce((total, step) => total + (
         step.action === 'wait' ? step.milliseconds : step.action === 'swipe' ? step.durationMs + 250 : 750
     ), 0),
@@ -133,7 +157,8 @@ const portableFlowTask: TaskDefinition<PortableFlowPayload> = {
     supportsStop: () => true,
     async execute(context, payload) {
         try {
-            await context.log(`Portable flow ${payload.name} started (${payload.steps.length} steps)`);
+            const source = flowSource(payload);
+            await context.log(`Portable flow ${payload.name} started (${payload.steps.length} steps)${source.version ? ` · library ${source.id}@v${source.version}` : ''}`);
             for (let index = 0; index < payload.steps.length; index += 1) {
                 if (context.signal.aborted) return { exitCode: null, stopped: true };
                 const step = payload.steps[index]!;

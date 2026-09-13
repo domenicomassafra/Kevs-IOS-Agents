@@ -33,6 +33,7 @@ import {
 import { SemanticController } from '../semantic/controller.js';
 import { planCampaign, type CreateCampaignInput } from '../campaigns.js';
 import { buildFleetHealth } from '../analytics.js';
+import { rankAllocationCandidates, type DeviceAllocationSelector } from '../allocation.js';
 import { StreamTokenService } from '../security/stream-token.js';
 import type { HostSnapshot } from '../hosts/capabilities.js';
 import type { RuntimeDevice } from '../devices/runtime-discovery.js';
@@ -932,6 +933,59 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     app.get<{ Params: { id: string } }>('/api/executions/:id', async (request, reply) => {
         const execution = await options.scheduler.execution(request.params.id);
         return execution ?? reply.code(404).send({ error: 'Execution not found' });
+    });
+    const validatedAllocationSelector = (selector: DeviceAllocationSelector | undefined): DeviceAllocationSelector => {
+        const value = selector ?? {};
+        if (value.platform !== undefined && !['ios', 'android'].includes(value.platform)) throw httpError(400, 'target.platform must be ios or android');
+        if (value.kind !== undefined && !['physical', 'simulator', 'emulator'].includes(value.kind)) throw httpError(400, 'target.kind is invalid');
+        if (value.workerId !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(value.workerId)) throw httpError(400, 'target.workerId is invalid');
+        if (value.requireIdle !== undefined && typeof value.requireIdle !== 'boolean') throw httpError(400, 'target.requireIdle must be boolean');
+        if (value.deviceUdids !== undefined && (!Array.isArray(value.deviceUdids) || value.deviceUdids.length > 100
+            || value.deviceUdids.some((udid) => typeof udid !== 'string' || !udid.trim()))) {
+            throw httpError(400, 'target.deviceUdids must contain at most 100 non-empty ids');
+        }
+        return {
+            ...(value.platform ? { platform: value.platform } : {}),
+            ...(value.kind ? { kind: value.kind } : {}),
+            ...(value.workerId ? { workerId: value.workerId } : {}),
+            ...(value.deviceUdids ? { deviceUdids: [...new Set(value.deviceUdids.map((udid) => udid.trim()))] } : {}),
+            ...(value.requireIdle !== undefined ? { requireIdle: value.requireIdle } : {}),
+        };
+    };
+    const allocationCandidates = async (selector: DeviceAllocationSelector) => {
+        const [registered, connected, executions, schedules] = await Promise.all([
+            loadRegisteredDevices(), discoverDevices(), options.scheduler.listExecutions(500), options.scheduler.listSchedules(500),
+        ]);
+        return rankAllocationCandidates(
+            registered, new Set(connected.map(({ udid }) => udid)), executions, schedules, selector,
+        );
+    };
+    app.post<{ Body: { target?: DeviceAllocationSelector } }>('/api/allocation/preview', async (request) => ({
+        candidates: await allocationCandidates(validatedAllocationSelector(request.body.target)),
+    }));
+    app.post<{
+        Body: Omit<CreateTaskInput, 'deviceUdid'> & { target?: DeviceAllocationSelector; assetIds?: string[] };
+    }>('/api/schedules/allocate', async (request, reply) => {
+        const selector = validatedAllocationSelector(request.body.target);
+        const candidate = (await allocationCandidates(selector))[0];
+        if (!candidate) return reply.code(409).send({ error: 'No connected device matches this allocation target' });
+        const device = (await loadRegisteredDevices()).find(({ udid }) => udid === candidate.udid);
+        if (!device || device.disabled) return reply.code(409).send({ error: 'Allocated device is no longer available' });
+        const backend = device.automationBackend
+            ?? ((device.platform ?? 'ios') === 'ios' && (device.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
+        if (backend === 'appium' && ['com.git-agni.tiktok', 'com.git-agni.instagram'].includes(request.body.task.pluginId)) {
+            return reply.code(409).send({ error: 'This social recipe is currently iOS/WDA-specific. Use a Portable Flow on Appium runtimes.' });
+        }
+        const input: CreateTaskInput = {
+            deviceUdid: candidate.udid,
+            task: request.body.task,
+            timing: request.body.timing,
+            ...(request.body.runWindowMinutes !== undefined ? { runWindowMinutes: request.body.runWindowMinutes } : {}),
+        };
+        const schedule = await options.scheduler.createTask(
+            input, device.pluginData[input.task.pluginId] ?? {}, new Date(), request.body.assetIds ?? [],
+        );
+        return reply.code(201).send({ schedule, allocation: candidate });
     });
     app.post<{ Body: CreateTaskInput & { assetIds?: string[] } }>('/api/schedules', async (request, reply) => {
         const device = (await loadRegisteredDevices()).find(({ udid }) => udid === request.body.deviceUdid);

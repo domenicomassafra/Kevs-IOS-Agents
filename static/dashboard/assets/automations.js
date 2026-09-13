@@ -4,12 +4,35 @@ const elements = {
     templates: Array.from(document.querySelectorAll('.automation-template[data-template]')),
     workspace: document.querySelector('#pipeline-workspace'),
     flowWorkspace: document.querySelector('#flow-workspace'),
+    flowTargetMode: document.querySelector('#flow-target-mode'),
+    flowDeviceField: document.querySelector('#flow-device-field'),
     flowDevice: document.querySelector('#flow-device'),
+    flowPoolFields: document.querySelector('#flow-pool-fields'),
+    flowPoolPlatform: document.querySelector('#flow-pool-platform'),
+    flowPoolKind: document.querySelector('#flow-pool-kind'),
+    flowPoolWorker: document.querySelector('#flow-pool-worker'),
+    flowAllocationHint: document.querySelector('#flow-allocation-hint'),
+    flowInspectorQuery: document.querySelector('#flow-inspector-query'),
+    flowInspectorRefresh: document.querySelector('#flow-inspector-refresh'),
+    flowInspectorMeta: document.querySelector('#flow-inspector-meta'),
+    flowInspectorList: document.querySelector('#flow-inspector-list'),
     flowName: document.querySelector('#flow-name'),
     flowAdd: document.querySelector('#flow-add'),
     flowSteps: document.querySelector('#flow-steps'),
     flowRun: document.querySelector('#flow-run'),
     flowResult: document.querySelector('#flow-result'),
+    flowTimingKind: document.querySelector('#flow-timing-kind'),
+    flowOnceField: document.querySelector('#flow-once-field'),
+    flowRunAt: document.querySelector('#flow-run-at'),
+    flowTimeField: document.querySelector('#flow-time-field'),
+    flowLocalTime: document.querySelector('#flow-local-time'),
+    flowTimezoneField: document.querySelector('#flow-timezone-field'),
+    flowTimezone: document.querySelector('#flow-timezone'),
+    flowIntervalField: document.querySelector('#flow-interval-field'),
+    flowIntervalMinutes: document.querySelector('#flow-interval-minutes'),
+    flowWeekdays: document.querySelector('#flow-weekdays'),
+    flowWeekdayInputs: Array.from(document.querySelectorAll('#flow-weekdays input[type="checkbox"]')),
+    flowScheduleHint: document.querySelector('#flow-schedule-hint'),
     flowLibrary: document.querySelector('#flow-library'),
     flowNew: document.querySelector('#flow-new'),
     flowSave: document.querySelector('#flow-save'),
@@ -47,6 +70,7 @@ let flowSteps = [
 let flowLibrary = [];
 let currentFlowId;
 let currentFlowVersion;
+let allocationPreviewUdid = '';
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -116,13 +140,19 @@ async function loadDevices() {
     const preferred = params.get('device') ?? '';
     elements.device.innerHTML = '<option value="">Select an iPhone…</option>';
     elements.flowDevice.innerHTML = '<option value="">Select a device…</option>';
+    elements.flowPoolWorker.innerHTML = '<option value="">Any host</option>';
+    const workers = new Set();
     for (const device of devicesCache) {
         elements.device.add(new Option(device.name, device.udid));
         const platform = device.platform ?? 'ios';
         const kind = device.kind ?? 'physical';
         const host = device.workerId ? ` · ${device.workerId}` : '';
         elements.flowDevice.add(new Option(`${device.name} · ${platform}/${kind}${host}`, device.udid));
+        if (device.workerId)
+            workers.add(device.workerId);
     }
+    for (const worker of [...workers].sort())
+        elements.flowPoolWorker.add(new Option(worker, worker));
     if (preferred && [...elements.device.options].some((option) => option.value === preferred)) {
         elements.device.value = preferred;
     }
@@ -136,6 +166,109 @@ async function loadDevices() {
         elements.flowDevice.value = devicesCache[0].udid;
     }
     updateFleetHint();
+    await refreshAllocationPreview().catch(() => undefined);
+}
+function allocationTarget() {
+    return {
+        ...(elements.flowPoolPlatform.value ? { platform: elements.flowPoolPlatform.value } : {}),
+        ...(elements.flowPoolKind.value ? { kind: elements.flowPoolKind.value } : {}),
+        ...(elements.flowPoolWorker.value ? { workerId: elements.flowPoolWorker.value } : {}),
+        requireIdle: true,
+    };
+}
+async function refreshAllocationPreview() {
+    const allocating = elements.flowTargetMode.value === 'allocate';
+    elements.flowDeviceField.hidden = allocating;
+    elements.flowPoolFields.hidden = !allocating;
+    elements.flowAllocationHint.hidden = !allocating;
+    if (!allocating) {
+        allocationPreviewUdid = '';
+        return;
+    }
+    elements.flowAllocationHint.textContent = 'Finding an idle matching device…';
+    const data = await jsonRequest('/api/allocation/preview', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ target: allocationTarget() }),
+    });
+    const candidate = data.candidates[0];
+    allocationPreviewUdid = candidate?.udid ?? '';
+    elements.flowAllocationHint.textContent = candidate
+        ? `Next allocation: ${candidate.name} · ${candidate.platform}/${candidate.kind}${candidate.workerId ? ` · ${candidate.workerId}` : ''} · ${candidate.activeSchedules} active schedule${candidate.activeSchedules === 1 ? '' : 's'}`
+        : 'No idle connected device currently matches this target.';
+}
+function inspectorTargetUdid() {
+    return elements.flowTargetMode.value === 'allocate' ? allocationPreviewUdid : elements.flowDevice.value;
+}
+function addInspectorStep(action, element) {
+    const selector = element.label || element.value || '';
+    if (!selector)
+        return;
+    if (action === 'inputText') {
+        flowSteps.push({ action, target: selector, text: '', type: element.type, exact: true, timeoutMs: 10_000 });
+    }
+    else {
+        flowSteps.push({ action, text: selector, type: element.type, exact: true, timeoutMs: action === 'assertVisible' ? 1_000 : 10_000 });
+    }
+    renderFlowSteps();
+    elements.flowResult.textContent = `Added ${action} for ${selector}`;
+}
+function renderInspectorElements(elementsList) {
+    elements.flowInspectorList.innerHTML = '';
+    if (!elementsList.length) {
+        elements.flowInspectorList.innerHTML = '<p class="empty-state-inline">No visible semantic elements match this filter.</p>';
+        return;
+    }
+    for (const item of elementsList) {
+        const selector = item.label || item.value || '';
+        const row = document.createElement('article');
+        row.className = 'flow-inspector-row';
+        const copy = document.createElement('div');
+        copy.className = 'flow-inspector-copy';
+        const title = document.createElement('strong');
+        title.textContent = selector || '(unlabelled element)';
+        const meta = document.createElement('span');
+        meta.textContent = `${item.ref} · ${item.type}${item.value && item.value !== item.label ? ` · ${item.value}` : ''}${item.enabled ? '' : ' · disabled'}`;
+        copy.append(title, meta);
+        const actions = document.createElement('div');
+        actions.className = 'flow-inspector-actions';
+        for (const [action, label] of [['tapText', 'Tap'], ['waitVisible', 'Wait'], ['assertVisible', 'Assert']]) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'icon-button';
+            button.textContent = `+ ${label}`;
+            button.disabled = !selector;
+            button.addEventListener('click', () => addInspectorStep(action, item));
+            actions.append(button);
+        }
+        if (['TextField', 'SecureTextField', 'SearchField', 'TextView'].includes(item.type)) {
+            const input = document.createElement('button');
+            input.type = 'button';
+            input.className = 'icon-button';
+            input.textContent = '+ Input';
+            input.disabled = !selector;
+            input.addEventListener('click', () => addInspectorStep('inputText', item));
+            actions.append(input);
+        }
+        row.append(copy, actions);
+        elements.flowInspectorList.append(row);
+    }
+}
+async function refreshSemanticInspector() {
+    const udid = inspectorTargetUdid();
+    if (!udid)
+        throw new Error('Choose a connected device or matching allocation target first.');
+    elements.flowInspectorRefresh.disabled = true;
+    elements.flowInspectorMeta.textContent = 'Reading accessibility tree…';
+    try {
+        const query = new URLSearchParams({ maxNodes: '150' });
+        if (elements.flowInspectorQuery.value.trim())
+            query.set('query', elements.flowInspectorQuery.value.trim());
+        const snapshot = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/semantic/snapshot?${query}`);
+        elements.flowInspectorMeta.textContent = `${snapshot.count} elements · generation ${snapshot.generation}${snapshot.truncated ? ' · truncated' : ''}`;
+        renderInspectorElements(snapshot.elements);
+    }
+    finally {
+        elements.flowInspectorRefresh.disabled = false;
+    }
 }
 const FLOW_ACTIONS = [
     'launch', 'terminate', 'wait', 'tapText', 'inputText', 'waitVisible', 'assertVisible', 'waitGone', 'tap', 'swipe', 'type',
@@ -269,6 +402,52 @@ function currentFlowPayload() {
         throw new Error('Give the flow a name.');
     return { name, steps: structuredClone(flowSteps) };
 }
+function selectedFlowTiming() {
+    const kind = elements.flowTimingKind.value;
+    if (kind === 'now')
+        return { kind: 'now' };
+    if (kind === 'once') {
+        if (!elements.flowRunAt.value)
+            throw new Error('Choose when the flow should run.');
+        const runAt = new Date(elements.flowRunAt.value);
+        if (!Number.isFinite(runAt.getTime()) || runAt.getTime() <= Date.now())
+            throw new Error('Run-at time must be in the future.');
+        return { kind: 'once', runAt: runAt.toISOString() };
+    }
+    if (kind === 'interval') {
+        const everyMinutes = Number(elements.flowIntervalMinutes.value);
+        if (!Number.isInteger(everyMinutes) || everyMinutes < 1 || everyMinutes > 10080)
+            throw new Error('Interval must be between 1 and 10080 minutes.');
+        return { kind: 'interval', everyMinutes };
+    }
+    const localTime = elements.flowLocalTime.value;
+    const timezone = elements.flowTimezone.value.trim();
+    if (!/^\d{2}:\d{2}$/.test(localTime))
+        throw new Error('Choose a local time.');
+    if (!timezone)
+        throw new Error('Timezone is required.');
+    if (kind === 'daily')
+        return { kind: 'daily', localTime, timezone };
+    const weekdays = elements.flowWeekdayInputs.filter(({ checked }) => checked).map(({ value }) => Number(value));
+    if (!weekdays.length)
+        throw new Error('Choose at least one weekday.');
+    return { kind: 'weekly', localTime, timezone, weekdays };
+}
+function updateFlowTimingUi() {
+    const kind = elements.flowTimingKind.value;
+    elements.flowOnceField.hidden = kind !== 'once';
+    elements.flowTimeField.hidden = !['daily', 'weekly'].includes(kind);
+    elements.flowTimezoneField.hidden = !['daily', 'weekly'].includes(kind);
+    elements.flowWeekdays.hidden = kind !== 'weekly';
+    elements.flowIntervalField.hidden = kind !== 'interval';
+    elements.flowRun.textContent = kind === 'now' ? 'Run now' : 'Schedule flow';
+    const allocation = elements.flowTargetMode.value === 'allocate';
+    elements.flowScheduleHint.textContent = kind === 'now'
+        ? 'Runs immediately through the normal device queue.'
+        : allocation
+            ? 'The matching idle device is chosen when you create this schedule; recurring runs remain bound to that audited device.'
+            : 'Creates a normal versioned schedule on the selected device.';
+}
 function updateFlowLibraryActions(detail) {
     const saved = Boolean(currentFlowId);
     elements.flowDuplicate.disabled = !saved;
@@ -340,19 +519,24 @@ async function saveFlow() {
     await loadSavedFlow(data.flow.id);
 }
 async function runPortableFlow() {
+    const allocating = elements.flowTargetMode.value === 'allocate';
     const deviceUdid = elements.flowDevice.value;
-    const payload = currentFlowPayload();
-    if (!deviceUdid)
+    const payload = {
+        ...currentFlowPayload(),
+        ...(currentFlowId && currentFlowVersion ? { sourceFlowId: currentFlowId, sourceFlowVersion: currentFlowVersion } : {}),
+    };
+    if (!allocating && !deviceUdid)
         throw new Error('Choose a device first.');
-    return await jsonRequest('/api/schedules', {
+    const timing = selectedFlowTiming();
+    const common = {
+        task: { pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload },
+        timing,
+        runWindowMinutes: 30,
+    };
+    return await jsonRequest(allocating ? '/api/schedules/allocate' : '/api/schedules', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-            deviceUdid,
-            task: { pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload },
-            timing: { kind: 'now' },
-            runWindowMinutes: 30,
-        }),
+        body: JSON.stringify(allocating ? { ...common, target: allocationTarget() } : { ...common, deviceUdid }),
     });
 }
 function statusLabel(status) {
@@ -501,6 +685,29 @@ elements.flowAdd.addEventListener('click', () => {
     flowSteps.push(defaultFlowStep('tap'));
     renderFlowSteps();
 });
+elements.flowTargetMode.addEventListener('change', () => void refreshAllocationPreview().catch((error) => {
+    elements.flowAllocationHint.textContent = errorMessage(error);
+}));
+elements.flowDevice.addEventListener('change', () => {
+    elements.flowInspectorMeta.textContent = '';
+    elements.flowInspectorList.innerHTML = '<p class="empty-state-inline">Target changed — inspect again to refresh semantic elements.</p>';
+});
+elements.flowInspectorRefresh.addEventListener('click', () => void refreshSemanticInspector().catch((error) => {
+    elements.flowInspectorMeta.textContent = errorMessage(error);
+}));
+elements.flowInspectorQuery.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        void refreshSemanticInspector().catch((error) => { elements.flowInspectorMeta.textContent = errorMessage(error); });
+    }
+});
+elements.flowTargetMode.addEventListener('change', updateFlowTimingUi);
+elements.flowTimingKind.addEventListener('change', updateFlowTimingUi);
+for (const field of [elements.flowPoolPlatform, elements.flowPoolKind, elements.flowPoolWorker]) {
+    field.addEventListener('change', () => void refreshAllocationPreview().catch((error) => {
+        elements.flowAllocationHint.textContent = errorMessage(error);
+    }));
+}
 elements.flowNew.addEventListener('click', newFlow);
 elements.flowSave.addEventListener('click', async () => {
     elements.flowSave.disabled = true;
@@ -637,7 +844,11 @@ elements.flowRun.addEventListener('click', async () => {
     elements.flowResult.textContent = 'Queuing flow…';
     try {
         const schedule = await runPortableFlow();
-        elements.flowResult.textContent = `Queued · ${schedule.id ?? 'ready to run'}`;
+        const id = schedule.schedule?.id ?? schedule.id ?? 'ready to run';
+        elements.flowResult.textContent = schedule.allocation?.name
+            ? `Allocated to ${schedule.allocation.name} · queued ${id}`
+            : `Queued · ${id}`;
+        await refreshAllocationPreview().catch(() => undefined);
     }
     catch (error) {
         elements.flowResult.textContent = errorMessage(error);
@@ -741,6 +952,8 @@ const requestedTemplate = params.get('template');
 selectTemplate(requestedTemplate === 'flow' ? 'flow' : (requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : ''), { refresh: false });
 renderFlowSteps();
 updateFlowLibraryActions();
+elements.flowTimezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+updateFlowTimingUi();
 void loadDevices().then(() => {
     if (!elements.workspace.hidden)
         return refreshPipeline();

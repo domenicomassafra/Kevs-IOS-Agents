@@ -71,3 +71,7 @@ Portable flows are now persistent product objects rather than ephemeral browser 
 ### Wave J — optimized video adapters (source adapter complete, live benchmark pending)
 
 Android workers can optionally expose a version-matched scrcpy server as a video-only raw-H.264 source. Control remains Appium/UiAutomator2, the MiniPC proxies H.264 behind signed stream capabilities, and `benchmark:video` compares the transport against screenshot/control latency. No scrcpy artifact is downloaded or vendored automatically, and the dashboard keeps its existing stream/screenshot fallback until real measurements justify a default change. iOS Simulator Baguette-style transport and physical-iPhone qvh/WDA comparison remain live-gated.
+
+### Wave K — capability-aware scheduling + semantic authoring (source complete, live matrix pending)
+
+Automation Studio can either target a concrete device or ask the control plane to auto-pick an online, enabled, idle device matching platform/kind/worker constraints. Allocation ranks current execution/schedule load but still materializes a normal schedule bound to a concrete UDID for auditability. Flow timing now supports now/once/daily/weekly/interval schedules, and saved library executions carry the exact source flow/version in their immutable payload. The Semantic Inspector reads the live normalized accessibility tree and turns visible elements into semantic steps without hand-entering selector text. Live proof waits for two or more matching worker runtimes.
