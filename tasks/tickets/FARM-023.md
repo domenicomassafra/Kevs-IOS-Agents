@@ -28,4 +28,3 @@ Make a growing real/virtual device farm operable without hand-maintaining UDID l
 
 - Additive migration only: creates `scheduler.device_pools` plus indexes; no destructive table changes.
 - Unit/API coverage verifies tag normalization, tag-constrained allocation, pool selector normalization/duplicates and offline worker visibility.
-
