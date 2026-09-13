@@ -17,7 +17,8 @@ COPY static ./static
 COPY Patches ./Patches
 COPY integrations ./integrations
 
-RUN node --import tsx -e "import('./src/api/server.ts').then(() => console.log('control-plane import OK'))"
+RUN npm run build:web \
+    && node --import tsx -e "import('./src/api/server.ts').then(() => console.log('control-plane import OK'))"
 
 ENV NODE_ENV=production \
     PHONE_FARM_ROLE=control-plane \
@@ -26,4 +27,4 @@ ENV NODE_ENV=production \
     DEVICES_CONFIG_PATH=/data/devices.json \
     SCHEDULER_DATA_DIR=/data/scheduler
 
-CMD ["sh", "-c", "npm run db:migrate && npm run web"]
+CMD ["sh", "-c", "npm run db:migrate && exec node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/api/server.ts"]

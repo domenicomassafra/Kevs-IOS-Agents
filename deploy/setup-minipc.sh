@@ -43,7 +43,19 @@ docker compose --env-file .env.minipc -f docker-compose.production.yml ps
 set -a
 source .env.minipc
 set +a
-curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT:-4050}/health"
+healthy=0
+for _ in $(seq 1 30); do
+  if curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT:-4050}/health"; then
+    healthy=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$healthy" != "1" ]]; then
+  echo "Control plane did not become healthy." >&2
+  docker compose --env-file .env.minipc -f docker-compose.production.yml logs --tail=120 control-plane >&2 || true
+  exit 1
+fi
 echo
 if command -v tailscale >/dev/null 2>&1; then
   tailscale serve --bg --yes --https="${PHONE_FARM_TAILSCALE_HTTPS_PORT:-18443}" "${WEB_PORT:-4050}"
