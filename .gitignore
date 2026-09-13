@@ -13,3 +13,6 @@ logs/
 
 # Cold DM lead contact state (per-run outcomes; keep local)
 data/leads/state/
+
+# Hinge shadow-mode captures (screenshots of other people; keep local)
+data/hinge/

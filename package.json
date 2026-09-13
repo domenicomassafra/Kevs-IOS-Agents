@@ -37,6 +37,7 @@
     "worker": "node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/scheduler/worker.ts",
     "web": "node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/api/server.ts",
     "instagram:leads:import": "node --env-file-if-exists=.env --import tsx src/instagram/leads-import.ts",
+    "hinge:shadow": "node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/hinge/shadow.ts",
     "build:web": "tsc -p tsconfig.web.json",
     "preweb": "npm run build:web",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json --noEmit",
