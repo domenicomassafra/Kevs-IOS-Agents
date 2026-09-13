@@ -43,10 +43,10 @@ docker compose --env-file .env.minipc -f docker-compose.production.yml ps
 set -a
 source .env.minipc
 set +a
-curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT:-3000}/health"
+curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT:-4050}/health"
 echo
 if command -v tailscale >/dev/null 2>&1; then
-  tailscale serve --bg --yes "${WEB_PORT:-3000}"
+  tailscale serve --bg --yes --https="${PHONE_FARM_TAILSCALE_HTTPS_PORT:-18443}" "${WEB_PORT:-4050}"
   echo "Tailscale Serve status:"
   tailscale serve status || true
 else
