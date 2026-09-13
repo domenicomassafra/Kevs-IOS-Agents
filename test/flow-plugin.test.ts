@@ -45,6 +45,11 @@ test('portable flow executes shared automation primitives in order', async () =>
             tap: async (x: number, y: number) => { calls.push(`tap:${x},${y}`); },
             swipe: async () => { calls.push('swipe'); },
             typeText: async (text: string) => { calls.push(`type:${text}`); },
+            waitForText: async (text: string) => { calls.push(`waitText:${text}`); },
+            tapText: async (text: string) => { calls.push(`tapText:${text}`); },
+            inputText: async (target: string, text: string) => { calls.push(`inputText:${target}:${text}`); },
+            assertText: async (text: string) => { calls.push(`assertText:${text}`); },
+            waitForTextGone: async (text: string) => { calls.push(`waitGone:${text}`); },
             system: async (action: string) => { calls.push(`system:${action}`); },
         },
     } satisfies TaskExecutionContext;
@@ -62,5 +67,45 @@ test('portable flow executes shared automation primitives in order', async () =>
     assert.equal(result.exitCode, 0);
     assert.deepEqual(calls.filter((call) => !call.startsWith('log:')), [
         'launch:com.example.app', 'tap:10,20', 'type:hello', 'system:home', 'screenshot',
+    ]);
+});
+
+test('portable flows execute semantic accessibility-first steps', async () => {
+    const registry = new PluginRegistry([portableFlowPlugin]);
+    const task = registry.task({ pluginId: portableFlowPlugin.id, taskType: 'flow', taskVersion: 1, payload: {} });
+    const calls: string[] = [];
+    const context = {
+        executionId: 'e2', attempt: 1, workspaceDirectory: '/tmp/mobile-flow-semantic',
+        device: { udid: 'd1', name: 'device' }, devicePluginData: {}, assets: [],
+        signal: new AbortController().signal,
+        log: async () => {},
+        runProcess: async () => ({ exitCode: 0, stopped: false }),
+        claimPipelineItem: async () => null,
+        completePipelineItem: async () => {},
+        failPipelineItem: async () => {},
+        automation: {
+            activateApp: async () => {}, terminateApp: async () => {}, pause: async () => {},
+            screenshot: async () => Buffer.from('x'), tap: async () => {}, swipe: async () => {}, typeText: async () => {},
+            waitForText: async (text: string) => { calls.push(`wait:${text}`); },
+            tapText: async (text: string) => { calls.push(`tap:${text}`); },
+            inputText: async (target: string, text: string) => { calls.push(`input:${target}:${text}`); },
+            assertText: async (text: string) => { calls.push(`assert:${text}`); },
+            waitForTextGone: async (text: string) => { calls.push(`gone:${text}`); },
+            system: async () => {},
+        },
+    } satisfies TaskExecutionContext;
+    const payload = task.validate({
+        name: 'semantic', steps: [
+            { action: 'waitVisible', text: 'Email', type: 'TextField', timeoutMs: 5000 },
+            { action: 'tapText', text: 'Email', exact: true },
+            { action: 'inputText', target: 'Email', text: 'hello@example.com' },
+            { action: 'assertVisible', text: 'Continue' },
+            { action: 'waitGone', text: 'Loading' },
+        ],
+    }, { timingKind: 'now', devicePluginData: {} });
+    const result = await task.execute(context, payload);
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(calls, [
+        'wait:Email', 'tap:Email', 'input:Email:hello@example.com', 'assert:Continue', 'gone:Loading',
     ]);
 });

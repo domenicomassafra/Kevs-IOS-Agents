@@ -18,7 +18,10 @@
 - [x] FARM-018 Distributed Linux MiniPC control plane + macOS device-worker architecture (source implementation).
 - [x] FARM-019 Unified real + virtual iOS/Android runtime layer (source implementation).
 - [x] FARM-020 Portable Automation Studio + scheduler-backed flow contract.
-- [x] Current source regression gate: `npm run check` => 110/110 tests + TypeScript green (2026-09-13).
+- [x] FARM-020 semantic v2: accessibility-first tap/wait/assert/input/gone steps in the portable flow builder.
+- [x] FARM-019 virtual lifecycle: host-level inventory plus Boot/Stop for iOS Simulators and Android AVDs.
+- [x] FARM-021 UI tranche: real `/fleet` device wall with cheap previews and one focused live stream; old 20-seat mock removed.
+- [x] Current source regression gate: `npm run check` => 114/114 tests + TypeScript green (2026-09-14).
 
 ## Live-gated
 

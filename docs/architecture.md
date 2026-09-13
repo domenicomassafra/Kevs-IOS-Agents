@@ -153,6 +153,18 @@ to a `TaskDefinition`. Because the version is stored, **an old schedule can
 never silently run a new contract** — if `taskVersion` 1 is no longer
 installed, that schedule fails loudly instead of executing v2 logic.
 
+### Portable semantic flows
+
+`com.phone-farm.flow/flow@1` is the platform-neutral automation contract. Coordinate tap/swipe remains available as a fallback, but the preferred steps use the common accessibility tree: `tapText`, `waitVisible`, `assertVisible`, `waitGone`, and `inputText`. WDA JSON, XCUITest XML and UiAutomator2 XML are normalized into the same stable-ref snapshot model before those actions run. This keeps scheduler contracts independent of Appium/WDA and lets the same flow survive device-size changes when labels and accessibility roles remain stable.
+
+### Virtual runtime lifecycle
+
+Execution workers expose both currently connected devices and known virtual-runtime definitions. macOS workers use `simctl` for iOS Simulator definitions and lifecycle; hosts with Android tooling use the emulator CLI plus ADB for AVD definitions and shutdown. The MiniPC proxies Boot/Stop to the owning worker rather than trying to run mobile SDK tooling inside the Linux control-plane container.
+
+### Live fleet wall
+
+`/fleet` is the real fleet view. It intentionally does not open a high-rate stream for every device: tiles refresh inexpensive still screenshots, while the selected tile alone requests the signed live-stream capability. This follows the lab UX pattern from Baguette/STF and keeps video transport separate from scheduler/control correctness.
+
 `com.phone-farm.flow/flow@1` is the generic cross-platform contract. Its payload
 is an ordered list of portable actions (app launch/terminate, wait, tap, swipe,
 type, system buttons and screenshot), authored in Automation Studio and queued

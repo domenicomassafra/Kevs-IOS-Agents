@@ -20,3 +20,10 @@ Replace the generic Appium screenshot-loop preview only when a measured transpor
 - Dashboard uses one transport abstraction regardless of selected backend.
 - Keep the screenshot-loop fallback for runtimes where no optimized video adapter exists.
 
+## UI work already landed
+
+- The old 20-seat mock demo has been replaced by a real `/fleet` device wall.
+- All tiles use low-cost still previews; filtering supports online/iOS/Android/physical/virtual/running.
+- Only the selected/focused device upgrades to the live stream capability, following the Baguette/STF pattern and avoiding N simultaneous high-rate streams.
+- Stream failure falls back to a still screenshot without taking down control or scheduling.
+- FARM-021 remains live-gated only for selecting optimized transports (scrcpy/Baguette/qvh) after measurements.

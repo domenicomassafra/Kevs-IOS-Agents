@@ -36,6 +36,7 @@ import { buildFleetHealth } from '../analytics.js';
 import { StreamTokenService } from '../security/stream-token.js';
 import type { HostSnapshot } from '../hosts/capabilities.js';
 import type { RuntimeDevice } from '../devices/runtime-discovery.js';
+import type { VirtualRuntime, VirtualRuntimePlatform } from '../devices/virtual-runtime.js';
 
 export interface CreateAppOptions {
     plugins: PluginRegistry;
@@ -56,6 +57,8 @@ export interface CreateAppOptions {
     listHosts?: () => Promise<HostSnapshot[]> | HostSnapshot[];
     runtimeCandidates?: () => Promise<Array<RuntimeDevice & { workerId?: string }>>;
     registerRuntime?: (workerId: string | undefined, udid: string, name?: string) => Promise<void>;
+    virtualRuntimes?: () => Promise<Array<VirtualRuntime & { workerId?: string }>>;
+    changeVirtualRuntimeState?: (workerId: string | undefined, platform: VirtualRuntimePlatform, id: string, action: 'boot' | 'shutdown') => Promise<void>;
 }
 
 export interface DashboardTheme {
@@ -75,6 +78,7 @@ interface LoadedDashboardTheme {
     automationsScript: string;
     registerDeviceHtml: string;
     registerDeviceScript: string;
+    fleetScript: string;
     htmx: string;
 }
 
@@ -267,7 +271,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     if (options.dashboardTheme) {
         const root = options.dashboardTheme.rootDirectory;
         const require = createRequire(import.meta.url);
-        const [indexHtml, deviceHtml, tasksHtml, automationsHtml, registerDeviceHtml, devicesDemoHtml, styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, htmx] = await Promise.all([
+        const [indexHtml, deviceHtml, tasksHtml, automationsHtml, registerDeviceHtml, devicesDemoHtml, styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, fleetScript, htmx] = await Promise.all([
             readFile(path.join(root, 'templates/index.html'), 'utf8'),
             readFile(path.join(root, 'templates/device.html'), 'utf8'),
             readFile(path.join(root, 'templates/tasks.html'), 'utf8'),
@@ -279,6 +283,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             readFile(path.join(root, 'assets/tasks.js'), 'utf8'),
             readFile(path.join(root, 'assets/automations.js'), 'utf8'),
             readFile(path.join(root, 'assets/register-device.js'), 'utf8'),
+            readFile(path.join(root, 'assets/fleet.js'), 'utf8'),
             readFile(require.resolve('htmx.org/dist/htmx.min.js'), 'utf8'),
         ]);
         // Content-hash every asset URL in the templates so a changed file gets a
@@ -287,6 +292,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             'styles.css': assetHash(styles), 'device.js': assetHash(deviceScript),
             'tasks.js': assetHash(tasksScript), 'automations.js': assetHash(automationsScript),
             'register-device.js': assetHash(registerDeviceScript),
+            'fleet.js': assetHash(fleetScript),
             'htmx.min.js': assetHash(htmx),
         };
         const finalize = (html: string) => {
@@ -300,7 +306,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             tasksHtml: finalize(tasksHtml), automationsHtml: finalize(automationsHtml),
             registerDeviceHtml: finalize(registerDeviceHtml),
             devicesDemoHtml: finalize(devicesDemoHtml),
-            styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, htmx,
+            styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, fleetScript, htmx,
         };
     }
 
@@ -409,6 +415,18 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     });
     app.get('/api/devices/discovered', async () => discoverDevices());
     app.get('/api/runtime-devices/discovered', async () => ({ devices: await options.runtimeCandidates?.() ?? [] }));
+    app.get('/api/virtual-runtimes', async () => ({ runtimes: await options.virtualRuntimes?.() ?? [] }));
+    app.post<{
+        Params: { workerId: string; platform: VirtualRuntimePlatform; id: string; action: 'boot' | 'shutdown' };
+    }>('/api/virtual-runtimes/:workerId/:platform/:id/:action', async (request, reply) => {
+        if (!options.changeVirtualRuntimeState) return reply.code(503).send({ error: 'Virtual runtime lifecycle is not configured' });
+        if (!['ios', 'android'].includes(request.params.platform) || !['boot', 'shutdown'].includes(request.params.action)) {
+            return reply.code(400).send({ error: 'Unsupported virtual runtime action' });
+        }
+        await options.changeVirtualRuntimeState(request.params.workerId === 'local' ? undefined : request.params.workerId,
+            request.params.platform, request.params.id, request.params.action);
+        return reply.code(202).send({ ok: true });
+    });
     app.post<{ Body: { workerId?: string; udid?: string; name?: string } }>('/api/runtime-devices', async (request, reply) => {
         if (!options.registerRuntime) return reply.code(503).send({ error: 'Runtime registration is not configured' });
         if (!request.body.udid?.trim()) return reply.code(400).send({ error: 'Runtime device UDID is required' });
@@ -907,6 +925,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         app.get('/assets/tasks.js', asset('text/javascript', theme.tasksScript));
         app.get('/assets/automations.js', asset('text/javascript', theme.automationsScript));
         app.get('/assets/register-device.js', asset('text/javascript', theme.registerDeviceScript));
+        app.get('/assets/fleet.js', asset('text/javascript', theme.fleetScript));
         app.get('/assets/htmx.min.js', asset('text/javascript', theme.htmx));
         app.get('/api/fragments/devices', async (_request, reply) => {
             const devices = await registeredWithStatus(discoverDevices);
@@ -940,10 +959,22 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${deviceListScript}</section>`);
         });
         app.get('/api/fragments/hosts', async (_request, reply) => {
-            const hosts = await options.listHosts?.() ?? [];
+            const [hosts, runtimes] = await Promise.all([
+                Promise.resolve(options.listHosts?.() ?? []),
+                options.virtualRuntimes?.() ?? Promise.resolve([]),
+            ]);
             const cards = hosts.map((host) => {
                 const capabilities = host.capabilities.map((capability) => `<span class="connection-chip ready">${escapeHtml(capability)}</span>`).join('');
-                return `<article class="host-card"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div><div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">no mobile capabilities</span>'}</div></article>`;
+                const hostRuntimes = runtimes.filter((runtime) => (runtime.workerId ?? 'local') === host.id);
+                const runtimeRows = hostRuntimes.map((runtime) => {
+                    const action = runtime.state === 'booted' ? 'shutdown' : 'boot';
+                    const label = runtime.state === 'booted' ? 'Stop' : 'Boot';
+                    const workerId = runtime.workerId ?? 'local';
+                    const url = `/api/virtual-runtimes/${encodeURIComponent(workerId)}/${encodeURIComponent(runtime.platform)}/${encodeURIComponent(runtime.id)}/${action}`;
+                    const stateClass = runtime.state === 'booted' ? 'ready' : 'unavailable';
+                    return `<div class="host-runtime"><div><strong>${escapeHtml(runtime.name)}</strong><span>${escapeHtml(runtime.platform)} · ${escapeHtml(runtime.kind)}${runtime.osVersion ? ` · ${escapeHtml(runtime.osVersion)}` : ''}</span></div><div class="inline-actions"><span class="connection-chip ${stateClass}">${escapeHtml(runtime.state)}</span><button class="button secondary runtime-action" type="button" hx-post="${url}" hx-swap="none" hx-on::after-request="setTimeout(function(){htmx.ajax('GET','/api/fragments/hosts',{target:'#host-list',swap:'outerHTML'})},1200)">${label}</button></div></div>`;
+                }).join('');
+                return `<article class="host-card"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div><div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">no mobile capabilities</span>'}</div>${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : '<p class="host-runtime-empty">No simulator/emulator definitions detected on this host.</p>'}</article>`;
             }).join('');
             return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${hosts.length} connected node${hosts.length === 1 ? '' : 's'}</p></div><div class="host-grid">${cards || '<div class="empty-state"><h2>No execution hosts connected</h2><p>Pair a Mac/PC worker with the control plane to expose real or virtual devices.</p></div>'}</div></section>`);
         });
@@ -1018,10 +1049,12 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         const registration = candidates ? `<section class="card"><h2>Register connected device</h2><form id="register-device"><select name="udid">${candidates}</select> <button>Register</button></form><p id="register-result" class="muted"></p><script>document.getElementById('register-device').addEventListener('submit',async function(e){e.preventDefault();var s=e.currentTarget.udid;var o=s.options[s.selectedIndex];var r=await fetch('/api/devices',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({udid:o.value,name:o.dataset.name,pluginData:{}})});document.getElementById('register-result').textContent=r.ok?'Registered. Reloading…':(await r.json()).error;if(r.ok)setTimeout(function(){location.reload()},500)});</script></section>` : '';
         return reply.type('text/html').send(renderPage('Devices', `<h1>Devices</h1>${registration}<div class="grid">${cards || '<p>No devices registered.</p>'}</div>`));
     });
-    app.get('/demo/devices', async (_request, reply) => {
-        if (!themed) return reply.type('text/html').send(renderPage('Fleet demo', '<h1>Fleet demo</h1><p>Enable the dashboard theme to preview the 20-seat layout.</p>'));
+    const renderFleet = async (_request: unknown, reply: FastifyReply) => {
+        if (!themed) return reply.type('text/html').send(renderPage('Fleet view', '<h1>Fleet view</h1><p>Enable the dashboard theme to use the live device wall.</p>'));
         return reply.type('text/html').send(themed.devicesDemoHtml);
-    });
+    };
+    app.get('/fleet', renderFleet);
+    app.get('/demo/devices', renderFleet);
     app.get('/devices/register', async (_request, reply) => {
         if (!themed) return reply.type('text/html').send(renderPage('Register device', '<h1>Register device</h1><p>Use <code>POST /api/device-registrations</code> to start device setup.</p>'));
         return reply.type('text/html').send(themed.registerDeviceHtml);

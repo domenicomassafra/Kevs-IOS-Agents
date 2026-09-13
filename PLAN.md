@@ -60,6 +60,10 @@ Done criteria: account pause/allow-list policy, campaign records, targeting, app
 
 `docker-compose.production.yml` packages the Linux control plane and PostgreSQL with persistent storage and restart policies. `PHONE_FARM_ROLE=device-worker` packages macOS launchd with Appium, WDA supervision, queue execution and the authenticated device gateway but deliberately omits the web server. Remote screenshots, semantic trees, MJPEG and input are proxied through the gateway; canonical media is fetched from the MiniPC on demand with size/SHA-256 verification. Final closure requires deploying this topology on the actual MiniPC + Mac + iPhone and running the live acceptance receipt there.
 
+### Wave H — cross-platform lab + semantic Studio (source complete, live matrix pending)
+
+The worker model now supports physical iPhone, iOS Simulator, physical Android and Android Emulator. A modern Appium 3 sidecar owns XCUITest/UiAutomator2 runtimes while the physical-iPhone WDA lane remains isolated. Execution hosts advertise capabilities and virtual-runtime definitions; the dashboard can boot/shutdown supported simulators/AVDs. Portable Flow v1.1 adds semantic `tapText`, `waitVisible`, `assertVisible`, `waitGone` and targeted `inputText` with bounded auto-waits across the normalized accessibility tree. `/fleet` is now a real low-contention device wall: still previews for the fleet and only one focused live stream at a time. Hardware/runtime matrix proof and optimized video transports remain live-gated.
+
 ### Wave H — unified real + virtual mobile farm (source complete, live matrix pending)
 
 The device model now distinguishes `ios|android` and `physical|simulator|emulator`. Workers advertise host capabilities and discover iOS Simulators with `simctl` plus Android devices/emulators with `adb`. Physical iPhones remain on the custom WDA/Appium-2 lane at `:4725`; modern virtual/Android runtimes use an isolated Appium 3 sidecar at `:4726` with current XCUITest and UiAutomator2 drivers. The dashboard can attach these runtimes without editing `devices.json` manually.

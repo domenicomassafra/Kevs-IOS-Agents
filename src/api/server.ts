@@ -14,6 +14,7 @@ import { configuredDeviceWorkers, DeviceWorkerFleet } from '../device-workers.js
 import { createApp, type DashboardTheme } from './app.js';
 import { detectHostCapabilities } from '../hosts/capabilities.js';
 import { discoverRuntimeDevices, registerRuntimeDevice } from '../devices/runtime-discovery.js';
+import { changeVirtualRuntimeState, listVirtualRuntimes } from '../devices/virtual-runtime.js';
 
 export interface StartServerOptions {
     plugins?: readonly PhoneFarmPlugin[];
@@ -63,6 +64,11 @@ export async function startServer(options: StartServerOptions = {}) {
             discoverDevices: () => workerFleet.discoverDevices(),
             listHosts: () => workerFleet.hosts(),
             runtimeCandidates: () => workerFleet.runtimeCandidates(),
+            virtualRuntimes: () => workerFleet.virtualRuntimes(),
+            changeVirtualRuntimeState: (workerId, platform, id, action) => {
+                if (!workerId) throw Object.assign(new Error('Choose an execution worker for this runtime'), { statusCode: 400 });
+                return workerFleet.changeVirtualRuntimeState(workerId, platform, id, action);
+            },
             registerRuntime: (workerId, udid, name) => {
                 if (!workerId) throw Object.assign(new Error('Choose an execution worker for this runtime'), { statusCode: 400 });
                 return workerFleet.registerRuntime(workerId, udid, name);
@@ -74,6 +80,8 @@ export async function startServer(options: StartServerOptions = {}) {
             listHosts: async () => [await detectHostCapabilities({ id: process.env.PHONE_FARM_WORKER_ID ?? 'local' })],
             discoverDevices: discoverRuntimeDevices,
             runtimeCandidates: discoverRuntimeDevices,
+            virtualRuntimes: async () => (await listVirtualRuntimes()).map((runtime) => ({ ...runtime, workerId: 'local' })),
+            changeVirtualRuntimeState: async (_workerId, platform, id, action) => changeVirtualRuntimeState(platform, id, action),
             registerRuntime: async (_workerId, udid, name) => { await registerRuntimeDevice(udid, { name }); },
         }),
     });

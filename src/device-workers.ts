@@ -4,6 +4,7 @@ import { loadRegisteredDevices, mutateRegisteredDevices, type RegisteredDevice }
 import type { RemoteAction, RemoteControl, ScreenInfo } from './devices/wda-remote.js';
 import type { HostSnapshot } from './hosts/capabilities.js';
 import type { RuntimeDevice } from './devices/runtime-discovery.js';
+import type { VirtualRuntime, VirtualRuntimePlatform } from './devices/virtual-runtime.js';
 
 export interface DeviceWorkerDescriptor {
     id: string;
@@ -84,6 +85,14 @@ export class DeviceWorkerClient {
         await this.request(`/v1/runtime-devices/${encodeURIComponent(udid)}/register`, {
             method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(name ? { name } : {}) }),
         });
+    }
+
+    async virtualRuntimes(): Promise<VirtualRuntime[]> {
+        return (await (await this.request('/v1/virtual-runtimes')).json() as { runtimes: VirtualRuntime[] }).runtimes;
+    }
+
+    async changeVirtualRuntimeState(platform: VirtualRuntimePlatform, id: string, action: 'boot' | 'shutdown'): Promise<void> {
+        await this.request(`/v1/virtual-runtimes/${encodeURIComponent(platform)}/${encodeURIComponent(id)}/${action}`, { method: 'POST' }, 130_000);
     }
 
     async getScreenInfo(udid: string): Promise<ScreenInfo> {
@@ -226,6 +235,20 @@ export class DeviceWorkerFleet implements RemoteControl {
             catch { return [] as Array<RuntimeDevice & { workerId: string }>; }
         }));
         return batches.flat();
+    }
+
+    async virtualRuntimes(): Promise<Array<VirtualRuntime & { workerId: string }>> {
+        const batches = await Promise.all(Array.from(this.clients.entries(), async ([workerId, client]) => {
+            try { return (await client.virtualRuntimes()).map((runtime) => ({ ...runtime, workerId })); }
+            catch { return [] as Array<VirtualRuntime & { workerId: string }>; }
+        }));
+        return batches.flat();
+    }
+
+    async changeVirtualRuntimeState(workerId: string, platform: VirtualRuntimePlatform, id: string, action: 'boot' | 'shutdown'): Promise<void> {
+        const client = this.clients.get(workerId);
+        if (!client) throw Object.assign(new Error(`Unknown device worker ${workerId}`), { statusCode: 404 });
+        await client.changeVirtualRuntimeState(platform, id, action);
     }
 
     async registerRuntime(workerId: string, udid: string, name?: string): Promise<void> {

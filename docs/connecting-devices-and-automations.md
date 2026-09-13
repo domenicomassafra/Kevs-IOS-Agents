@@ -25,13 +25,13 @@ The runtime split is intentional:
 
 Connect every owner-controlled iPhone to the Mac by USB, unlock it, trust the Mac and enable Developer Mode. Full Xcode and signing are required.
 
-Open **Mobile Farm → Add iPhone**, then run the guided physical-iPhone setup for each device. Each iPhone gets its own registry entry, WDA/MJPEG ports and serialized pg-boss queue. Several phones may be attached to the same Mac; the MiniPC still exposes them as independent devices.
+Open **Mobile Farm → Add device**, then run the guided physical-iPhone setup for each device. Each iPhone gets its own registry entry, WDA/MJPEG ports and serialized pg-boss queue. Several phones may be attached to the same Mac; the MiniPC still exposes them as independent devices.
 
 ## 3. Attach an iOS Simulator
 
 Install/select full Xcode and create a Simulator normally. It may already be booted, but the Appium/XCUITest runtime can also target an available simulator by UDID.
 
-Open **Mobile Farm → Add iPhone → Virtual & Android runtimes → Scan hosts**. Choose the detected `ios / simulator` entry and click **Attach to farm**. No `devices.json` editing is required.
+From the Devices home, each execution host now lists its known virtual runtimes, including shutdown definitions. Click **Boot** to start the Simulator when supported, then open **Mobile Farm → Add device → Virtual & Android runtimes → Scan hosts**. Choose the detected `ios / simulator` entry and click **Attach to farm**. No `devices.json` editing is required.
 
 ## 4. Attach a real Android phone
 
@@ -41,11 +41,11 @@ Enable Android Developer Options and USB debugging, connect the phone to an exec
 adb devices -l
 ```
 
-Then use **Add iPhone → Virtual & Android runtimes → Scan hosts → Attach to farm**. The device uses the Appium 3 + UiAutomator2 lane and becomes a normal schedulable device in the MiniPC control plane.
+Then use **Add device → Virtual & Android runtimes → Scan hosts → Attach to farm**. The device uses the Appium 3 + UiAutomator2 lane and becomes a normal schedulable device in the MiniPC control plane.
 
 ## 5. Attach an Android Emulator
 
-Start an AVD from Android Studio (or another ADB-visible emulator). When `adb devices -l` shows an `emulator-*` serial, the same Scan Hosts page exposes it as `android / emulator`; click **Attach to farm**.
+AVD definitions are also listed under their execution host on the Devices home. Use **Boot** there (or start one in Android Studio). When `adb devices -l` shows an `emulator-*` serial, the same Scan Hosts page exposes it as `android / emulator`; click **Attach to farm**. Use **Stop** from the host card when that virtual runtime is no longer needed.
 
 ## 6. Create an automation
 
@@ -53,9 +53,13 @@ Open **Automation Studio → Portable flow**. Pick any supported device, give th
 
 ```text
 launch app
-wait
-tap / swipe
-type
+waitVisible "Email"
+inputText target="Email" text="hello@example.com"
+tapText "Continue"
+assertVisible "Welcome"
+waitGone "Loading"
+tap / swipe                 # coordinate fallback when semantics are unavailable
+type                        # raw text fallback
 Home / lock / wake / unlock / volume
 screenshot
 ```
@@ -68,6 +72,10 @@ TikTok/Instagram recipes remain intentionally tied to the physical-iPhone/WDA la
 
 Both WDA and Appium page sources feed the same semantic snapshot API. Android UiAutomator2 XML and iOS XCUITest XML are normalized into compact stable refs, so Hermes/MCP can inspect and target UI elements without consuming a separate platform-specific selector protocol.
 
+The visual builder now uses that same layer directly. Prefer `tapText`, `waitVisible`, `assertVisible`, `waitGone` and `inputText` over fixed coordinates. Optional exact matching, accessibility element type and per-step timeouts let a flow stay strict where necessary without becoming screen-size-specific.
+
 ## 8. Video
 
 Physical iPhones retain WDA MJPEG pending the existing qvh benchmark. Generic Appium devices currently use a bounded screenshot-stream fallback. FARM-021 will benchmark scrcpy for Android and Baguette-style transport for iOS Simulator; video remains separable from control so a streaming failure does not own scheduler correctness.
+
+The **Fleet view** at `/fleet` already follows the low-contention strategy: every device gets an inexpensive still preview, while only the currently focused tile upgrades to a live stream. Filters cover online, iOS, Android, physical, virtual and running devices. This replaces the old mock 20-seat demo with live fleet data.

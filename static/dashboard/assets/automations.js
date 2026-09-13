@@ -122,7 +122,7 @@ async function loadDevices() {
     updateFleetHint();
 }
 const FLOW_ACTIONS = [
-    'launch', 'terminate', 'wait', 'tap', 'swipe', 'type',
+    'launch', 'terminate', 'wait', 'tapText', 'inputText', 'waitVisible', 'assertVisible', 'waitGone', 'tap', 'swipe', 'type',
     'home', 'lock', 'wake', 'unlock', 'volumeUp', 'volumeDown', 'screenshot',
 ];
 function defaultFlowStep(action) {
@@ -136,6 +136,11 @@ function defaultFlowStep(action) {
         return { action, startX: 200, startY: 600, endX: 200, endY: 200, durationMs: 350 };
     if (action === 'type')
         return { action, text: '' };
+    if (action === 'tapText' || action === 'waitVisible' || action === 'assertVisible' || action === 'waitGone') {
+        return { action, text: '', timeoutMs: action === 'assertVisible' ? 1000 : 10000 };
+    }
+    if (action === 'inputText')
+        return { action, target: '', text: '', timeoutMs: 10000 };
     return { action };
 }
 function flowParamInput(step, key, type = 'number') {
@@ -165,6 +170,28 @@ function flowParams(step) {
         box.append(flowParamInput(values, 'startX'), flowParamInput(values, 'startY'), flowParamInput(values, 'endX'), flowParamInput(values, 'endY'), flowParamInput(values, 'durationMs'));
     else if (step.action === 'type')
         box.append(flowParamInput(values, 'text', 'text'));
+    else if (step.action === 'tapText' || step.action === 'waitVisible' || step.action === 'assertVisible' || step.action === 'waitGone') {
+        box.append(flowParamInput(values, 'text', 'text'), flowParamInput(values, 'type', 'text'), flowParamInput(values, 'timeoutMs'));
+        const exact = document.createElement('label');
+        exact.className = 'flow-inline-check';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = step.exact === true;
+        checkbox.addEventListener('change', () => { values.exact = checkbox.checked; });
+        exact.append(checkbox, document.createTextNode(' exact'));
+        box.append(exact);
+    }
+    else if (step.action === 'inputText') {
+        box.append(flowParamInput(values, 'target', 'text'), flowParamInput(values, 'text', 'text'), flowParamInput(values, 'type', 'text'), flowParamInput(values, 'timeoutMs'));
+        const exact = document.createElement('label');
+        exact.className = 'flow-inline-check';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = step.exact === true;
+        checkbox.addEventListener('change', () => { values.exact = checkbox.checked; });
+        exact.append(checkbox, document.createTextNode(' exact'));
+        box.append(exact);
+    }
     else {
         const hint = document.createElement('span');
         hint.className = 'run-meta';

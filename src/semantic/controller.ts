@@ -5,6 +5,13 @@ import path from 'node:path';
 import type { RemoteControl } from '../devices/wda-remote.js';
 import { SemanticSnapshotStore, type SemanticSnapshot, type SemanticSnapshotOptions } from './snapshot.js';
 
+export interface SemanticFindOptions {
+    timeoutMs?: number;
+    pollMs?: number;
+    type?: string;
+    exact?: boolean;
+}
+
 export interface SemanticTrace {
     id: string;
     action: 'tap-ref' | 'type-text';
@@ -56,19 +63,51 @@ export class SemanticController {
     async waitForText(
         deviceUdid: string,
         text: string,
-        options: { timeoutMs?: number; pollMs?: number; type?: string } = {},
+        options: SemanticFindOptions = {},
     ): Promise<{ snapshot: SemanticSnapshot; matches: ReturnType<SemanticSnapshotStore['find']> }> {
         const timeoutMs = Math.max(0, Math.min(30_000, options.timeoutMs ?? 10_000));
         const pollMs = Math.max(100, Math.min(2_000, options.pollMs ?? 500));
         const deadline = Date.now() + timeoutMs;
         let last = await this.snapshot(deviceUdid, { query: text });
         while (true) {
-            const matches = this.store.find(last, text, options.type);
+            const matches = this.matches(last, text, options);
             if (matches.length) return { snapshot: last, matches };
             if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${JSON.stringify(text)}`);
             await new Promise((resolve) => setTimeout(resolve, pollMs));
             last = await this.snapshot(deviceUdid, { query: text });
         }
+    }
+
+    async waitForTextGone(deviceUdid: string, text: string, options: SemanticFindOptions = {}): Promise<void> {
+        const timeoutMs = Math.max(0, Math.min(30_000, options.timeoutMs ?? 10_000));
+        const pollMs = Math.max(100, Math.min(2_000, options.pollMs ?? 500));
+        const deadline = Date.now() + timeoutMs;
+        while (true) {
+            const snapshot = await this.snapshot(deviceUdid, { query: text });
+            if (this.matches(snapshot, text, options).length === 0) return;
+            if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${JSON.stringify(text)} to disappear`);
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+        }
+    }
+
+    async tapText(deviceUdid: string, text: string, options: SemanticFindOptions = {}): Promise<{ ok: true; traceId: string }> {
+        const { snapshot, matches } = await this.waitForText(deviceUdid, text, options);
+        const first = matches[0]!;
+        return this.tapRef(deviceUdid, snapshot.generation, first.ref);
+    }
+
+    async inputText(deviceUdid: string, target: string, text: string, options: SemanticFindOptions = {}): Promise<void> {
+        await this.tapText(deviceUdid, target, options);
+        await this.typeText(deviceUdid, text);
+    }
+
+    private matches(snapshot: SemanticSnapshot, text: string, options: SemanticFindOptions) {
+        const matches = this.store.find(snapshot, text, options.type);
+        if (!options.exact) return matches;
+        const wanted = text.trim().toLowerCase();
+        return matches.filter((element) => (
+            element.label.trim().toLowerCase() === wanted || element.value?.trim().toLowerCase() === wanted
+        ));
     }
 
     private async writeTrace(input: Omit<SemanticTrace, 'id' | 'timestamp'>): Promise<SemanticTrace> {

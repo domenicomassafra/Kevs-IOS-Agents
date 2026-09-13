@@ -52,8 +52,8 @@
                 <button type="button" class="automation-template" data-template="flow" role="listitem" aria-pressed="false">
                     <span class="automation-template-app">iOS + Android</span>
                     <span class="automation-template-title">Portable flow</span>
-                    <span class="automation-template-desc">Compose launch, wait, tap, swipe, type, system buttons and screenshots into a versioned flow.</span>
-                    <span class="automation-template-meta">Visual builder · scheduler-backed</span>
+                    <span class="automation-template-desc">Compose accessibility-first actions like tap text, wait/assert visible and input into a field, with coordinate gestures only when needed.</span>
+                    <span class="automation-template-meta">Semantic selectors · auto-wait · scheduler-backed</span>
                 </button>
                 <button type="button" class="automation-template" data-template="pipeline" role="listitem" aria-pressed="false">
                     <span class="automation-template-app">TikTok</span>
@@ -84,7 +84,7 @@
 
         <section id="flow-workspace" class="panel automation-workspace" hidden>
             <div class="section-heading">
-                <div><span class="eyebrow">Portable flow</span><h2>Flow builder</h2></div>
+                <div><span class="eyebrow">Portable flow</span><h2>Flow builder</h2><p>Prefer semantic steps. They survive screen-size changes and work across XCUITest/WDA and UiAutomator2 accessibility trees.</p></div>
             </div>
             <div class="flow-toolbar">
                 <label class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>

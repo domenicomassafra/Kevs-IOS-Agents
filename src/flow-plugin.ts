@@ -8,6 +8,8 @@ type FlowStep =
     | { action: 'tap'; x: number; y: number }
     | { action: 'swipe'; startX: number; startY: number; endX: number; endY: number; durationMs: number }
     | { action: 'type'; text: string }
+    | { action: 'tapText' | 'waitVisible' | 'assertVisible' | 'waitGone'; text: string; type?: string; exact?: boolean; timeoutMs?: number }
+    | { action: 'inputText'; target: string; text: string; type?: string; exact?: boolean; timeoutMs?: number }
     | { action: 'home' | 'lock' | 'wake' | 'unlock' | 'volumeUp' | 'volumeDown' }
     | { action: 'screenshot' };
 
@@ -64,6 +66,46 @@ function parseStep(value: JsonValue, index: number): FlowStep {
         }
         return { action, text: step.text };
     }
+    if (['tapText', 'waitVisible', 'assertVisible', 'waitGone'].includes(action)) {
+        if (typeof step.text !== 'string' || !step.text.trim() || step.text.length > 240) {
+            throw new Error(`steps[${index}].text must contain 1 to 240 characters`);
+        }
+        if (step.type !== undefined && (typeof step.type !== 'string' || step.type.length > 80)) {
+            throw new Error(`steps[${index}].type must be at most 80 characters`);
+        }
+        if (step.exact !== undefined && typeof step.exact !== 'boolean') throw new Error(`steps[${index}].exact must be boolean`);
+        const timeoutMs = step.timeoutMs === undefined ? undefined
+            : Math.round(finite(step.timeoutMs, `steps[${index}].timeoutMs`, 0, 30_000));
+        return {
+            action: action as 'tapText' | 'waitVisible' | 'assertVisible' | 'waitGone',
+            text: step.text.trim(),
+            ...(step.type ? { type: step.type } : {}),
+            ...(step.exact !== undefined ? { exact: step.exact } : {}),
+            ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        };
+    }
+    if (action === 'inputText') {
+        if (typeof step.target !== 'string' || !step.target.trim() || step.target.length > 240) {
+            throw new Error(`steps[${index}].target must contain 1 to 240 characters`);
+        }
+        if (typeof step.text !== 'string' || step.text.length < 1 || step.text.length > 4_000) {
+            throw new Error(`steps[${index}].text must contain 1 to 4000 characters`);
+        }
+        if (step.type !== undefined && (typeof step.type !== 'string' || step.type.length > 80)) {
+            throw new Error(`steps[${index}].type must be at most 80 characters`);
+        }
+        if (step.exact !== undefined && typeof step.exact !== 'boolean') throw new Error(`steps[${index}].exact must be boolean`);
+        const timeoutMs = step.timeoutMs === undefined ? undefined
+            : Math.round(finite(step.timeoutMs, `steps[${index}].timeoutMs`, 0, 30_000));
+        return {
+            action,
+            target: step.target.trim(),
+            text: step.text,
+            ...(step.type ? { type: step.type } : {}),
+            ...(step.exact !== undefined ? { exact: step.exact } : {}),
+            ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        };
+    }
     if (['home', 'lock', 'wake', 'unlock', 'volumeUp', 'volumeDown'].includes(action)) {
         return { action: action as Extract<FlowStep, { action: string }>['action'] } as FlowStep;
     }
@@ -102,6 +144,11 @@ const portableFlowTask: TaskDefinition<PortableFlowPayload> = {
                 else if (step.action === 'tap') await context.automation.tap(step.x, step.y);
                 else if (step.action === 'swipe') await context.automation.swipe(step.startX, step.startY, step.endX, step.endY, step.durationMs);
                 else if (step.action === 'type') await context.automation.typeText(step.text);
+                else if (step.action === 'tapText') await context.automation.tapText(step.text, step);
+                else if (step.action === 'waitVisible') await context.automation.waitForText(step.text, step);
+                else if (step.action === 'assertVisible') await context.automation.assertText(step.text, step);
+                else if (step.action === 'waitGone') await context.automation.waitForTextGone(step.text, step);
+                else if (step.action === 'inputText') await context.automation.inputText(step.target, step.text, step);
                 else if (step.action === 'screenshot') {
                     const image = await context.automation.screenshot();
                     await context.log(`Screenshot captured (${image.byteLength} bytes)`);
@@ -118,7 +165,7 @@ const portableFlowTask: TaskDefinition<PortableFlowPayload> = {
 
 export const portableFlowPlugin: PhoneFarmPlugin = {
     id: 'com.phone-farm.flow',
-    version: '1.0.0',
+    version: '1.1.0',
     displayName: 'Portable Flows',
     tasks: [portableFlowTask],
 };

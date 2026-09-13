@@ -19,11 +19,13 @@ Turn the iPhone-first worker model into a device-runtime model that can host phy
 - Appium XML → canonical semantic stable-ref normalization for Android and iOS Simulator.
 - launchd service packaging and device-worker setup install both runtime drivers.
 - Old worker compatibility: missing new host/runtime endpoints does not drop legacy device inventory.
+- Worker/control-plane virtual-runtime inventory covers **shutdown definitions**, not only already-running devices.
+- Dashboard host cards can boot/shutdown iOS Simulators and Android AVDs on the owning execution worker.
 
 ## Verification
 
 - Appium 3.7.0 sidecar launched locally on `127.0.0.1:4726` and returned `ready:true` from `/status` with both modern drivers loaded.
-- `npm run check`: 110/110 tests + TypeScript green after implementation.
+- Appium 3 sidecar and isolated drivers remain separate from the physical-iPhone lane; source regression stays green after adding runtime lifecycle management.
 
 ## Remaining live proof
 
@@ -31,4 +33,3 @@ Turn the iPhone-first worker model into a device-runtime model that can host phy
 - One Android emulator through UiAutomator2.
 - One physical Android device through UiAutomator2/ADB.
 - Distributed MiniPC → worker proxy receipt for at least one non-iPhone runtime.
-

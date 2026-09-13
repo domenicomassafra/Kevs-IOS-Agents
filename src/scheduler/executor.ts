@@ -8,6 +8,7 @@ import { loadRegisteredDevices, type RegisteredDevice } from '../devices/registr
 import { passcodeForDevice } from '../devices/secrets.js';
 import { WdaRemoteControl } from '../devices/wda-remote.js';
 import { AppiumRemoteControl } from '../devices/appium-remote.js';
+import { SemanticController } from '../semantic/controller.js';
 import type { ExecutionRow } from '../database/schema.js';
 import type { PluginRegistry } from '../registry.js';
 import type { TaskExecutionResult } from '../types.js';
@@ -58,6 +59,7 @@ function deviceAutomation(registered: RegisteredDevice, passcode: string | undef
         ?? ((registered.platform ?? 'ios') === 'ios' && (registered.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
     if (backend === 'appium') {
         const remote = new AppiumRemoteControl(registered);
+        const semantic = new SemanticController(remote);
         return {
             activateApp: (appId) => remote.activateApp(appId),
             terminateApp: (appId) => remote.terminateApp(appId),
@@ -76,6 +78,11 @@ function deviceAutomation(registered: RegisteredDevice, passcode: string | undef
                 type: 'swipe', startX, startY, endX, endY, durationMs,
             }),
             typeText: (text) => remote.performAction(udid, { type: 'type', text }),
+            waitForText: async (text, options) => { await semantic.waitForText(udid, text, options); },
+            tapText: async (text, options) => { await semantic.tapText(udid, text, options); },
+            inputText: (target, text, options) => semantic.inputText(udid, target, text, options),
+            assertText: async (text, options) => { await semantic.waitForText(udid, text, { timeoutMs: options?.timeoutMs ?? 1_000, ...options }); },
+            waitForTextGone: (text, options) => semantic.waitForTextGone(udid, text, options),
             system: (action) => remote.performAction(udid, { type: action }),
         };
     }
@@ -84,6 +91,7 @@ function deviceAutomation(registered: RegisteredDevice, passcode: string | undef
         wdaUrl: `http://127.0.0.1:${registered.wdaLocalPort ?? Number(process.env.WDA_LOCAL_PORT ?? 8100)}`,
         passcode,
     });
+    const semantic = new SemanticController(remote);
     const appRequest = async (pathname: string, bundleId: string): Promise<void> => {
         await remote.request(pathname, {
             method: 'POST',
@@ -109,6 +117,11 @@ function deviceAutomation(registered: RegisteredDevice, passcode: string | undef
             type: 'swipe', startX, startY, endX, endY, durationMs,
         }),
         typeText: (text) => remote.performAction(udid, { type: 'type', text }),
+        waitForText: async (text, options) => { await semantic.waitForText(udid, text, options); },
+        tapText: async (text, options) => { await semantic.tapText(udid, text, options); },
+        inputText: (target, text, options) => semantic.inputText(udid, target, text, options),
+        assertText: async (text, options) => { await semantic.waitForText(udid, text, { timeoutMs: options?.timeoutMs ?? 1_000, ...options }); },
+        waitForTextGone: (text, options) => semantic.waitForTextGone(udid, text, options),
         system: (action) => remote.performAction(udid, { type: action }),
     };
 }

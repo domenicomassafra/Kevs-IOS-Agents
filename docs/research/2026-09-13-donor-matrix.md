@@ -15,13 +15,14 @@
 | Maestro | Portable flow/Studio semantics | Apache-2.0 core, readable cross-platform flows, accessibility-first selectors, smart waits, MCP; runs on emulators/simulators and physical Android | Its hosted cloud is optional and Studio itself is not open-source; physical iOS coverage does not replace our WDA lane | **DONOR: flow language + Studio UX** |
 | Genymobile/scrcpy | Android video/control transport | Very low-latency Android mirroring/control, recording and virtual displays over USB/TCP | Android-only and not a scheduler/account control plane | **BENCHMARK/ADAPTER DONOR for Android video** |
 | DeviceFarmer/STF family | Android lab UX/topology | Proven concepts for large Android fleets, remote screens and device allocation | QA/lab centric; not a fit as the scheduler authority | Reference patterns only |
+| Meta/Facebook idb | iOS lab/companion topology | MIT; client/companion split, simulator/device lifecycle, remote execution and scalable lab primitives | Not a scheduler, dashboard or social automation product; importing its stack would duplicate our worker boundary | **DONOR: remote companion + simulator lifecycle** |
 | iPhone Mirroring MCPs | Quick single-phone agent demo | No WDA signing, easy local control | Apple's Mirroring is one-phone-at-a-time and session-sensitive; poor fleet basis | Reject as core |
 | minitap/mobile-use | General agent research | Agentic mobile UI model, modern setup skill | Public docs are inconsistent on physical-iOS maturity | Watch, don't adopt |
 | pymobiledevice3 | Device-management substrate | Modern Apple protocol coverage, DVT, tunneling, WDA helpers | GPL-3.0 library implications; not a scheduler/UI | Prefer via isolated adapter / Hermes donor |
 
 ## Synthesis
 
-The best solution is **compositional, not a mega-merge**. Keep one authoritative fleet scheduler and expose device runtimes behind narrow capabilities. Appium Device Farm validates the hub/node + mixed real/virtual model; Baguette is the strongest iOS-Simulator UX/video donor; scrcpy is the preferred Android video benchmark; Maestro is the strongest donor for portable readable flows and visual authoring. Deterministic recipes remain the default for known social workflows; portable/semantic flows cover cross-platform general automation.
+The best solution is **compositional, not a mega-merge**. Keep one authoritative fleet scheduler and expose device runtimes behind narrow capabilities. Appium Device Farm validates the hub/node + mixed real/virtual model; idb validates the remote-companion pattern for Apple labs; Baguette is the strongest iOS-Simulator UX/video donor; DeviceFarmer/STF contributes the low-cost device-wall/focused-control pattern; scrcpy is the preferred Android video benchmark; Maestro is the strongest donor for portable readable flows, accessibility selectors, automatic waits and visual authoring. Deterministic recipes remain the default for known social workflows; portable/semantic flows cover cross-platform general automation.
 
 ## Donor provenance
 

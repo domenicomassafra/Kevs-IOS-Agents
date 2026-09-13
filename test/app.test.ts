@@ -159,3 +159,22 @@ test('serves and drives the public registration wizard', async (context) => {
     assert.equal(finalized.statusCode, 200);
     assert.equal(finalized.json().finalized, true);
 });
+
+test('serves a live fleet wall instead of the old mock fleet demo', async (context) => {
+    const app = await createApp({
+        plugins: new PluginRegistry([]),
+        scheduler: {} as SchedulerRepository,
+        registrations: registrations(),
+        dashboardTheme: defaultDashboardTheme,
+    });
+    context.after(() => app.close());
+    const response = await app.inject({ method: 'GET', url: '/fleet' });
+    assert.equal(response.statusCode, 200);
+    assert.match(response.body, /Live device wall/i);
+    assert.match(response.body, /assets\/fleet\.js/);
+    assert.doesNotMatch(response.body, /mock fleet of 20 seats/i);
+
+    const legacy = await app.inject({ method: 'GET', url: '/demo/devices' });
+    assert.equal(legacy.statusCode, 200);
+    assert.match(legacy.body, /Live device wall/i);
+});

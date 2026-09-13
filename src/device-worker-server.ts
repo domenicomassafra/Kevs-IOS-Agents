@@ -11,6 +11,7 @@ import type { RemoteAction } from './devices/wda-remote.js';
 import type { JsonObject } from './types.js';
 import { detectHostCapabilities } from './hosts/capabilities.js';
 import { discoverRuntimeDevices, registerRuntimeDevice } from './devices/runtime-discovery.js';
+import { changeVirtualRuntimeState, listVirtualRuntimes, type VirtualRuntimePlatform } from './devices/virtual-runtime.js';
 
 function safeEqual(left: string, right: string): boolean {
     const a = Buffer.from(left);
@@ -101,6 +102,16 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     app.get('/health', async () => ({ ok: true, role: 'device-worker', workerId }));
     app.get('/v1/host', async () => detectHostCapabilities({ id: workerId }));
     app.get('/v1/runtime-devices', async () => ({ devices: await discoverRuntimeDevices() }));
+    app.get('/v1/virtual-runtimes', async () => ({ runtimes: await listVirtualRuntimes() }));
+    app.post<{ Params: { platform: VirtualRuntimePlatform; id: string; action: 'boot' | 'shutdown' } }>(
+        '/v1/virtual-runtimes/:platform/:id/:action', async (request, reply) => {
+            if (!['ios', 'android'].includes(request.params.platform) || !['boot', 'shutdown'].includes(request.params.action)) {
+                return reply.code(400).send({ error: 'Unsupported virtual runtime action' });
+            }
+            await changeVirtualRuntimeState(request.params.platform, request.params.id, request.params.action);
+            return reply.code(202).send({ ok: true });
+        },
+    );
     app.post<{ Params: { udid: string }; Body: { name?: string } }>('/v1/runtime-devices/:udid/register', async (request, reply) => {
         const device = await registerRuntimeDevice(request.params.udid, { name: request.body?.name });
         return reply.code(201).send({ device: redactDevice(device) });
