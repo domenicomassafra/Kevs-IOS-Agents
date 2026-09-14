@@ -40,6 +40,9 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     const fragment = await inject(app, { method: 'GET', url: '/api/fragments/devices' });
     assert.match(fragment.body, /Disconnected devices \(1\)/);
     assert.match(fragment.body, /data-toggle-device="udid-a" data-disabled="false"/);
+    assert.match(fragment.body, /data-device-entry/);
+    assert.match(fragment.body, /data-status="disabled"/);
+    assert.match(fragment.body, /data-platform="ios"/);
 
     const reenabled = await inject(app, { method: 'PATCH', url: '/api/devices/udid-a', payload: { disabled: false } });
     assert.equal(reenabled.statusCode, 200);

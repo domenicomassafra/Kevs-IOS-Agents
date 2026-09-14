@@ -214,6 +214,10 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.equal(page.statusCode, 200);
     assert.match(page.body, /id="control-center"/);
     assert.match(page.body, /id="overview-rename-dialog"/);
+    assert.match(page.body, /id="device-list-search"/);
+    assert.match(page.body, /id="device-list-status"/);
+    assert.match(page.body, /id="device-list-platform"/);
+    assert.match(page.body, /assets\/overview\.js/);
     assert.match(page.body, /Build a flow/);
 
     const fragment = await inject(app, { method: 'GET', url: '/api/fragments/control-center' });

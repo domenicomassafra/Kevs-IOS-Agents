@@ -50,9 +50,18 @@
         <section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="load, every 15s" hx-swap="outerHTML" aria-live="polite">
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Loading execution hosts…</div>
         </section>
+        <section class="device-list-toolbar" aria-label="Device inventory filters">
+            <label class="device-filter-search"><span class="sr-only">Search devices</span><input id="device-list-search" type="search" placeholder="Search name, UDID, tag, worker…"></label>
+            <label><span class="sr-only">Filter device status</span><select id="device-list-status"><option value="">All states</option><option value="online">Online</option><option value="offline">Offline</option><option value="disabled">Disconnected</option></select></label>
+            <label><span class="sr-only">Filter device platform</span><select id="device-list-platform"><option value="">All platforms</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
+            <button id="device-list-reset" class="button secondary" type="button">Reset</button>
+            <span id="device-list-summary" class="run-meta">Loading devices…</span>
+            <span id="device-list-action-status" class="run-meta device-list-action-status" aria-live="polite"></span>
+        </section>
         <section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="load" hx-swap="outerHTML" aria-live="polite">
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Looking for connected devices…</div>
         </section>
+        <div id="device-filter-empty" class="empty-state device-filter-empty" hidden><span class="empty-state-kicker">Inventory filter</span><h2>No matching devices</h2><p>Change the search or filters to show the rest of the inventory.</p><button id="device-filter-empty-reset" class="button secondary" type="button">Clear filters</button></div>
     </main>
     <dialog id="overview-rename-dialog">
         <form id="overview-rename-form" class="modal">
@@ -66,71 +75,7 @@
             <div class="form-actions"><span id="overview-rename-result" class="run-meta" aria-live="polite"></span><span class="spacer"></span><button class="button primary" type="submit">Save name</button></div>
         </form>
     </dialog>
-    <script>
-        (() => {
-            const dialog = document.querySelector('#overview-rename-dialog');
-            const form = document.querySelector('#overview-rename-form');
-            const input = document.querySelector('#overview-rename-name');
-            const result = document.querySelector('#overview-rename-result');
-            const close = document.querySelector('#overview-rename-close');
-            let renameUdid = '';
-            const refreshDevices = () => window.htmx
-                ? window.htmx.ajax('GET', '/api/fragments/devices', { target: '#device-list', swap: 'outerHTML' })
-                : location.reload();
-            document.addEventListener('click', async (event) => {
-                const target = event.target instanceof Element ? event.target : null;
-                const rename = target?.closest('[data-rename-device]');
-                if (rename) {
-                    event.preventDefault();
-                    const root = rename.closest('.device-card, li') || rename.parentElement;
-                    const title = root?.querySelector('.device-name');
-                    renameUdid = rename.dataset.renameDevice || '';
-                    input.value = (title?.textContent || '').replace(/\s+/g, ' ').trim();
-                    result.textContent = '';
-                    dialog.showModal();
-                    input.focus();
-                    input.select();
-                    return;
-                }
-                const toggle = target?.closest('[data-toggle-device]');
-                if (!toggle) return;
-                event.preventDefault();
-                toggle.disabled = true;
-                try {
-                    const response = await fetch(`/api/devices/${toggle.dataset.toggleDevice}`, {
-                        method: 'PATCH', headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({ disabled: toggle.dataset.disabled === 'true' }),
-                    });
-                    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
-                    refreshDevices();
-                } catch (error) {
-                    toggle.disabled = false;
-                    result.textContent = error instanceof Error ? error.message : String(error);
-                }
-            });
-            close.addEventListener('click', () => dialog.close());
-            form.addEventListener('submit', (event) => {
-                event.preventDefault();
-                void (async () => {
-                    const name = input.value.replace(/\s+/g, ' ').trim();
-                    if (!renameUdid || !name) { result.textContent = 'Device name is required.'; return; }
-                    const submit = form.querySelector('button[type="submit"]');
-                    submit.disabled = true;
-                    result.textContent = 'Saving…';
-                    try {
-                        const response = await fetch(`/api/devices/${renameUdid}`, {
-                            method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
-                        });
-                        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Rename failed (${response.status})`);
-                        dialog.close();
-                        refreshDevices();
-                    } catch (error) {
-                        result.textContent = error instanceof Error ? error.message : String(error);
-                    } finally { submit.disabled = false; }
-                })();
-            });
-        })();
-    </script>
+    <script type="module" src="/assets/overview.js"></script>
     <footer class="app-footer">__FOOTER__</footer>
 </body>
 </html>

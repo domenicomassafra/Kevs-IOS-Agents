@@ -1283,23 +1283,32 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 const kind = device.kind ?? 'physical';
                 const runtime = `${platform === 'ios' ? 'iOS' : 'Android'} · ${kind}`;
                 const host = device.workerId ? ` · ${device.workerId}` : '';
-                const tags = (device.tags ?? []).map((tag) => `<span class="connection-chip tag">#${escapeHtml(tag)}</span>`).join('');
+                const deviceTags = device.tags ?? [];
+                const tags = deviceTags.map((tag) => `<span class="connection-chip tag">#${escapeHtml(tag)}</span>`).join('');
                 const accounts = Object.values(device.pluginData).flatMap((value) => {
                     const candidate = value.accounts;
                     return Array.isArray(candidate) ? candidate.filter((entry) => typeof entry === 'string') : [];
                 });
+                const status = device.connected ? 'online' : 'offline';
+                const searchText = [device.name, device.udid, platform, kind, device.workerId ?? '', ...deviceTags, ...accounts]
+                    .join(' ').toLowerCase();
                 // A still screenshot that refreshes with the 5s fragment poll —
                 // not a live MJPEG stream. Streaming every device's screen through
                 // the tunnel at once is what made the grid crawl.
                 const preview = device.connected
                     ? `<div class="device-preview-frame"><img class="device-preview" src="/api/devices/${encodeURIComponent(device.udid)}/remote/screenshot?t=${Date.now()}" alt="Screen of ${escapeHtml(device.name)}" draggable="false" onerror="this.style.visibility='hidden'"></div>`
                     : '<div class="device-preview-frame unavailable" aria-hidden="true"><div class="device-icon"></div></div>';
-                return `<article class="device-card">${preview}<div class="device-copy"><h2 class="device-name">${escapeHtml(device.name)}</h2><p>${escapeHtml(runtime)}${device.connected ? ` · ${escapeHtml(device.connected.osVersion)}` : ''}${escapeHtml(host)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span><div class="connection-chips"><span class="connection-chip">${escapeHtml(platform)}</span><span class="connection-chip">${escapeHtml(kind)}</span>${device.workerId ? `<span class="connection-chip">${escapeHtml(device.workerId)}</span>` : ''}${tags}</div>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button primary" href="/automations?template=flow&device=${encodeURIComponent(device.udid)}">Automate</a><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${renameButton(device.udid)}${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
+                return `<article class="device-card" data-device-entry data-search="${escapeHtml(searchText)}" data-status="${status}" data-platform="${escapeHtml(platform)}">${preview}<div class="device-copy"><h2 class="device-name">${escapeHtml(device.name)}</h2><p>${escapeHtml(runtime)}${device.connected ? ` · ${escapeHtml(device.connected.osVersion)}` : ''}${escapeHtml(host)}</p><span class="connected${device.connected ? '' : ' offline'}"><span></span>${device.connected ? 'Online' : 'Offline'}</span><div class="connection-chips"><span class="connection-chip">${escapeHtml(platform)}</span><span class="connection-chip">${escapeHtml(kind)}</span>${device.workerId ? `<span class="connection-chip">${escapeHtml(device.workerId)}</span>` : ''}${tags}</div>${accounts.length ? `<p class="accounts">${accounts.map(escapeHtml).join(', ')}</p>` : ''}</div><div class="device-card-actions"><a class="button primary" href="/automations?template=flow&device=${encodeURIComponent(device.udid)}">Automate</a><a class="button secondary" href="/devices/${encodeURIComponent(device.udid)}">Open device <span aria-hidden="true">→</span></a>${renameButton(device.udid)}${toggleButton(device.udid, 'Disconnect', true)}</div></article>`;
             }).join('');
             const disabledPanel = disabled.length
-                ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span class="device-name">${escapeHtml(device.name)}</span><span class="inline-actions">${renameButton(device.udid)}${toggleButton(device.udid, 'Reconnect', false)}</span></li>`).join('')}</ul></details>`
+                ? `<details class="disabled-devices"><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => {
+                    const platform = device.platform ?? 'ios';
+                    const kind = device.kind ?? 'physical';
+                    const searchText = [device.name, device.udid, platform, kind, device.workerId ?? '', ...(device.tags ?? [])].join(' ').toLowerCase();
+                    return `<li data-device-entry data-search="${escapeHtml(searchText)}" data-status="disabled" data-platform="${escapeHtml(platform)}"><span><strong class="device-name">${escapeHtml(device.name)}</strong><small>${escapeHtml(platform)} · ${escapeHtml(kind)}${device.workerId ? ` · ${escapeHtml(device.workerId)}` : ''}</small></span><span class="inline-actions">${renameButton(device.udid)}${toggleButton(device.udid, 'Reconnect', false)}</span></li>`;
+                }).join('')}</ul></details>`
                 : '';
-            const emptyDevices = '<div class="empty-state"><span class="empty-state-kicker">Device layer</span><h2>No active devices</h2><p>Attach a real phone, simulator or emulator, or reconnect a disabled device below.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Add device</a><a class="button secondary" href="/automations?template=flow">Open Automation Studio</a></div></div>';
+            const emptyDevices = '<div class="empty-state" data-device-base-empty><span class="empty-state-kicker">Device layer</span><h2>No active devices</h2><p>Attach a real phone, simulator or emulator, or reconnect a disabled device below.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Add device</a><a class="button secondary" href="/automations?template=flow">Open Automation Studio</a></div></div>';
             return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || emptyDevices}${disabledPanel}</section>`);
         });
         app.get('/api/fragments/hosts', async (_request, reply) => {
