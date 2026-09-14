@@ -314,7 +314,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     return body;
 }
 
-function button(label: string, action: () => Promise<void>): HTMLButtonElement {
+function button(label: string, action: () => Promise<void>, quietSuccess = false): HTMLButtonElement {
     const value = document.createElement('button');
     value.className = 'icon-button'; value.type = 'button'; value.textContent = label;
     value.addEventListener('click', () => {
@@ -323,7 +323,10 @@ function button(label: string, action: () => Promise<void>): HTMLButtonElement {
         actionStatus.classList.remove('error');
         actionStatus.textContent = `${label}…`;
         void action().then(() => {
-            actionStatus.textContent = `${label} complete.`;
+            if (quietSuccess) {
+                actionStatus.hidden = true;
+                actionStatus.textContent = '';
+            } else actionStatus.textContent = `${label} complete.`;
         }).catch((error) => {
             actionStatus.classList.add('error');
             actionStatus.textContent = error instanceof Error ? error.message : String(error);
@@ -348,7 +351,7 @@ function renderSchedules(items: Schedule[]): void {
         const state = document.createElement('span'); state.className = `status ${schedule.status}`; state.textContent = schedule.status;
         const actions = document.createElement('div'); actions.className = 'inline-actions';
         if (schedule.status === 'active' || schedule.status === 'paused') {
-            actions.append(button('Edit', async () => { openScheduleEditor(schedule); }));
+            actions.append(button('Edit', async () => { openScheduleEditor(schedule); }, true));
         }
         if (schedule.status === 'active') actions.append(button('Pause', async () => { await request(`/api/schedules/${schedule.id}/pause`, { method: 'POST' }); await load(); }));
         if (schedule.status === 'paused') actions.append(button('Resume', async () => { await request(`/api/schedules/${schedule.id}/resume`, { method: 'POST' }); await load(); }));
@@ -384,7 +387,7 @@ function renderExecutions(items: Execution[]): void {
         }
         const state = document.createElement('span'); state.className = `status ${execution.status}`; state.textContent = execution.status;
         const actions = document.createElement('div'); actions.className = 'inline-actions';
-        actions.append(button('Details', async () => { await openExecutionDetail(execution.id); }));
+        actions.append(button('Details', async () => { await openExecutionDetail(execution.id); }, true));
         if (execution.status === 'queued' || (execution.status === 'running' && execution.taskType === 'doomscroll')) {
             actions.append(button(execution.status === 'queued' ? 'Cancel' : 'Stop', async () => {
                 await request(`/api/executions/${execution.id}/stop`, { method: 'POST' }); await load();

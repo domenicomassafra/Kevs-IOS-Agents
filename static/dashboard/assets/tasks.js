@@ -266,7 +266,7 @@ async function request(url, options) {
         throw new Error(body.error ?? `Request failed (${response.status})`);
     return body;
 }
-function button(label, action) {
+function button(label, action, quietSuccess = false) {
     const value = document.createElement('button');
     value.className = 'icon-button';
     value.type = 'button';
@@ -277,7 +277,12 @@ function button(label, action) {
         actionStatus.classList.remove('error');
         actionStatus.textContent = `${label}…`;
         void action().then(() => {
-            actionStatus.textContent = `${label} complete.`;
+            if (quietSuccess) {
+                actionStatus.hidden = true;
+                actionStatus.textContent = '';
+            }
+            else
+                actionStatus.textContent = `${label} complete.`;
         }).catch((error) => {
             actionStatus.classList.add('error');
             actionStatus.textContent = error instanceof Error ? error.message : String(error);
@@ -307,7 +312,7 @@ function renderSchedules(items) {
         const actions = document.createElement('div');
         actions.className = 'inline-actions';
         if (schedule.status === 'active' || schedule.status === 'paused') {
-            actions.append(button('Edit', async () => { openScheduleEditor(schedule); }));
+            actions.append(button('Edit', async () => { openScheduleEditor(schedule); }, true));
         }
         if (schedule.status === 'active')
             actions.append(button('Pause', async () => { await request(`/api/schedules/${schedule.id}/pause`, { method: 'POST' }); await load(); }));
@@ -362,7 +367,7 @@ function renderExecutions(items) {
         state.textContent = execution.status;
         const actions = document.createElement('div');
         actions.className = 'inline-actions';
-        actions.append(button('Details', async () => { await openExecutionDetail(execution.id); }));
+        actions.append(button('Details', async () => { await openExecutionDetail(execution.id); }, true));
         if (execution.status === 'queued' || (execution.status === 'running' && execution.taskType === 'doomscroll')) {
             actions.append(button(execution.status === 'queued' ? 'Cancel' : 'Stop', async () => {
                 await request(`/api/executions/${execution.id}/stop`, { method: 'POST' });
