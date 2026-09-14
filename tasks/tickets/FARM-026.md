@@ -17,3 +17,10 @@ Reduce navigation friction between the device inventory, Flow Studio and Flow Li
 - Automation page tests prove the duplicate-flow dialog is present.
 - No `window.prompt('Name for the duplicate'...)` remains in Automation Studio source.
 - Full regression/build/diff/secret gates pass before MiniPC deployment.
+
+## Live proof
+
+- Deployed to the MiniPC production control plane on `main` at `d575c09`.
+- Control-plane and PostgreSQL containers healthy after rebuild; build smoke passed `control-plane import OK`.
+- Tailnet Automation Studio serves the duplicate-flow dialog and matching bundle logic.
+- A temporary tagged Android-emulator registry entry proved the live Overview card renders `Automate`, tag chips and the preselected Flow Studio device link; the fixture was deleted immediately with HTTP 204 and no residue.

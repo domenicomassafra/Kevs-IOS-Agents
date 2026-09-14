@@ -88,6 +88,6 @@ The dashboard now presents the farm as one control plane instead of a set of dis
 
 Runs now provides a visual schedule editor instead of raw JSON prompts. Operators can edit immediate, one-shot, daily, weekly and interval timing plus run windows using bounded controls while preserving recurring-publication confirmation. Execution history also exposes a details/log viewer over the canonical execution-detail endpoint so failures and completed runs can be diagnosed without leaving the dashboard.
 
-### Wave O — connected device and flow actions (source complete)
+### Wave O — connected device and flow actions (source complete, MiniPC live)
 
 Overview device inventory now exposes tags and opens Portable Flow Studio directly with a concrete device preselected. Flow Library duplication uses a real named dialog instead of a browser prompt, making the device → author → save/duplicate workflow consistent with the rest of the control plane.

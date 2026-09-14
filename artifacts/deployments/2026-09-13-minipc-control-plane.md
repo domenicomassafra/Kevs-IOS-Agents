@@ -54,3 +54,10 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Runs now serves a visual schedule editor and execution detail/log viewer over the existing canonical schedule/execution APIs.
 - Tailnet smoke confirmed both dialogs in `/tasks` and the editor/detail logic in the versioned tasks bundle.
 - No database migration or scheduler contract change was required.
+
+## Connected actions cutover — 2026-09-14
+
+- Production source advanced to `d575c09` on `main` with the full 127/127 regression gate green.
+- Overview device cards now expose tags and direct device → Portable Flow Studio links.
+- Automation Studio serves a prompt-free duplicate-flow dialog.
+- Live API smoke used a temporary tagged Android-emulator registry entry to verify the rendered Overview tags/Automate link, then deleted the fixture with HTTP 204; no smoke device remained.
