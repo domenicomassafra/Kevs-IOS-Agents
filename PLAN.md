@@ -80,9 +80,9 @@ Automation Studio can either target a concrete device or ask the control plane t
 
 Devices now carry normalized operator tags used by Fleet search and allocation. Named selectors are persisted in PostgreSQL as reusable device pools, and Automation Studio can schedule against a saved pool while still resolving to a concrete UDID before materialization. Configured workers stay visible while offline, while reachable hosts advertise capabilities plus bounded CPU/load/RAM/uptime telemetry. The MiniPC remains the metadata authority and workers receive tags/config without secrets or worker-local transport ports.
 
-### Wave Q — Add Device operational onboarding (in progress)
+### Wave R — Add Device operational onboarding (source complete, MiniPC/browser live)
 
-Add Device presents the real two-lane runtime model directly: Appium 3 for iOS Simulator/Android and the isolated WDA lane for physical iPhone. A live readiness strip reports execution-host availability, attachable runtimes and detected unregistered iPhones from the existing control-plane APIs. `Scan hosts` refreshes both host readiness and runtime discovery, and empty states point to the execution layer or USB/WDA recovery path instead of stopping at generic setup text.
+Add Device presents the real two-lane runtime model directly: Appium 3 for iOS Simulator/Android and the isolated WDA lane for physical iPhone. A live readiness strip reports execution-host availability, attachable runtimes and detected unregistered iPhones from the existing control-plane APIs. `Scan hosts` refreshes both host readiness and runtime discovery, and empty states point to the execution layer or USB/WDA recovery path instead of stopping at generic setup text. Production browser acceptance proved `Scan hosts → Attach` end-to-end against the MiniPC using a temporary contract-compatible worker fixture, then removed every fixture and returned the configured Mac worker to its normal offline state.
 
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 

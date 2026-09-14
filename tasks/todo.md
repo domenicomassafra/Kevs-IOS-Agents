@@ -30,7 +30,7 @@
 - [x] FARM-022 Semantic Inspector: live accessibility elements → tap/wait/assert/input authoring without hand-entering selectors.
 - [x] FARM-023 device tags + named PostgreSQL allocation pools + Fleet search/pool authoring.
 - [x] FARM-023 execution-host observability: configured offline workers remain visible; online workers report bounded load/RAM/CPU/uptime telemetry.
-- [ ] FARM-029 Add Device operational onboarding: live host/runtime/iPhone status, explicit Appium 3 vs WDA lanes, browser-proven scan → attach.
+- [x] FARM-029 Add Device operational onboarding: live host/runtime/iPhone status, explicit Appium 3 vs WDA lanes, browser-proven scan → attach.
 - [x] FARM-024 Control Center UX convergence: actionable Overview, staged Automation Studio, Fleet state, cross-platform Runs and corrected saved-pool editing.
 - [x] FARM-025 Runs operations: visual schedule editing plus execution detail/log inspection without raw JSON prompts.
 - [x] FARM-026 Connected actions: Overview device tags + direct Automate links and prompt-free Flow Library duplication.

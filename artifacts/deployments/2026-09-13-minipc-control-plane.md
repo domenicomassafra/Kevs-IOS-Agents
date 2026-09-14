@@ -73,3 +73,12 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Production source advanced to `0c33968` on `main`; full regression gate remained 127/127 tests.
 - Runs and per-device task actions now report ordinary operational failures inline rather than using blocking browser alerts.
 - Tailnet smoke confirmed the Runs live-region and production `tasks.js` / `device.js` bundles contain no `alert()` calls.
+
+## Add Device operational onboarding cutover — 2026-09-14
+
+- Production application source advanced to `642c587` on `main`.
+- Full source gate before deployment: 127/127 tests, TypeScript green, `build:web` green, `git diff --check` green, targeted secret scan green and `gitleaks 8.30.1` reported no leaks.
+- The MiniPC completed the full Docker image build through `Successfully built`; PostgreSQL and the recreated control-plane both returned `healthy`, `/health` returned `ok=true`, and the production-container doctor reported source/runtime readiness ready.
+- Add Device now exposes explicit Appium 3 (iOS Simulator / Android) and isolated physical-iPhone WDA lanes plus live host/runtime/iPhone readiness counters.
+- Browser acceptance exercised the real MiniPC page and API chain. A temporary contract-compatible worker supplied one Appium simulator candidate; the page reported `1/1 online` and `1 attachable`, `Scan hosts` exposed the candidate, and `Attach to farm` navigated to `/devices/FARM029-SIM-001`.
+- The worker fixture and temporary browser profile were stopped/deleted; the smoke device was removed with HTTP 204, `/api/devices` returned `[]`, and the configured `macstudio` worker returned to its expected offline state. No production fixture remains.
