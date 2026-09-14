@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/assets/styles.css">
     <script src="/assets/htmx.min.js" defer></script>
 </head>
-<body data-runtime-platform="__DEVICE_PLATFORM__" data-runtime-kind="__DEVICE_KIND__" data-runtime-backend="__DEVICE_BACKEND__">
+<body data-runtime-platform="__DEVICE_PLATFORM__" data-runtime-kind="__DEVICE_KIND__" data-runtime-backend="__DEVICE_BACKEND__" data-runtime-disabled="__DEVICE_DISABLED__">
     <header class="topbar">
         <div class="topbar-inner">
             <a class="brand" href="/">
@@ -25,13 +25,6 @@
                 <a class="nav-link" href="/fleet">Fleet</a>
                 <a class="nav-link" href="/automations">Automations</a>
                 <a class="nav-link" href="/tasks">Runs</a>
-                <button id="open-tasks" class="button secondary" type="button">Tasks &amp; schedules</button>
-                <button id="open-tags" class="button secondary" type="button">Tags</button>
-                <button id="open-accounts" class="button secondary ios-social-only" type="button">TikTok accounts</button>
-                <button id="open-instagram-accounts" class="button secondary ios-social-only" type="button">Instagram accounts</button>
-                <button id="open-passcode" class="button secondary ios-social-only" type="button">Passcode</button>
-                <button id="open-calibrate" class="button secondary ios-social-only" type="button">Touch points</button>
-                <button id="open-remove" class="button danger" type="button">Remove device</button>
                 __PLUGIN_NAV____AUTH_NAV__
             </nav>
         </div>
@@ -41,20 +34,45 @@
             hx-get="/api/devices/__DEVICE_UDID__/fragments/summary" hx-trigger="load" hx-swap="outerHTML">
             <span class="spinner" aria-hidden="true"></span>Loading device details…
         </section>
+        <section class="device-command-bar" aria-label="Device actions">
+            <div class="device-command-primary">
+                <button id="refresh" class="button secondary" type="button">Reconnect</button>
+                <button id="device-enabled-toggle" class="button secondary" type="button" data-disabled="__DEVICE_DISABLED__">Disable device</button>
+                <button id="open-tasks" class="button secondary" type="button">Tasks &amp; runs</button>
+            </div>
+            <details class="device-manage-menu">
+                <summary>Manage</summary>
+                <div class="device-manage-popover">
+                    <button class="device-menu-action" type="button" data-rename-device="__DEVICE_UDID__">Rename</button>
+                    <button id="open-tags" class="device-menu-action" type="button">Tags</button>
+                    <button id="open-accounts" class="device-menu-action wda-only" type="button">TikTok accounts</button>
+                    <button id="open-instagram-accounts" class="device-menu-action wda-only" type="button">Instagram accounts</button>
+                    <button id="open-passcode" class="device-menu-action wda-only" type="button">Passcode</button>
+                    <button id="open-calibrate" class="device-menu-action wda-only" type="button">Touch points</button>
+                    <button id="open-remove" class="device-menu-action danger-text" type="button">Remove device</button>
+                </div>
+            </details>
+            <span id="device-action-status" class="run-meta device-action-status" aria-live="polite"></span>
+        </section>
         <div class="workspace-grid">
             <section class="panel remote-panel">
-                <div class="section-heading">
-                    <div><span class="eyebrow">Live control</span><h2>Device screen</h2></div>
-                    <div class="inline-actions">
-                        <button id="refresh" class="icon-button" type="button">Reconnect</button>
-                        <button id="toggle" class="icon-button" type="button">Pause</button>
-                        <button id="record-screen" class="icon-button" type="button" title="Record the live phone screen for agent context">Record screen</button>
+                <div class="section-heading screen-heading">
+                    <div><span class="eyebrow">Screen</span><h2>Live device</h2></div>
+                    <div class="stream-toolbar">
+                        <span id="stream-mode" class="stream-mode">Connecting</span>
+                        <button id="toggle" class="icon-button" type="button">Pause live</button>
+                        <button id="refresh-preview" class="icon-button" type="button">Still preview</button>
+                        <button id="record-screen" class="icon-button" type="button" title="Record the live phone screen for agent context">Record</button>
                         <span id="record-status" class="run-meta" aria-live="polite" hidden></span>
                     </div>
                 </div>
                 <div class="stream-workspace">
-                    <div class="phone"><img id="screen" alt="Live screen from the connected mobile device" draggable="false"></div>
+                    <div id="screen-frame" class="phone">
+                        <img id="screen" alt="Live screen or still preview from the connected mobile device" draggable="false">
+                        <div id="screen-fallback" class="screen-fallback" hidden><strong>Preview unavailable</strong><span>Reconnect the device or retry a still preview.</span></div>
+                    </div>
                     <div class="remote-controls" aria-label="Device navigation controls">
+                        <span class="control-group-label">Swipe</span>
                         <div class="swipe-pad">
                             <button class="remote-button up" type="button" data-remote-action="up" aria-label="Swipe up">↑</button>
                             <button class="remote-button left" type="button" data-remote-action="left" aria-label="Swipe left">←</button>
@@ -62,25 +80,28 @@
                             <button class="remote-button right" type="button" data-remote-action="right" aria-label="Swipe right">→</button>
                             <button class="remote-button down" type="button" data-remote-action="down" aria-label="Swipe down">↓</button>
                         </div>
-                        <div class="system-controls">
-                            <button class="remote-button labeled" type="button" data-remote-action="home"><span aria-hidden="true">⌂</span> Home</button>
-                            <button class="remote-button labeled" type="button" data-remote-action="lock"><span aria-hidden="true">◼</span> Power off</button>
-                            <button class="remote-button labeled" type="button" data-remote-action="wake"><span aria-hidden="true">◻</span> Power on</button>
-                            <button class="remote-button labeled" type="button" data-remote-action="unlock"><span aria-hidden="true">🔓</span> Unlock</button>
-                            <button class="remote-button labeled" type="button" data-remote-action="volumeUp"><span aria-hidden="true">＋</span> Volume up</button>
-                            <button class="remote-button labeled" type="button" data-remote-action="volumeDown"><span aria-hidden="true">−</span> Volume down</button>
-                        </div>
+                        <details class="system-controls">
+                            <summary>System controls</summary>
+                            <div class="system-control-list">
+                                <button class="remote-button labeled" type="button" data-remote-action="home"><span aria-hidden="true">⌂</span> Home</button>
+                                <button class="remote-button labeled" type="button" data-remote-action="lock"><span aria-hidden="true">◼</span> Power off</button>
+                                <button class="remote-button labeled" type="button" data-remote-action="wake"><span aria-hidden="true">◻</span> Power on</button>
+                                <button class="remote-button labeled" type="button" data-remote-action="unlock"><span aria-hidden="true">🔓</span> Unlock</button>
+                                <button class="remote-button labeled" type="button" data-remote-action="volumeUp"><span aria-hidden="true">＋</span> Volume up</button>
+                                <button class="remote-button labeled" type="button" data-remote-action="volumeDown"><span aria-hidden="true">−</span> Volume down</button>
+                            </div>
+                        </details>
                     </div>
                 </div>
                 <div id="status" class="stream-status"><span class="dot"></span><span>Waiting for device details…</span></div>
-                <p class="hint">Click to tap and drag to swipe. The control plane routes input through the device backend selected for this runtime. <strong>Record screen</strong> captures the live view in-browser (WebM) so you can attach it when briefing an agent.</p>
-                <div class="train-bar ios-social-only">
+                <p class="hint">Tap or drag directly on the preview. Live video falls back to a still screenshot when the stream drops; reconnecting restores the live path.</p>
+                <div class="train-bar wda-only">
                     <button id="train-toggle" class="button secondary" type="button">Train workflow</button>
                     <button id="train-save" class="button primary" type="button" hidden>Save recording</button>
                     <button id="train-clear" class="button secondary" type="button" hidden>Clear</button>
                     <span id="train-status" class="run-meta" aria-live="polite"></span>
                 </div>
-                <ol id="train-steps" class="train-steps ios-social-only" hidden></ol>
+                <ol id="train-steps" class="train-steps wda-only" hidden></ol>
             </section>
             <div class="action-stack">
                 <section class="panel workflows-panel">
@@ -99,7 +120,7 @@
                         </div>
                     </div>
 
-                    <div class="workflow-group ios-social-only">
+                    <div class="workflow-group wda-only">
                         <h3 class="workflow-group-label">TikTok</h3>
                         <div class="workflow-rows">
                             <article class="workflow-row">
@@ -165,7 +186,7 @@
                         </div>
                     </div>
 
-                    <div class="workflow-group ios-social-only">
+                    <div class="workflow-group wda-only">
                         <h3 class="workflow-group-label">Instagram</h3>
                         <div class="workflow-grid">
                             <button id="open-instagram-doomscroll" class="workflow-tile" type="button">
@@ -183,7 +204,7 @@
                         </div>
                     </div>
 
-                    <div class="workflow-group trained-workflows ios-social-only">
+                    <div class="workflow-group trained-workflows wda-only">
                         <div class="section-heading">
                             <div><span class="eyebrow">Trained</span><h3 class="workflow-group-heading">Custom patterns</h3></div>
                             <button id="refresh-workflows" class="icon-button" type="button">Refresh</button>

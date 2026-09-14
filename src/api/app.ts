@@ -1394,20 +1394,26 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 loadRegisteredDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
                 discoverDevices().then((devices) => devices.find(({ udid }) => udid === request.params.udid)),
             ]);
+            if (!registered && !connected) {
+                return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
+            }
+            const platform = registered?.platform ?? connected?.platform ?? 'ios';
+            const kind = registered?.kind ?? connected?.kind ?? 'physical';
+            const backend = registered?.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
+            const disabled = registered?.disabled === true;
+            const tags = (registered?.tags ?? []).map((tag) => `<span class="connection-chip tag">#${escapeHtml(tag)}</span>`).join('');
+            const chips = `<div class="connection-chips"><span class="connection-chip">${escapeHtml(platform)}</span><span class="connection-chip">${escapeHtml(kind)}</span><span class="connection-chip">${escapeHtml(backend)}</span>${tags}</div>`;
             if (!connected) {
-                if (!registered) {
-                    return reply.type('text/html').send('<section id="device-summary" class="device-summary error"><div><h2>Device disconnected</h2></div></section>');
-                }
-                const platform = registered.platform ?? 'ios';
-                const kind = registered.kind ?? 'physical';
-                return reply.type('text/html').send(`<section id="device-summary" class="device-summary"><div><span class="eyebrow">Registered ${escapeHtml(kind)}</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(registered.name)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(registered.udid)}">Rename</button></div><p>Offline · ${platform === 'ios' && kind === 'physical' ? 'reconnect USB' : 'start or reconnect the runtime'} · ${escapeHtml(platform)} / ${escapeHtml(kind)}</p></div><code>${escapeHtml(registered.udid)}</code></section>`);
+                const state = disabled ? 'disabled' : 'offline';
+                const label = disabled ? 'Disabled' : 'Offline';
+                const guidance = disabled ? 'enable the device to resume automation' : platform === 'ios' && kind === 'physical' ? 'reconnect USB' : 'start or reconnect the runtime';
+                return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-device-disabled="${disabled}" data-device-connected="false"><div class="device-summary-main"><span class="eyebrow">Registered ${escapeHtml(kind)}</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(registered?.name ?? request.params.udid)}</h1><span class="device-state ${state}"><span></span>${label}</span></div><p class="device-meta">${escapeHtml(guidance)}</p>${chips}</div><code>${escapeHtml(request.params.udid)}</code></section>`);
             }
             const displayName = registered?.name ?? connected.name;
             const screen = await remote.getScreenInfo(connected.udid);
-            const platform = registered?.platform ?? connected.platform ?? 'ios';
-            const kind = registered?.kind ?? connected.kind ?? 'physical';
-            const backend = registered?.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
-            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div><span class="eyebrow">Connected ${escapeHtml(kind)}</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(displayName)}</h1><button type="button" class="button secondary device-rename" data-rename-device="${encodeURIComponent(connected.udid)}">Rename</button></div><p>${platform === 'ios' ? 'iOS' : 'Android'} ${escapeHtml(connected.osVersion)} · ${escapeHtml(kind)} · ${escapeHtml(backend)} · ${screen.screenSize.width} × ${screen.screenSize.height}</p></div><code>${escapeHtml(connected.udid)}</code></section>`);
+            const state = disabled ? 'disabled' : 'online';
+            const label = disabled ? 'Disabled' : 'Online';
+            return reply.type('text/html').send(`<section id="device-summary" class="device-summary" data-device-disabled="${disabled}" data-device-connected="true" data-screen-width="${screen.screenSize.width}" data-screen-height="${screen.screenSize.height}"><div class="device-summary-main"><span class="eyebrow">${escapeHtml(kind)} runtime</span><div class="device-title-row"><h1 class="device-name">${escapeHtml(displayName)}</h1><span class="device-state ${state}"><span></span>${label}</span></div><p class="device-meta">${platform === 'ios' ? 'iOS' : 'Android'} ${escapeHtml(connected.osVersion)} · ${screen.screenSize.width} × ${screen.screenSize.height}</p>${chips}</div><code>${escapeHtml(connected.udid)}</code></section>`);
         });
         app.get<{ Params: { udid: string } }>('/api/devices/:udid/fragments/activity', async (request, reply) => {
             return reply.type('text/html').send(await renderActivity(request.params.udid));

@@ -76,6 +76,12 @@ function element<T extends Element>(selector: string): T {
 const udid = decodeURIComponent(location.pathname.split('/').filter(Boolean).at(-1) ?? '');
 const elements = {
     screen: element<HTMLImageElement>('#screen'),
+    screenFrame: element<HTMLElement>('#screen-frame'),
+    screenFallback: element<HTMLElement>('#screen-fallback'),
+    streamMode: element<HTMLElement>('#stream-mode'),
+    refreshPreview: element<HTMLButtonElement>('#refresh-preview'),
+    enabledToggle: element<HTMLButtonElement>('#device-enabled-toggle'),
+    deviceActionStatus: element<HTMLElement>('#device-action-status'),
     status: element<HTMLElement>('#status'),
     statusText: element<HTMLElement>('#status span:last-child'),
     refresh: element<HTMLButtonElement>('#refresh'),
@@ -260,6 +266,8 @@ const elements = {
 };
 
 let screenSize: ScreenSize | undefined;
+let deviceDisabled = document.body.dataset.runtimeDisabled === 'true';
+let screenPresentation: 'live' | 'still' | 'empty' = 'empty';
 let paused = false;
 let connecting = false;
 let pointerStart: Point | undefined;
@@ -595,6 +603,26 @@ async function jsonRequest<T>(url: string, options?: RequestInit): Promise<T> {
     return data;
 }
 
+function setScreenPresentation(mode: 'live' | 'still' | 'empty', message?: string): void {
+    screenPresentation = mode;
+    elements.streamMode.textContent = mode === 'live' ? 'Live' : mode === 'still' ? 'Still preview' : 'Unavailable';
+    elements.streamMode.className = `stream-mode ${mode}`;
+    elements.screenFrame.classList.toggle('is-still', mode === 'still');
+    elements.screenFrame.classList.toggle('is-unavailable', mode === 'empty');
+    elements.screenFallback.hidden = mode !== 'empty';
+    if (message) setStatus(message, mode === 'empty' ? 'error' : mode === 'live' ? 'ready' : '');
+}
+
+function stillPreviewUrl(): string {
+    return `/api/devices/${encodeURIComponent(udid)}/remote/screenshot?t=${Date.now()}`;
+}
+
+function showStillPreview(message = 'Live stream unavailable — showing still preview'): void {
+    if (!screenSize || deviceDisabled) return;
+    setScreenPresentation('still', message);
+    elements.screen.src = stillPreviewUrl();
+}
+
 async function streamUrl(): Promise<string> {
     const data = await jsonRequest<{ url: string }>(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token`, {
         method: 'POST',
@@ -604,7 +632,8 @@ async function streamUrl(): Promise<string> {
 
 async function startStream(): Promise<void> {
     if (paused || !screenSize) return;
-    setStatus('Connecting video stream…');
+    setStatus('Connecting live stream…');
+    setScreenPresentation('live');
     elements.screen.src = await streamUrl();
 }
 
@@ -660,8 +689,16 @@ function useDeviceSummary(summary: HTMLElement): void {
     const height = Number(summary.dataset.screenHeight);
     if (!Number.isFinite(width) || !Number.isFinite(height)) return;
     screenSize = { width, height };
+    deviceDisabled = summary.dataset.deviceDisabled === 'true';
+    elements.enabledToggle.dataset.disabled = String(deviceDisabled);
+    elements.enabledToggle.textContent = deviceDisabled ? 'Enable device' : 'Disable device';
     const name = summary.querySelector('h1')?.textContent;
-    if (name) document.title = `${name} · iOS Automation`;
+    if (name) document.title = `${name} · Mobile Farm`;
+    if (deviceDisabled) {
+        elements.screen.removeAttribute('src');
+        setScreenPresentation('empty', 'Device disabled — enable it to reconnect.');
+        return;
+    }
     void connectRemote();
 }
 
@@ -824,12 +861,21 @@ elements.screen.addEventListener('pointerup', (event) => {
     }
 });
 elements.screen.addEventListener('pointercancel', () => { pointerStart = undefined; });
-elements.screen.addEventListener('load', () => setStatus('Live video connected', 'ready'));
+elements.screen.addEventListener('load', () => {
+    elements.screenFallback.hidden = true;
+    if (screenPresentation === 'still') setStatus('Still preview loaded · reconnect for live video');
+    else { setScreenPresentation('live'); setStatus('Live video connected', 'ready'); }
+});
 elements.screen.addEventListener('error', () => {
     if (paused) return;
     elements.screen.removeAttribute('src');
     if (screenCapture) void stopScreenCapture('Recording stopped — stream disconnected');
-    setStatus('Video stream disconnected; checking the phone connection…', 'error');
+    if (screenPresentation === 'live') {
+        showStillPreview();
+        void pollConnection();
+        return;
+    }
+    setScreenPresentation('empty', 'Preview unavailable — reconnect the device or retry.');
     void pollConnection();
 });
 elements.refresh.addEventListener('click', async () => {
@@ -849,7 +895,7 @@ elements.refresh.addEventListener('click', async () => {
 });
 elements.toggle.addEventListener('click', () => {
     paused = !paused;
-    elements.toggle.textContent = paused ? 'Resume stream' : 'Pause stream';
+    elements.toggle.textContent = paused ? 'Resume live' : 'Pause live';
     if (paused) {
         if (screenCapture) void stopScreenCapture('Recording stopped — stream paused');
         elements.screen.removeAttribute('src');
@@ -858,6 +904,29 @@ elements.toggle.addEventListener('click', () => {
         void connectRemote();
     }
 });
+elements.refreshPreview.addEventListener('click', () => {
+    paused = true;
+    elements.toggle.textContent = 'Resume live';
+    showStillPreview('Showing a fresh still preview');
+});
+
+elements.enabledToggle.addEventListener('click', async () => {
+    const nextDisabled = !deviceDisabled;
+    elements.enabledToggle.disabled = true;
+    elements.deviceActionStatus.textContent = nextDisabled ? 'Disabling…' : 'Enabling…';
+    try {
+        await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disabled: nextDisabled }),
+        });
+        deviceDisabled = nextDisabled;
+        elements.deviceActionStatus.textContent = nextDisabled ? 'Device disabled.' : 'Device enabled.';
+        location.reload();
+    } catch (error) {
+        elements.deviceActionStatus.textContent = errorMessage(error);
+        elements.enabledToggle.disabled = false;
+    }
+});
+
 elements.recordScreen.addEventListener('click', () => {
     if (screenCapture) {
         void stopScreenCapture('Recording saved');

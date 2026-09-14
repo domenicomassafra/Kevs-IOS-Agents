@@ -2436,3 +2436,43 @@ dialog#execution-detail-dialog { width: min(760px, calc(100% - 28px)); }
     .flow-target-grid, .flow-primary-row, .flow-run-panel { grid-template-columns: 1fr; }
     .flow-save-primary { justify-content: space-between; }
 }
+
+
+/* FARM-033 — single-device workspace hierarchy */
+body:not([data-runtime-backend="wda"]) .wda-only { display: none !important; }
+.device-command-bar { display:flex; align-items:center; gap:8px; margin:-10px 0 14px; padding:9px 10px; border:1px solid var(--border); border-radius:14px; background:#08080a; }
+.device-command-primary { display:flex; flex-wrap:wrap; gap:7px; }
+.device-command-bar .button { min-height:36px; padding:0 12px; }
+.device-action-status { margin-left:auto; text-align:right; }
+.device-manage-menu { position:relative; margin-left:auto; }
+.device-manage-menu > summary { min-height:36px; display:grid; place-items:center; padding:0 13px; border:1px solid var(--border-strong); border-radius:10px; color:var(--text); font-size:11px; font-weight:700; cursor:pointer; list-style:none; }
+.device-manage-menu > summary::-webkit-details-marker { display:none; }
+.device-manage-popover { position:absolute; z-index:30; top:42px; right:0; width:210px; padding:6px; border:1px solid var(--border-strong); border-radius:12px; background:#0b0b0d; box-shadow:0 18px 50px rgb(0 0 0 / 55%); }
+.device-menu-action { display:block; width:100%; min-height:34px; padding:7px 9px; border:0; border-radius:8px; background:transparent; color:var(--text); text-align:left; cursor:pointer; }
+.device-menu-action:hover { background:rgb(255 255 255 / 6%); }
+.device-menu-action.danger-text { color:var(--danger); }
+.device-summary { display:flex; justify-content:space-between; align-items:center; gap:18px; }
+.device-summary-main { min-width:0; }
+.device-summary .device-title-row { margin-bottom:5px; }
+.device-meta { margin:0 0 9px; color:var(--muted); font-size:12px; }
+.device-state { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:10px; font-weight:750; }
+.device-state > span { width:6px; height:6px; border-radius:50%; background:#5a5a66; }
+.device-state.online > span { background:var(--success); box-shadow:0 0 7px var(--success); }
+.device-state.disabled > span { background:var(--warning); }
+.screen-heading { align-items:flex-start; }
+.stream-toolbar { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:6px; }
+.stream-mode { display:inline-flex; align-items:center; min-height:30px; padding:0 9px; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:10px; font-weight:750; }
+.stream-mode.live { color:#d6f3e5; border-color:rgb(61 214 140 / 25%); }
+.stream-mode.still { color:#d6d6de; }
+.stream-mode.empty { color:#d992a0; border-color:rgb(255 92 122 / 22%); }
+.phone { position:relative; }
+.phone.is-still::after { content:'STILL'; position:absolute; top:13px; right:13px; padding:3px 6px; border:1px solid rgb(255 255 255 / 18%); border-radius:999px; background:rgb(0 0 0 / 65%); color:#d5d5dc; font-size:8px; font-weight:800; letter-spacing:.12em; }
+.screen-fallback { position:absolute; inset:7px; display:grid; place-content:center; gap:5px; padding:20px; border-radius:22px; background:#070708; color:var(--muted); text-align:center; pointer-events:none; }
+.screen-fallback[hidden] { display:none; }
+.screen-fallback strong { color:var(--text); font-size:13px; }
+.control-group-label { color:var(--muted); font-size:9px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.system-controls { width:100%; border-top:1px solid var(--border); padding-top:10px; }
+.system-controls > summary { color:var(--muted); font-size:10px; font-weight:750; cursor:pointer; }
+.system-control-list { display:grid; gap:6px; margin-top:8px; }
+.workflows-panel .wda-only { border-top:1px solid var(--border); padding-top:12px; }
+@media (max-width:760px) { .device-command-bar { align-items:stretch; flex-direction:column; } .device-command-primary { display:grid; grid-template-columns:1fr; } .device-command-bar .button { width:100%; } .device-manage-menu { margin-left:0; } .device-manage-menu > summary { width:100%; } .device-manage-popover { position:static; width:100%; margin-top:6px; } .device-action-status { margin-left:0; text-align:left; } .stream-toolbar { justify-content:flex-start; } }

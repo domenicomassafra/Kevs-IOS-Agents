@@ -32,6 +32,7 @@ export const defaultDashboardTheme: DashboardTheme = {
             .replaceAll('__DEVICE_PLATFORM__', escapeHtml(platform))
             .replaceAll('__DEVICE_KIND__', escapeHtml(kind))
             .replaceAll('__DEVICE_BACKEND__', escapeHtml(backend))
+            .replaceAll('__DEVICE_DISABLED__', device.disabled === true ? 'true' : 'false')
             .replaceAll('__TIKTOK_ACCOUNT_OPTIONS__', accountOptions(tiktok))
             .replaceAll('__TIKTOK_ACCOUNTS_VALUE__', escapeHtml(tiktok.join(', ')))
             .replaceAll('__INSTAGRAM_ACCOUNT_OPTIONS__', accountOptions(instagram))

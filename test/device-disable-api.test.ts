@@ -63,4 +63,11 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     const devicePage = await inject(app, { method: 'GET', url: '/devices/udid-a' });
     assert.equal(devicePage.statusCode, 200);
     assert.match(devicePage.body, /id="device-rename-dialog"/);
+    assert.match(devicePage.body, /id="device-enabled-toggle"/);
+    assert.match(devicePage.body, /class="device-command-bar"/);
+    assert.match(devicePage.body, /id="stream-mode"/);
+    assert.match(devicePage.body, /id="refresh-preview"/);
+    assert.match(devicePage.body, /class="device-manage-menu"/);
+    assert.match(devicePage.body, /data-runtime-disabled="false"/);
+    assert.match(devicePage.body, /wda-only/);
 });

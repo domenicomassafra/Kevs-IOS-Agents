@@ -7,6 +7,12 @@ function element(selector) {
 const udid = decodeURIComponent(location.pathname.split('/').filter(Boolean).at(-1) ?? '');
 const elements = {
     screen: element('#screen'),
+    screenFrame: element('#screen-frame'),
+    screenFallback: element('#screen-fallback'),
+    streamMode: element('#stream-mode'),
+    refreshPreview: element('#refresh-preview'),
+    enabledToggle: element('#device-enabled-toggle'),
+    deviceActionStatus: element('#device-action-status'),
     status: element('#status'),
     statusText: element('#status span:last-child'),
     refresh: element('#refresh'),
@@ -190,6 +196,8 @@ const elements = {
     removeResult: element('#remove-result'),
 };
 let screenSize;
+let deviceDisabled = document.body.dataset.runtimeDisabled === 'true';
+let screenPresentation = 'empty';
 let paused = false;
 let connecting = false;
 let pointerStart;
@@ -500,6 +508,25 @@ async function jsonRequest(url, options) {
         throw new Error(data.error ?? `Request failed (${response.status})`);
     return data;
 }
+function setScreenPresentation(mode, message) {
+    screenPresentation = mode;
+    elements.streamMode.textContent = mode === 'live' ? 'Live' : mode === 'still' ? 'Still preview' : 'Unavailable';
+    elements.streamMode.className = `stream-mode ${mode}`;
+    elements.screenFrame.classList.toggle('is-still', mode === 'still');
+    elements.screenFrame.classList.toggle('is-unavailable', mode === 'empty');
+    elements.screenFallback.hidden = mode !== 'empty';
+    if (message)
+        setStatus(message, mode === 'empty' ? 'error' : mode === 'live' ? 'ready' : '');
+}
+function stillPreviewUrl() {
+    return `/api/devices/${encodeURIComponent(udid)}/remote/screenshot?t=${Date.now()}`;
+}
+function showStillPreview(message = 'Live stream unavailable — showing still preview') {
+    if (!screenSize || deviceDisabled)
+        return;
+    setScreenPresentation('still', message);
+    elements.screen.src = stillPreviewUrl();
+}
 async function streamUrl() {
     const data = await jsonRequest(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token`, {
         method: 'POST',
@@ -509,7 +536,8 @@ async function streamUrl() {
 async function startStream() {
     if (paused || !screenSize)
         return;
-    setStatus('Connecting video stream…');
+    setStatus('Connecting live stream…');
+    setScreenPresentation('live');
     elements.screen.src = await streamUrl();
 }
 /** Drop MJPEG during post/upload — Photos + Create + FYP cold-start piles on WDA harder than warmup swipes. */
@@ -567,9 +595,17 @@ function useDeviceSummary(summary) {
     if (!Number.isFinite(width) || !Number.isFinite(height))
         return;
     screenSize = { width, height };
+    deviceDisabled = summary.dataset.deviceDisabled === 'true';
+    elements.enabledToggle.dataset.disabled = String(deviceDisabled);
+    elements.enabledToggle.textContent = deviceDisabled ? 'Enable device' : 'Disable device';
     const name = summary.querySelector('h1')?.textContent;
     if (name)
-        document.title = `${name} · iOS Automation`;
+        document.title = `${name} · Mobile Farm`;
+    if (deviceDisabled) {
+        elements.screen.removeAttribute('src');
+        setScreenPresentation('empty', 'Device disabled — enable it to reconnect.');
+        return;
+    }
     void connectRemote();
 }
 document.addEventListener('htmx:afterSwap', () => {
@@ -722,14 +758,27 @@ elements.screen.addEventListener('pointerup', (event) => {
     }
 });
 elements.screen.addEventListener('pointercancel', () => { pointerStart = undefined; });
-elements.screen.addEventListener('load', () => setStatus('Live video connected', 'ready'));
+elements.screen.addEventListener('load', () => {
+    elements.screenFallback.hidden = true;
+    if (screenPresentation === 'still')
+        setStatus('Still preview loaded · reconnect for live video');
+    else {
+        setScreenPresentation('live');
+        setStatus('Live video connected', 'ready');
+    }
+});
 elements.screen.addEventListener('error', () => {
     if (paused)
         return;
     elements.screen.removeAttribute('src');
     if (screenCapture)
         void stopScreenCapture('Recording stopped — stream disconnected');
-    setStatus('Video stream disconnected; checking the phone connection…', 'error');
+    if (screenPresentation === 'live') {
+        showStillPreview();
+        void pollConnection();
+        return;
+    }
+    setScreenPresentation('empty', 'Preview unavailable — reconnect the device or retry.');
     void pollConnection();
 });
 elements.refresh.addEventListener('click', async () => {
@@ -751,7 +800,7 @@ elements.refresh.addEventListener('click', async () => {
 });
 elements.toggle.addEventListener('click', () => {
     paused = !paused;
-    elements.toggle.textContent = paused ? 'Resume stream' : 'Pause stream';
+    elements.toggle.textContent = paused ? 'Resume live' : 'Pause live';
     if (paused) {
         if (screenCapture)
             void stopScreenCapture('Recording stopped — stream paused');
@@ -760,6 +809,28 @@ elements.toggle.addEventListener('click', () => {
     }
     else {
         void connectRemote();
+    }
+});
+elements.refreshPreview.addEventListener('click', () => {
+    paused = true;
+    elements.toggle.textContent = 'Resume live';
+    showStillPreview('Showing a fresh still preview');
+});
+elements.enabledToggle.addEventListener('click', async () => {
+    const nextDisabled = !deviceDisabled;
+    elements.enabledToggle.disabled = true;
+    elements.deviceActionStatus.textContent = nextDisabled ? 'Disabling…' : 'Enabling…';
+    try {
+        await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disabled: nextDisabled }),
+        });
+        deviceDisabled = nextDisabled;
+        elements.deviceActionStatus.textContent = nextDisabled ? 'Device disabled.' : 'Device enabled.';
+        location.reload();
+    }
+    catch (error) {
+        elements.deviceActionStatus.textContent = errorMessage(error);
+        elements.enabledToggle.disabled = false;
     }
 });
 elements.recordScreen.addEventListener('click', () => {
