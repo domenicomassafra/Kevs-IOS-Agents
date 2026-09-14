@@ -1,74 +1,115 @@
-# Phone Farm iOS
+# Phone Farm iOS — canonical control plane
 
-An open-source, standalone application for operating physical iOS devices and running scheduled TikTok and Instagram workflows. It includes guided device registration, WDA/Appium supervision, live video and remote input, PostgreSQL-backed scheduling, recurring jobs, uploads, execution history, the dashboard/API server, and built-in TikTok + Instagram automation plugins.
+This repository is the **single canonical control plane** for the Farming / Farm Account / Phone Farm project. It is iPhone/iOS-only.
 
-It runs locally as-is; authentication is optional on a loopback bind. Harden it for a shared or exposed deployment by supplying your own `AuthProvider` (`PHONE_FARM_AUTH_PLUGIN`) and process supervision — no fork required. Tasks are persisted as `pluginId`, `taskType`, `taskVersion`, and a JSON payload, so an old schedule can never silently execute a new contract.
+## Authority
 
-> Live demo and setup walkthrough: **[gethandler.ai/ios-farm](https://gethandler.ai/ios-farm)**
+- Canonical working source: `farming/Kevs-IOS-Agents`, branch `main`.
+- Production remote: `origin` → `Git-Agni/prod-FARM-IOS-Core`.
+- Source ancestry remote: `upstream` → `kevinnguyen08/Kevs-IOS-Agents`.
+- `origin/main` is the release line. `upstream/main` is retained only for ancestry/upstream review; it is not a second control plane.
+- No Android runtime, ADB, UiAutomator2, Android Emulator, scrcpy control path, second scheduler or second device registry belongs in this product.
 
-## Documentation
+## Runtime map
 
-- [docs/getting-started.md](docs/getting-started.md) — install, configure, run, register a device
-- [docs/architecture.md](docs/architecture.md) — the four processes, data stores, task model, source map
-- [docs/plugins.md](docs/plugins.md) — write a plugin: tasks, execution context, versioning, panels, routes
-- [docs/coordinates.md](docs/coordinates.md) — tap-layout profiles and how to add one
-- [docs/deployment/distributed-minipc.md](docs/deployment/distributed-minipc.md) — recommended production topology: Linux MiniPC control plane + macOS iPhone workers
-- [PLUGIN_DEVELOPMENT.md](PLUGIN_DEVELOPMENT.md) — plugin trust and compatibility rules
-- [SECURITY.md](SECURITY.md) — before exposing the dashboard beyond loopback
-
-## Run the standalone application
-
-Requirements are Node 22+, PostgreSQL, Xcode, a signed real-device WebDriverAgent, and Appium's XCUITest driver.
-
-```sh
-npm install
-cp .env.example .env
-npm run appium:install-driver
-npm run db:up
-npm run db:migrate
-npm run wda:prepare
+```text
+Kevs-IOS-Agents/main
+        ↓
+MiniPC / Linux / Docker control plane + PostgreSQL
+        ↓
+authenticated macOS device worker (transport only)
+        ↓
+physical iPhone via WDA   OR   iOS Simulator via Appium/XCUITest
+        ↓
+Hermes stock client → Phone Farm API (no Hermes fork, WDA owner or scheduler)
 ```
 
-Run these long-lived processes (wrap each in a `launchd` agent or systemd unit for an always-on host):
+The MiniPC owns the API, scheduler, registry view, database and orchestration. A macOS worker is required for Apple's physical-device/Xcode transport; that worker is not a competing control plane.
 
-```sh
-npm run appium
-npm run wda:service
-npm run worker
-npm run web
-```
+## Supported device lanes
 
-TikTok and Instagram support are enabled by default. Set `PHONE_FARM_PLUGINS` to comma-separated ESM package names to add more task plugins. Set `PHONE_FARM_AUTH_PLUGIN` to an ESM authentication provider before binding `WEB_HOST` outside loopback; startup deliberately fails otherwise.
+| Target | Transport | Owner |
+| --- | --- | --- |
+| Physical iPhone | WDA + MJPEG | macOS device worker, supervised by Phone Farm |
+| iOS Simulator | Appium + XCUITest | macOS device worker |
 
-## Recommended production topology
+`devices.json` is local runtime state and may contain device-specific configuration. `.env*`, Apple signing material, pairing records and local WDA/Appium state must never be removed as generic cleanup without first proving they are non-authoritative or reproducible.
 
-For an always-on installation, keep the **Linux MiniPC as the authoritative control plane** and use one or more Macs only as physical-iPhone execution nodes. The MiniPC runs PostgreSQL, the API/dashboard, schedules, campaigns, policy and canonical media under `docker-compose.production.yml`. Each Mac keeps Xcode/Appium/WDA and its USB iPhones local, runs the per-device pg-boss worker, and exposes only the authenticated device-worker gateway to the private network.
+## MiniPC production
 
-```sh
-# Linux MiniPC
-cp .env.minipc.example .env.minipc
+The production control plane runs with Docker Compose on Linux. From a clean checkout:
+
+```bash
+cp .env.minipc.example .env.minipc   # first install only; keep secrets local
 ./deploy/setup-minipc.sh
-
-# macOS execution node
-cp .env.device-worker.example .env
-# configure MiniPC URLs/tokens and Apple signing
-./deploy/setup-device-worker.sh
 ```
 
-The dashboard can remain bound to MiniPC loopback and be used from another computer through Tailscale Serve or an SSH tunnel. Appium and WDA remain loopback-only on each Mac. See the distributed deployment document for the network and authority model.
+The deployment script installs/builds the compose stack, waits for PostgreSQL and the API, and runs the control-plane doctor. The MiniPC deliberately does not pretend to own Apple USB/Xcode transport; configure authenticated macOS workers with `PHONE_FARM_DEVICE_WORKERS` and the shared worker/internal tokens.
 
-## Plugin contract
+Useful verification:
 
-`src/plugin.ts` defines the stable interfaces. A plugin can provide versioned tasks, registration checks, device-page panels, namespaced HTTP routes, and declared WDA extensions. Task execution receives the exact device, that plugin's own per-device data, resolved assets, a temporary workspace, cancellation, durable logging, safe device primitives, and an observed subprocess runner.
-
-See `PLUGIN_DEVELOPMENT.md` for compatibility and trust rules.
-
-`src/example-plugin.ts` is a minimal open-app plugin. Production plugins should be separate packages and should never require changes to core routing or scheduler code.
-
-## Repository policy
-
-This repository uses GitHub-hosted CI only. Never connect production devices, Apple signing material, production databases, self-hosted runners, or deployment credentials to workflows triggered by pull requests. See `SECURITY.md`.
-
-```sh
+```bash
+npm ci
 npm run check
+npm run doctor:control-plane
+docker compose -f docker-compose.production.yml ps
+curl -fsS http://127.0.0.1:3000/health
 ```
+
+## macOS iPhone worker
+
+Prepare a worker only on a Mac with full Xcode selected:
+
+```bash
+cp .env.device-worker.example .env.devices   # first install only
+./deploy/setup-device-worker.sh
+npm run doctor:device-worker
+```
+
+Physical iPhone registration stays on the guided WDA path. iOS Simulator discovery/boot/attach stays on the Appium/XCUITest path. The worker exposes one authenticated worker API back to the MiniPC; it does not run a second scheduler or product database.
+
+## Hermes contract
+
+Hermes remains stock. `integrations/hermes/SKILL.md` is only a thin client contract over the Phone Farm API. It must never start WebDriverAgent, Appium, a second device registry or another scheduler. The Phone Farm scheduler has final ownership of device conflicts and can reject interactive actions while automation is running.
+
+## Donor policy
+
+External projects are not cloned control planes. The only approved donor/reference families are:
+
+| Donor | Allowed role |
+| --- | --- |
+| `mobctl` | component/reference only |
+| `OpenMob` | component/reference only |
+| `device-farm-ios` | component/reference only |
+| `pymobiledevice3` | dependency/component/reference only |
+
+A donor must be one of: an explicit dependency, a documented reference, or code actually integrated under this repository's ownership/licensing. Otherwise the clone is removed. No donor owns scheduling, device state or deployment.
+
+## Repository map
+
+- `src/api/` — canonical control-plane API/dashboard routes.
+- `src/scheduler/` — single scheduler/queue authority.
+- `src/devices/` — iPhone/iOS Simulator discovery, WDA/Appium control and registration.
+- `src/device-worker-server.ts` / `src/device-workers.ts` — authenticated transport workers.
+- `src/agent/` — narrow API clients/adapters used by Hermes/MCP-style consumers.
+- `integrations/hermes/SKILL.md` — stock-Hermes invocation contract.
+- `deploy/` + `docker-compose.production.yml` — MiniPC and worker release seams.
+- `docs/` — technical reference only; this README is the sole operational/status authority.
+
+## Development and acceptance
+
+Before merging to `main`:
+
+```bash
+npm run check
+npm run build:web
+git status --short
+git worktree list
+git stash list
+```
+
+Release acceptance additionally requires the exact `main` SHA on the MiniPC, a healthy Docker control plane, and—when an iPhone is reachable—an innocuous discovery/connection/read-only control proof. Never infer live-device success from unit tests.
+
+## Safety boundary
+
+This project automates only owner-configured iPhones/accounts. It must not create accounts, discover credentials, bypass CAPTCHA/login/platform enforcement, or turn donor code/Hermes into a hidden second authority. Public/high-impact actions stay behind the existing policy and confirmation gates.

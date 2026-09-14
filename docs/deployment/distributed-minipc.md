@@ -4,7 +4,7 @@
 
 The production authority is the Linux MiniPC. It owns the dashboard/API, PostgreSQL, pg-boss schedules, campaigns, account policy, analytics and canonical uploaded media. It runs under Docker Compose and can stay online independently of any Mac or iPhone.
 
-Execution hosts own device-local runtimes. A Mac owns Xcode signing/WebDriverAgent for physical iPhones and can additionally expose iOS Simulators plus Android devices/emulators. Android runtime control uses the isolated modern Appium sidecar. The MiniPC never needs Xcode and an execution host no longer needs to host the canonical web UI.
+Execution hosts own device-local runtimes. A Mac owns Xcode signing/WebDriverAgent for physical iPhones and can additionally expose iOS Simulators through the isolated modern Appium/XCUITest sidecar. The MiniPC never needs Xcode and an execution host no longer needs to host the canonical web UI.
 
 The control plane reaches each Mac through the authenticated device-worker gateway. Screenshot, accessibility, MJPEG and remote input are proxied through that gateway; WDA ports remain loopback-only on the Mac. Device workers connect to the MiniPC PostgreSQL instance to claim their per-device pg-boss queues. Scheduled media is fetched on demand from the MiniPC through a separate authenticated internal endpoint and verified by size + SHA-256 before use.
 
@@ -45,7 +45,7 @@ cp .env.device-worker.example .env
 
 `PHONE_FARM_ROLE=device-worker` changes launchd packaging to install the physical-iPhone Appium/WDA lane, the modern Appium runtime sidecar, the pg-boss execution worker and the authenticated HTTP device gateway. The web dashboard is deliberately omitted on that Mac.
 
-The two Appium homes/ports are intentionally independent: `.appium2`/`:4725` preserves the custom physical-iPhone WDA contract, while `.appium-runtime`/`:4726` uses current XCUITest and UiAutomator2 for iOS Simulator and Android. This avoids making FARM-017's modern-WDA port a prerequisite for cross-platform runtimes.
+The two Appium homes/ports are intentionally independent: `.appium2`/`:4725` preserves the custom physical-iPhone WDA contract, while `.appium-runtime`/`:4726` uses current XCUITest for iOS Simulator. This keeps simulator runtime upgrades isolated from the physical-iPhone WDA lane.
 
 The local `devices.json` remains the authority for secrets and physical endpoint details such as the unlock passcode and local WDA/MJPEG ports. The MiniPC mirror never receives the passcode.
 

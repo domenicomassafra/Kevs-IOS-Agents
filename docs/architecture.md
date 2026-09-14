@@ -23,7 +23,7 @@ same dashboard contract through screenshot streaming and shared input methods.
         ┌───────┴────────────┐              ┌────────▼─────────┐
         │ worker             │─────────────▶│ Appium 2 :4725   │──▶ physical iPhone/WDA recipes
         │  runs due tasks    │              ├──────────────────┤
-        │                    │─────────────▶│ Appium 3 :4726   │──▶ iOS Simulator / Android
+        │                    │─────────────▶│ Appium 3 :4726   │──▶ iOS Simulator
         └────────────────────┘              └──────────────────┘
 ```
 
@@ -81,14 +81,13 @@ extensions to modern WDA. Dashboard control for this lane talks directly to WDA.
 
 ### `appium-runtime` modern lane — `:4726`
 Appium 3 lives side-by-side under `APPIUM_HOME=.appium-runtime`, with modern
-XCUITest for iOS Simulator and UiAutomator2 for Android. `AppiumRemoteControl`
+XCUITest for iOS Simulator. `AppiumRemoteControl`
 provides screen info, screenshots, input, app lifecycle and a bounded
 screenshot stream. Its XML page source is normalized into the same semantic
 snapshot/ref model used by WDA, so Hermes/MCP do not need a second selector API.
 
-Workers discover iOS Simulators through `xcrun simctl` and Android
-physical/emulated devices through `adb`; the dashboard can attach those
-runtimes without hand-editing `devices.json`.
+Workers discover iOS Simulators through `xcrun simctl`; the dashboard can
+attach those runtimes without hand-editing `devices.json`.
 
 ## Xcode, signing, and device pairing
 
@@ -135,7 +134,7 @@ without the UI, for scripted or bulk (`--all`) setup.
 | `.scheduler-data/assets/` | Uploaded media for `post`‑style tasks, content‑addressed. |
 | `.wda/` | wda-service socket and locks. |
 | `.appium2/` | Isolated Appium home with the pinned XCUITest driver. |
-| `.appium-runtime/` | Isolated Appium 3 home with modern XCUITest + UiAutomator2 drivers. |
+| `.appium-runtime/` | Isolated Appium 3 home with the modern XCUITest driver. |
 
 ## The task model
 
@@ -155,19 +154,17 @@ installed, that schedule fails loudly instead of executing v2 logic.
 
 ### Portable semantic flows
 
-`com.phone-farm.flow/flow@1` is the platform-neutral automation contract. Coordinate tap/swipe remains available as a fallback, but the preferred steps use the common accessibility tree: `tapText`, `waitVisible`, `assertVisible`, `waitGone`, and `inputText`. WDA JSON, XCUITest XML and UiAutomator2 XML are normalized into the same stable-ref snapshot model before those actions run. This keeps scheduler contracts independent of Appium/WDA and lets the same flow survive device-size changes when labels and accessibility roles remain stable.
+`com.phone-farm.flow/flow@1` is the iOS automation contract. Coordinate tap/swipe remains available as a fallback, but the preferred steps use the common accessibility tree: `tapText`, `waitVisible`, `assertVisible`, `waitGone`, and `inputText`. WDA JSON and XCUITest XML are normalized into the same stable-ref snapshot model before those actions run. This keeps scheduler contracts independent of Appium/WDA and lets the same flow survive device-size changes when labels and accessibility roles remain stable.
 
 Portable flows are also canonical library objects. `scheduler.flow_definitions` identifies a flow while `scheduler.flow_versions` stores immutable revisions; editing creates a new revision instead of mutating history. Mobile Farm JSON is the native lossless interchange format. A bounded Maestro YAML adapter supports the accessibility-oriented command subset that maps cleanly into this contract; unsupported/lossy steps fail export rather than silently changing behavior.
 
 ### Virtual runtime lifecycle
 
-Execution workers expose both currently connected devices and known virtual-runtime definitions. macOS workers use `simctl` for iOS Simulator definitions and lifecycle; hosts with Android tooling use the emulator CLI plus ADB for AVD definitions and shutdown. The MiniPC proxies Boot/Stop to the owning worker rather than trying to run mobile SDK tooling inside the Linux control-plane container.
+Execution workers expose both currently connected iPhones and known iOS Simulator definitions. macOS workers use `simctl` for Simulator definitions and lifecycle. The MiniPC proxies Boot/Stop to the owning worker rather than trying to run Apple SDK tooling inside the Linux control-plane container.
 
 ### Live fleet wall
 
 `/fleet` is the real fleet view. It intentionally does not open a high-rate stream for every device: tiles refresh inexpensive still screenshots, while the selected tile alone requests the signed live-stream capability. This follows the lab UX pattern from Baguette/STF and keeps video transport separate from scheduler/control correctness. Operators can group by worker/platform/kind and multi-select devices for bounded operational actions (reconnect, enable/disable, clear queue/stop); public/send/touch actions are deliberately not exposed as bulk commands.
-
-Android workers may additionally expose an optional raw-H.264 scrcpy path when ADB and an explicitly version-matched `scrcpy-server` artifact are present. That transport is video-only (`control=false`) and never replaces Appium/UiAutomator2 as the deterministic action API. It uses the same expiring stream-capability envelope through the worker/MiniPC proxy and currently feeds the benchmark harness, not the default browser renderer.
 
 ### Capability-aware allocation
 
@@ -175,7 +172,7 @@ The scheduler remains device-addressed, but the API may resolve a target immedia
 
 Automation Studio exposes the same model as **Specific device** vs **Any matching idle device**. Allocation filters can be saved/updated/deleted as named pools and can require operator-defined device tags. A preview endpoint shows the current first candidate before submission. The Semantic Inspector can inspect either that candidate or the selected concrete device and turn the normalized accessibility snapshot into authoring actions; inspection itself is read-only. Execution hosts are also first-class inventory: configured workers remain visible while offline, and online workers publish capabilities plus bounded load/RAM/CPU/uptime telemetry.
 
-`com.phone-farm.flow/flow@1` is the generic cross-platform contract. Its payload
+`com.phone-farm.flow/flow@1` is the generic iOS automation contract. Its payload
 is an ordered list of portable actions (app launch/terminate, wait, tap, swipe,
 type, system buttons and screenshot), authored in Automation Studio and queued
 through the exact same scheduler/evidence path as plugin-specific tasks.
@@ -205,11 +202,11 @@ in `src/scheduler/recurrence.ts`; the next occurrence is written to
 | `src/allocation.ts` | capability/load-aware device ranking used before materializing ordinary schedules |
 | `src/scheduler/` | runtime, repository, pg-boss queue, recurrence, worker, executor |
 | `src/database/` | Drizzle client, schema, migrate/setup entrypoints |
-| `src/devices/` | physical/virtual discovery, registry (`devices.json`), WDA/Appium remotes, optional scrcpy video source, registration flow, wda-service, coordinate profiles, passcode lookup |
+| `src/devices/` | physical-iPhone/iOS-Simulator discovery, registry (`devices.json`), WDA/Appium remotes, registration flow, wda-service, coordinate profiles, passcode lookup |
 | `src/flows/` | flow interchange/compatibility adapters (currently bounded Maestro YAML) |
-| `src/hosts/` | execution-host capability detection (`simctl`, `adb`, Appium, WDA) |
+| `src/hosts/` | execution-host capability detection (`simctl`, Appium, WDA) |
 | `src/semantic/` | normalized WDA/Appium accessibility snapshots, stable refs and semantic actions |
-| `src/flow-plugin.ts` | built-in portable cross-platform flow task |
+| `src/flow-plugin.ts` | built-in portable iOS flow task |
 | `src/devices/wda/` | `prepare.ts` (patch + build + sign WDA), `start.ts` (single-device WDA supervisor), `target-device.ts` (resolve which device a CLI command targets), diagnostics |
 | `src/tiktok/` | TikTok automation entrypoints (`doomscroll.ts`, `post.ts`), OCR, coordinates |
 | `src/tiktok-plugin.ts` | Built‑in TikTok plugin: task definitions, device panel, routes |
