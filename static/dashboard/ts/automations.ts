@@ -1084,7 +1084,7 @@ elements.checkNow.addEventListener('click', async () => {
 
 const requestedTemplate = params.get('template');
 selectTemplate(
-    requestedTemplate === 'flow' ? 'flow' : (requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : ''),
+    requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : 'flow',
     { refresh: false },
 );
 renderFlowSteps();

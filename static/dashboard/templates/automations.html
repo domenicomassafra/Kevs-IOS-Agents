@@ -20,9 +20,10 @@
                 </span>
             </a>
             <nav class="topbar-nav">
-                <a class="button secondary" href="/">Devices</a>
-                <a class="button secondary" href="/automations" aria-current="page">Automations</a>
-                <a class="button secondary" href="/tasks">Tasks</a>
+                <a class="nav-link" href="/">Overview</a>
+                <a class="nav-link" href="/fleet">Fleet</a>
+                <a class="nav-link is-active" href="/automations" aria-current="page">Automations</a>
+                <a class="nav-link" href="/tasks">Runs</a>
                 __PLUGIN_NAV____AUTH_NAV__
             </nav>
         </div>
@@ -31,18 +32,18 @@
         <header class="page-header">
             <div>
                 <span class="eyebrow">Automation Studio</span>
-                <h1>Build &amp; run <em>mobile flows</em></h1>
-                <p>Use portable steps for general device control, or launch a tuned social template when you need app-specific behavior.</p>
+                <h1>Build, version and schedule flows</h1>
+                <p>Semantic mobile automation, saved revisions, reusable pools and scheduler-backed execution across iOS and Android.</p>
             </div>
         </header>
 
-        <aside class="layout-preface" role="note">
-            <span class="layout-preface-badge">Portable</span>
-            <div>
-                <strong>One flow contract, multiple runtimes</strong>
-                <p>Portable flows use the shared scheduler and device automation interface. App-specific TikTok/Instagram recipes can still use calibrated coordinates where required.</p>
-            </div>
-        </aside>
+        <div class="feature-strip" role="list" aria-label="Automation capabilities">
+            <div role="listitem"><strong>Saved flows</strong><span>Immutable revisions</span></div>
+            <div role="listitem"><strong>Semantic Inspector</strong><span>Accessibility-first selectors</span></div>
+            <div role="listitem"><strong>Device pools</strong><span>Platform · host · tags</span></div>
+            <div role="listitem"><strong>Scheduling</strong><span>Now · once · recurring</span></div>
+            <div role="listitem"><strong>Maestro bridge</strong><span>Bounded YAML import/export</span></div>
+        </div>
 
         <section class="panel">
             <div class="section-heading">

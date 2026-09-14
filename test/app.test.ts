@@ -180,6 +180,38 @@ test('serves a live fleet wall instead of the old mock fleet demo', async (conte
     assert.match(legacy.body, /Live device wall/i);
 });
 
+test('overview control center exposes the major product surfaces instead of hiding them behind navigation', async (context) => {
+    const scheduler = {
+        async listFlowDefinitions() { return [{ id: 'flow-1' }]; },
+        async listDevicePools() { return [{ id: 'pool-1' }, { id: 'pool-2' }]; },
+        async listSchedules() { return [{ status: 'active' }, { status: 'paused' }]; },
+        async listExecutions() { return [{ status: 'running' }, { status: 'queued' }]; },
+    } as unknown as SchedulerRepository;
+    const app = await createApp({
+        plugins: new PluginRegistry([]), scheduler, registrations: registrations(), dashboardTheme: defaultDashboardTheme,
+        listHosts: () => [{
+            id: 'macstudio', hostname: 'studio', os: 'darwin', arch: 'arm64', online: true,
+            observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'],
+            tools: { appium: true, appiumRuntime: true, xcrun: true, adb: false, scrcpyVideo: false },
+        }],
+    });
+    context.after(() => app.close());
+
+    const page = await inject(app, { method: 'GET', url: '/' });
+    assert.equal(page.statusCode, 200);
+    assert.match(page.body, /id="control-center"/);
+    assert.match(page.body, /Build a flow/);
+
+    const fragment = await inject(app, { method: 'GET', url: '/api/fragments/control-center' });
+    assert.equal(fragment.statusCode, 200);
+    assert.match(fragment.body, /Automation Studio/);
+    assert.match(fragment.body, /1 saved flow/);
+    assert.match(fragment.body, /2 reusable pools/);
+    assert.match(fragment.body, /1 active schedule/);
+    assert.match(fragment.body, /1\/1 online/);
+    assert.match(fragment.body, /Semantic cross-platform flows/i);
+});
+
 test('device pool API normalizes selectors and rejects duplicate names', async (context) => {
     type Pool = { id: string; name: string; selector: Record<string, unknown>; createdAt: Date; updatedAt: Date };
     let pools: Pool[] = [];

@@ -1052,7 +1052,7 @@ elements.checkNow.addEventListener('click', async () => {
     }
 });
 const requestedTemplate = params.get('template');
-selectTemplate(requestedTemplate === 'flow' ? 'flow' : (requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : ''), { refresh: false });
+selectTemplate(requestedTemplate === 'pipeline' || params.has('device') ? 'pipeline' : 'flow', { refresh: false });
 renderFlowSteps();
 updateFlowLibraryActions();
 elements.flowTimezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

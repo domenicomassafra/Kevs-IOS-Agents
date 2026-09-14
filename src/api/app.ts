@@ -1196,6 +1196,54 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         app.get('/assets/register-device.js', asset('text/javascript', theme.registerDeviceScript));
         app.get('/assets/fleet.js', asset('text/javascript', theme.fleetScript));
         app.get('/assets/htmx.min.js', asset('text/javascript', theme.htmx));
+        app.get('/api/fragments/control-center', async (_request, reply) => {
+            const [devices, flows, pools, schedules, executions, hosts] = await Promise.all([
+                registeredWithStatus(discoverDevices),
+                options.scheduler.listFlowDefinitions(500),
+                options.scheduler.listDevicePools(500),
+                options.scheduler.listSchedules(500),
+                options.scheduler.listExecutions(500),
+                Promise.resolve(options.listHosts?.() ?? []),
+            ]);
+            const onlineDevices = devices.filter((device) => Boolean(device.connected) && !device.disabled).length;
+            const onlineHosts = hosts.filter((host) => host.online !== false).length;
+            const activeSchedules = schedules.filter(({ status }) => status === 'active').length;
+            const running = executions.filter(({ status }) => status === 'running').length;
+            const queued = executions.filter(({ status }) => status === 'queued').length;
+            const cards = [
+                {
+                    href: '/fleet', eyebrow: 'Fleet', title: `${onlineDevices}/${devices.length} online`,
+                    copy: 'Live wall, device search, grouping, focus streaming and safe bulk operations.',
+                    meta: `${devices.filter(({ kind }) => (kind ?? 'physical') !== 'physical').length} virtual runtime${devices.filter(({ kind }) => (kind ?? 'physical') !== 'physical').length === 1 ? '' : 's'}`,
+                },
+                {
+                    href: '/automations?template=flow', eyebrow: 'Automation Studio', title: `${flows.length} saved flow${flows.length === 1 ? '' : 's'}`,
+                    copy: 'Build semantic cross-platform flows, inspect live accessibility and keep immutable revisions.',
+                    meta: 'JSON + Maestro YAML',
+                },
+                {
+                    href: '/automations?template=flow', eyebrow: 'Device pools', title: `${pools.length} reusable pool${pools.length === 1 ? '' : 's'}`,
+                    copy: 'Allocate by platform, runtime kind, execution host and operator-defined device tags.',
+                    meta: 'Least-loaded idle allocation',
+                },
+                {
+                    href: '/tasks', eyebrow: 'Scheduler', title: `${activeSchedules} active schedule${activeSchedules === 1 ? '' : 's'}`,
+                    copy: 'Now, once, daily, weekly and interval execution through the canonical per-device queues.',
+                    meta: `${running} running · ${queued} queued`,
+                },
+                {
+                    href: '/', eyebrow: 'Execution hosts', title: `${onlineHosts}/${hosts.length} online`,
+                    copy: 'Worker health, CPU/load/RAM/uptime and virtual-runtime lifecycle stay visible even when a node drops.',
+                    meta: hosts.length ? hosts.map(({ id }) => id).join(' · ') : 'No hosts configured',
+                },
+                {
+                    href: '/devices/register', eyebrow: 'Runtime matrix', title: 'iOS + Android',
+                    copy: 'Physical devices, iOS Simulator and Android Emulator share one control plane with isolated transports.',
+                    meta: 'WDA · Appium · optional scrcpy H.264',
+                },
+            ].map((card) => `<a class="command-card" href="${card.href}"><span class="command-card-eyebrow">${escapeHtml(card.eyebrow)}</span><strong>${escapeHtml(card.title)}</strong><p>${escapeHtml(card.copy)}</p><span class="command-card-meta">${escapeHtml(card.meta)} <span aria-hidden="true">→</span></span></a>`).join('');
+            return reply.type('text/html').send(`<section id="control-center" class="control-center" hx-get="/api/fragments/control-center" hx-trigger="every 15s" hx-swap="outerHTML"><div class="overview-section-head"><div><span class="eyebrow">Workspace</span><h2>Control center</h2></div><span class="control-center-live"><span></span>live</span></div><div class="command-grid">${cards}</div></section>`);
+        });
         app.get('/api/fragments/devices', async (_request, reply) => {
             const devices = await registeredWithStatus(discoverDevices);
             const active = devices.filter((device) => !device.disabled);
