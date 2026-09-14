@@ -233,6 +233,18 @@
             <div class="form-actions"><span id="tags-result" class="run-meta" aria-live="polite"></span><span class="spacer"></span><button class="button primary" type="submit">Save tags</button></div>
         </form>
     </dialog>
+    <dialog id="device-rename-dialog">
+        <form id="device-rename-form" class="modal">
+            <div class="modal-head">
+                <div><span class="eyebrow">This device</span><h2>Rename device</h2></div>
+                <button id="close-device-rename" class="icon-button" type="button">Close</button>
+            </div>
+            <p>The display name is shared by Overview, Fleet, Runs and Automation Studio.</p>
+            <label for="device-rename-name">Device name</label>
+            <input id="device-rename-name" type="text" maxlength="120" required>
+            <div class="form-actions"><span id="device-rename-result" class="run-meta" aria-live="polite"></span><span class="spacer"></span><button class="button primary" type="submit">Save name</button></div>
+        </form>
+    </dialog>
     <dialog id="accounts-dialog">
         <form id="accounts-form" class="modal">
             <div class="modal-head">

@@ -49,4 +49,9 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     const activeFragment = await inject(app, { method: 'GET', url: '/api/fragments/devices' });
     assert.match(activeFragment.body, /href="\/automations\?template=flow&device=udid-a"[^>]*>Automate</);
     assert.match(activeFragment.body, /#staging/);
+    assert.doesNotMatch(activeFragment.body, /window\.prompt|<script>/);
+
+    const devicePage = await inject(app, { method: 'GET', url: '/devices/udid-a' });
+    assert.equal(devicePage.statusCode, 200);
+    assert.match(devicePage.body, /id="device-rename-dialog"/);
 });

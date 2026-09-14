@@ -91,3 +91,7 @@ Runs now provides a visual schedule editor instead of raw JSON prompts. Operator
 ### Wave O — connected device and flow actions (source complete, MiniPC live)
 
 Overview device inventory now exposes tags and opens Portable Flow Studio directly with a concrete device preselected. Flow Library duplication uses a real named dialog instead of a browser prompt, making the device → author → save/duplicate workflow consistent with the rest of the control plane.
+
+### Wave P — prompt-free device naming (source complete)
+
+Device naming now uses first-class dialogs in both Overview and the device workspace. The HTMX device fragment is pure markup and no longer injects browser action scripts on each refresh; stable page-level handlers own rename and connect/disconnect behavior instead. Dashboard source no longer contains `window.prompt()` interactions.

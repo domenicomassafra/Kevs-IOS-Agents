@@ -231,6 +231,11 @@ const elements = {
     tagsForm: element<HTMLFormElement>('#tags-form'),
     deviceTags: element<HTMLInputElement>('#device-tags'),
     tagsResult: element<HTMLElement>('#tags-result'),
+    renameDialog: element<HTMLDialogElement>('#device-rename-dialog'),
+    renameForm: element<HTMLFormElement>('#device-rename-form'),
+    renameName: element<HTMLInputElement>('#device-rename-name'),
+    renameResult: element<HTMLElement>('#device-rename-result'),
+    closeRename: element<HTMLButtonElement>('#close-device-rename'),
     passcodeForm: element<HTMLFormElement>('#passcode-form'),
     devicePasscode: element<HTMLInputElement>('#device-passcode'),
     passcodeClear: element<HTMLButtonElement>('#passcode-clear'),
@@ -1424,6 +1429,39 @@ elements.tagsForm.addEventListener('submit', (event) => {
         elements.tagsResult.textContent = device.tags?.length ? `Saved ${device.tags.length} tag${device.tags.length === 1 ? '' : 's'}.` : 'Tags cleared.';
     }).catch((error) => { elements.tagsResult.textContent = errorMessage(error); });
 });
+elements.closeRename.addEventListener('click', () => elements.renameDialog.close());
+elements.renameForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = elements.renameName.value.replace(/\s+/g, ' ').trim();
+    if (!name) {
+        elements.renameResult.textContent = 'Device name is required.';
+        elements.renameName.focus();
+        return;
+    }
+    const submit = elements.renameForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    submit.disabled = true;
+    elements.renameResult.textContent = 'Saving…';
+    void (async () => {
+        try {
+            await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
+                method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+            });
+            document.title = `${name} · Mobile Farm`;
+            const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/summary`);
+            if (!response.ok) throw new Error(`Could not refresh device header (${response.status})`);
+            const html = await response.text();
+            const summary = document.querySelector('#device-summary');
+            if (summary) summary.outerHTML = html;
+            const refreshed = document.querySelector<HTMLElement>('#device-summary[data-screen-width]');
+            if (refreshed) useDeviceSummary(refreshed);
+            elements.renameDialog.close();
+        } catch (error) {
+            elements.renameResult.textContent = errorMessage(error);
+        } finally {
+            submit.disabled = false;
+        }
+    })();
+});
 elements.openInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.showModal());
 elements.closeInstagramAccounts.addEventListener('click', () => elements.instagramAccountsDialog.close());
 elements.openPasscode.addEventListener('click', () => {
@@ -1570,35 +1608,11 @@ document.addEventListener('click', (event) => {
     if (!button) return;
     event.preventDefault();
     const title = document.querySelector('.device-name')?.textContent ?? '';
-    const current = title.replace(/\s+/g, ' ').trim();
-    const next = window.prompt('Rename this phone for the farm grid', current);
-    if (next === null) return;
-    const name = next.replace(/\s+/g, ' ').trim();
-    if (!name) {
-        window.alert('Name cannot be empty');
-        return;
-    }
-    button.disabled = true;
-    void (async () => {
-        try {
-            await jsonRequest(`/api/devices/${encodeURIComponent(udid)}`, {
-                method: 'PATCH',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ name }),
-            });
-            document.title = `${name} · Mobile Farm`;
-            const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/summary`);
-            if (!response.ok) throw new Error(`Could not refresh device header (${response.status})`);
-            const html = await response.text();
-            const summary = document.querySelector('#device-summary');
-            if (summary) summary.outerHTML = html;
-            const refreshed = document.querySelector<HTMLElement>('#device-summary[data-screen-width]');
-            if (refreshed) useDeviceSummary(refreshed);
-        } catch (error) {
-            button.disabled = false;
-            window.alert(errorMessage(error));
-        }
-    })();
+    elements.renameName.value = title.replace(/\s+/g, ' ').trim();
+    elements.renameResult.textContent = '';
+    elements.renameDialog.showModal();
+    elements.renameName.focus();
+    elements.renameName.select();
 });
 
 elements.removeDevice.addEventListener('click', async () => {

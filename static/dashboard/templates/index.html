@@ -54,6 +54,83 @@
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Looking for connected devices…</div>
         </section>
     </main>
+    <dialog id="overview-rename-dialog">
+        <form id="overview-rename-form" class="modal">
+            <div class="modal-head">
+                <div><span class="eyebrow">Device inventory</span><h2>Rename device</h2></div>
+                <button id="overview-rename-close" class="icon-button" type="button">Close</button>
+            </div>
+            <p>Use a short operational name that stays recognizable in Fleet, Runs and allocation pools.</p>
+            <label for="overview-rename-name">Device name</label>
+            <input id="overview-rename-name" type="text" maxlength="120" required>
+            <div class="form-actions"><span id="overview-rename-result" class="run-meta" aria-live="polite"></span><span class="spacer"></span><button class="button primary" type="submit">Save name</button></div>
+        </form>
+    </dialog>
+    <script>
+        (() => {
+            const dialog = document.querySelector('#overview-rename-dialog');
+            const form = document.querySelector('#overview-rename-form');
+            const input = document.querySelector('#overview-rename-name');
+            const result = document.querySelector('#overview-rename-result');
+            const close = document.querySelector('#overview-rename-close');
+            let renameUdid = '';
+            const refreshDevices = () => window.htmx
+                ? window.htmx.ajax('GET', '/api/fragments/devices', { target: '#device-list', swap: 'outerHTML' })
+                : location.reload();
+            document.addEventListener('click', async (event) => {
+                const target = event.target instanceof Element ? event.target : null;
+                const rename = target?.closest('[data-rename-device]');
+                if (rename) {
+                    event.preventDefault();
+                    const root = rename.closest('.device-card, li') || rename.parentElement;
+                    const title = root?.querySelector('.device-name');
+                    renameUdid = rename.dataset.renameDevice || '';
+                    input.value = (title?.textContent || '').replace(/\s+/g, ' ').trim();
+                    result.textContent = '';
+                    dialog.showModal();
+                    input.focus();
+                    input.select();
+                    return;
+                }
+                const toggle = target?.closest('[data-toggle-device]');
+                if (!toggle) return;
+                event.preventDefault();
+                toggle.disabled = true;
+                try {
+                    const response = await fetch(`/api/devices/${toggle.dataset.toggleDevice}`, {
+                        method: 'PATCH', headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ disabled: toggle.dataset.disabled === 'true' }),
+                    });
+                    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
+                    refreshDevices();
+                } catch (error) {
+                    toggle.disabled = false;
+                    result.textContent = error instanceof Error ? error.message : String(error);
+                }
+            });
+            close.addEventListener('click', () => dialog.close());
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                void (async () => {
+                    const name = input.value.replace(/\s+/g, ' ').trim();
+                    if (!renameUdid || !name) { result.textContent = 'Device name is required.'; return; }
+                    const submit = form.querySelector('button[type="submit"]');
+                    submit.disabled = true;
+                    result.textContent = 'Saving…';
+                    try {
+                        const response = await fetch(`/api/devices/${renameUdid}`, {
+                            method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+                        });
+                        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Rename failed (${response.status})`);
+                        dialog.close();
+                        refreshDevices();
+                    } catch (error) {
+                        result.textContent = error instanceof Error ? error.message : String(error);
+                    } finally { submit.disabled = false; }
+                })();
+            });
+        })();
+    </script>
     <footer class="app-footer">__FOOTER__</footer>
 </body>
 </html>
