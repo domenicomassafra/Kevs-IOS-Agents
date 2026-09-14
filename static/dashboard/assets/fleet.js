@@ -216,7 +216,7 @@ async function load() {
     }
 }
 async function liveStreamUrl(udid) {
-    const result = await json(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token`, { method: 'POST' });
+    const result = await json(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token?scope=fleet`, { method: 'POST' });
     return result.url;
 }
 function setFocusMode(mode, text) {

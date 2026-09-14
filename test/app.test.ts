@@ -197,6 +197,7 @@ test('serves a live fleet wall instead of the old mock fleet demo', async (conte
     assert.match(fleetAsset.body, /Only this focused device is streaming live/);
     assert.match(fleetAsset.body, /Switching focused stream/);
     assert.match(fleetAsset.body, /focusGeneration/);
+    assert.match(fleetAsset.body, /stream-token\?scope=fleet/);
     assert.match(fleetAsset.body, /Clear queued work and request stop/);
 
     const legacy = await app.inject({ method: 'GET', url: '/demo/devices' });

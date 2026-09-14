@@ -236,7 +236,7 @@ async function load(): Promise<void> {
 }
 
 async function liveStreamUrl(udid: string): Promise<string> {
-    const result = await json<{ url: string }>(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token`, { method: 'POST' });
+    const result = await json<{ url: string }>(`/api/devices/${encodeURIComponent(udid)}/remote/stream-token?scope=fleet`, { method: 'POST' });
     return result.url;
 }
 

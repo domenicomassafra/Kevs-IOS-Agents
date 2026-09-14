@@ -675,16 +675,21 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.code(503).header('cache-control', 'no-store').send();
         }
     });
-    app.post<{ Params: { udid: string } }>('/api/devices/:udid/remote/stream-token', async (request) => {
+    let fleetStreamLease: { abort: AbortController; closed: Promise<void> } | undefined;
+    app.post<{ Params: { udid: string }; Querystring: { scope?: string } }>('/api/devices/:udid/remote/stream-token', async (request) => {
         const base = `/api/devices/${encodeURIComponent(request.params.udid)}/remote/stream`;
-        if (!options.requireStreamToken) return { url: `${base}?t=${Date.now()}`, expiresAt: null };
+        const scope = request.query.scope === 'fleet' ? 'fleet' : undefined;
+        if (!options.requireStreamToken) {
+            const query = new URLSearchParams({ t: String(Date.now()), ...(scope ? { scope } : {}) });
+            return { url: `${base}?${query}`, expiresAt: null };
+        }
         const capability = streamTokens.issue(request.params.udid);
-        const query = new URLSearchParams({ exp: String(capability.expiresAt), sig: capability.signature });
+        const query = new URLSearchParams({ exp: String(capability.expiresAt), sig: capability.signature, ...(scope ? { scope } : {}) });
         return { url: `${base}?${query}`, expiresAt: new Date(capability.expiresAt).toISOString() };
     });
     app.get<{
         Params: { udid: string };
-        Querystring: { exp?: string; sig?: string };
+        Querystring: { exp?: string; sig?: string; scope?: string };
     }>('/api/devices/:udid/remote/stream', async (request, reply) => {
         if (options.requireStreamToken) {
             const expiresAt = Number(request.query.exp);
@@ -693,15 +698,52 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 return reply.code(403).send({ error: 'Stream capability is missing, invalid, or expired' });
             }
         }
+        // Fleet has a stronger invariant than an ordinary device viewer: only
+        // one focused upstream stream may exist at a time. Abort the previous
+        // lease and wait for it to close before opening the next one. If a
+        // broken transport refuses to close, fail the new request rather than
+        // briefly running two upstream streams in parallel.
+        if (request.query.scope === 'fleet' && fleetStreamLease) {
+            const previous = fleetStreamLease;
+            previous.abort.abort();
+            const closed = await Promise.race([
+                previous.closed.then(() => true),
+                new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_500)),
+            ]);
+            if (!closed) return reply.code(409).send({ error: 'Previous focused fleet stream is still closing; retry live.' });
+        }
         // Close the upstream device stream the moment the browser goes away —
-        // otherwise every HTMX fragment swap leaks a live MJPEG connection.
+        // otherwise every viewer navigation leaks a live MJPEG connection.
         const abort = new AbortController();
         request.raw.once('close', () => abort.abort());
-        const upstream = await remote.getMjpegStream(request.params.udid, abort.signal);
-        if (!upstream.body) return reply.code(503).send({ error: 'Device stream is unavailable' });
-        return reply.header('cache-control', 'no-store, no-cache, must-revalidate')
-            .type(upstream.headers.get('content-type') ?? 'multipart/x-mixed-replace; boundary=--BoundaryString')
-            .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
+        let releaseFleetLease: (() => void) | undefined;
+        if (request.query.scope === 'fleet') {
+            let resolveClosed!: () => void;
+            let released = false;
+            const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
+            releaseFleetLease = () => {
+                if (released) return;
+                released = true;
+                resolveClosed();
+                if (fleetStreamLease?.abort === abort) fleetStreamLease = undefined;
+            };
+            reply.raw.once('close', releaseFleetLease);
+            reply.raw.once('finish', releaseFleetLease);
+            fleetStreamLease = { abort, closed };
+        }
+        try {
+            const upstream = await remote.getMjpegStream(request.params.udid, abort.signal);
+            if (!upstream.body) {
+                releaseFleetLease?.();
+                return reply.code(503).send({ error: 'Device stream is unavailable' });
+            }
+            return reply.header('cache-control', 'no-store, no-cache, must-revalidate')
+                .type(upstream.headers.get('content-type') ?? 'multipart/x-mixed-replace; boundary=--BoundaryString')
+                .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
+        } catch (error) {
+            releaseFleetLease?.();
+            throw error;
+        }
     });
     app.post<{ Params: { udid: string } }>('/api/devices/:udid/remote/h264-token', async (request, reply) => {
         if (!remote.getH264Stream) return reply.code(501).send({ error: 'Optimized H.264 transport is unavailable' });
