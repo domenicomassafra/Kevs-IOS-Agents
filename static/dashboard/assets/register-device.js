@@ -2,6 +2,10 @@ const candidatePanel = document.querySelector('#candidate-panel');
 const candidateList = document.querySelector('#candidate-list');
 const runtimeList = document.querySelector('#runtime-list');
 const registrationPanel = document.querySelector('#registration-panel');
+const hostCount = document.querySelector('#onboarding-host-count');
+const hostNote = document.querySelector('#onboarding-host-note');
+const runtimeCount = document.querySelector('#onboarding-runtime-count');
+const iphoneCount = document.querySelector('#onboarding-iphone-count');
 const title = document.querySelector('#registration-title');
 const busy = document.querySelector('#registration-busy');
 const errorBox = document.querySelector('#registration-error');
@@ -18,6 +22,8 @@ const authorize = document.querySelector('#authorize-registration');
 const finalizeButton = document.querySelector('#action-finalize');
 let currentId;
 let poll;
+let discoveredRuntimeCount = 0;
+let discoveredIphoneCount = 0;
 async function request(url, options) {
     const response = await fetch(url, options);
     if (response.status === 204)
@@ -31,13 +37,41 @@ function showError(error) {
     errorBox.hidden = !error;
     errorBox.textContent = error ? (error instanceof Error ? error.message : String(error)) : '';
 }
+function countLabel(count, singular, plural = `${singular}s`) {
+    return `${count} ${count === 1 ? singular : plural}`;
+}
+async function hostStatus() {
+    hostCount.textContent = 'Checking…';
+    hostNote.textContent = 'Reading worker state';
+    try {
+        const data = await request('/api/hosts');
+        const hosts = data.hosts ?? [];
+        const online = hosts.filter(({ online }) => online);
+        hostCount.textContent = `${online.length}/${hosts.length} online`;
+        if (!hosts.length) {
+            hostNote.textContent = 'No execution host configured';
+            return;
+        }
+        const appium = online.filter(({ capabilities }) => capabilities.includes('appium')).length;
+        hostNote.textContent = appium
+            ? `${countLabel(appium, 'Appium host')} ready`
+            : online.length ? 'Online hosts lack Appium capability' : 'Reconnect an execution host';
+    }
+    catch (error) {
+        hostCount.textContent = 'Unavailable';
+        hostNote.textContent = error instanceof Error ? error.message : String(error);
+    }
+}
 async function candidates() {
     showError();
     candidateList.textContent = 'Checking connected devices…';
     try {
         const data = await request('/api/device-registrations/candidates');
+        discoveredIphoneCount = data.devices.length;
+        iphoneCount.textContent = countLabel(discoveredIphoneCount, 'detected', 'detected');
         if (!data.devices.length) {
-            candidateList.innerHTML = '<div class="empty-state"><h3>No unregistered device is readable</h3><p>Connect by USB, unlock the device, accept Trust, and click Recheck.</p></div>';
+            candidateList.innerHTML = '<div class="empty-state registration-empty"><span class="empty-state-kicker">WDA lane</span><h3>No unregistered iPhone detected</h3><p>Connect by USB, unlock it, accept Trust This Computer, then recheck USB.</p><div class="empty-state-actions"><button class="button secondary" type="button" data-recheck-iphone>Recheck USB</button></div></div>';
+            candidateList.querySelector('[data-recheck-iphone]')?.addEventListener('click', () => void candidates());
             return;
         }
         candidateList.replaceChildren(...data.devices.map((device) => {
@@ -59,6 +93,8 @@ async function candidates() {
         }));
     }
     catch (error) {
+        discoveredIphoneCount = 0;
+        iphoneCount.textContent = 'Unavailable';
         candidateList.textContent = '';
         showError(error);
     }
@@ -68,8 +104,11 @@ async function runtimeCandidates() {
     try {
         const data = await request('/api/runtime-devices/discovered');
         const devices = (data.devices ?? []).filter((device) => !(device.platform === 'ios' && device.kind === 'physical'));
+        discoveredRuntimeCount = devices.length;
+        runtimeCount.textContent = countLabel(discoveredRuntimeCount, 'attachable', 'attachable');
         if (!devices.length) {
-            runtimeList.innerHTML = '<div class="empty-state"><h3>No virtual/Android runtime detected</h3><p>Start an iOS Simulator or Android Emulator, or attach an Android phone with USB debugging enabled.</p></div>';
+            runtimeList.innerHTML = '<div class="empty-state registration-empty"><span class="empty-state-kicker">Appium 3 lane</span><h3>No attachable runtime detected</h3><p>Boot an iOS Simulator or Android Emulator, or reconnect an authorized Android phone on an online execution host.</p><div class="empty-state-actions"><a class="button secondary" href="/#host-list">Open execution layer</a><button class="button secondary" type="button" data-rescan-runtime>Scan again</button></div></div>';
+            runtimeList.querySelector('[data-rescan-runtime]')?.addEventListener('click', () => void scanHosts());
             return;
         }
         runtimeList.replaceChildren(...devices.map((device) => {
@@ -80,7 +119,15 @@ async function runtimeCandidates() {
             heading.textContent = device.name;
             const meta = document.createElement('p');
             meta.textContent = `${device.platform} · ${device.kind} · ${device.osVersion || 'unknown OS'}${device.workerId ? ` · ${device.workerId}` : ''}`;
-            copy.append(heading, meta);
+            const chips = document.createElement('div');
+            chips.className = 'registration-runtime-chips';
+            for (const value of [device.platform === 'ios' ? 'iOS' : 'Android', device.kind, device.workerId].filter(Boolean)) {
+                const chip = document.createElement('span');
+                chip.className = 'connection-chip';
+                chip.textContent = value;
+                chips.append(chip);
+            }
+            copy.append(heading, meta, chips);
             const button = document.createElement('button');
             button.className = 'button primary';
             button.type = 'button';
@@ -106,8 +153,13 @@ async function runtimeCandidates() {
         }));
     }
     catch (error) {
+        discoveredRuntimeCount = 0;
+        runtimeCount.textContent = 'Unavailable';
         runtimeList.textContent = error instanceof Error ? error.message : String(error);
     }
+}
+async function scanHosts() {
+    await Promise.all([hostStatus(), runtimeCandidates()]);
 }
 async function create(udid) {
     const snapshot = await request('/api/device-registrations', {
@@ -192,7 +244,7 @@ async function action(name) {
     }
 }
 document.querySelector('#refresh-candidates').addEventListener('click', () => void candidates());
-document.querySelector('#refresh-runtimes').addEventListener('click', () => void runtimeCandidates());
+document.querySelector('#refresh-runtimes').addEventListener('click', () => void scanHosts());
 document.querySelector('#action-refresh').addEventListener('click', () => void action('refresh'));
 document.querySelector('#action-prepare').addEventListener('click', () => {
     if (!authorize.checked && !window.confirm('Continue without allowing automatic Apple Developer team device registration? Xcode may ask you to register it manually.'))
@@ -234,7 +286,7 @@ form.addEventListener('submit', async (event) => {
     }
 });
 void (async () => {
-    await Promise.all([candidates(), runtimeCandidates()]);
+    await Promise.all([candidates(), scanHosts()]);
     const requestedUdid = new URLSearchParams(window.location.search).get('udid');
     if (requestedUdid)
         await create(requestedUdid).catch(showError);

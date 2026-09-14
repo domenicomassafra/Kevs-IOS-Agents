@@ -28,17 +28,28 @@
             <div><span class="eyebrow">Device onboarding</span><h1>Add or register a <em>device</em></h1><p>Attach Android phones/emulators and iOS simulators directly through Appium, or use the deeper WDA setup for a physical iPhone.</p></div>
         </header>
 
-        <section class="registration-panel" id="runtime-panel">
-            <div class="section-heading"><div><span class="eyebrow">Fast attach</span><h2>Virtual &amp; Android runtimes</h2></div><button class="button secondary" id="refresh-runtimes" type="button">Scan hosts</button></div>
-            <p>Detected Android devices/emulators and iOS Simulators can join the farm immediately. They use the shared Appium backend and become available to Portable Flows.</p>
-            <div id="runtime-list" class="candidate-list" aria-live="polite">Scanning execution hosts…</div>
+        <section id="onboarding-status" class="onboarding-status" aria-label="Onboarding readiness">
+            <div class="onboarding-status-card"><span>Execution hosts</span><strong id="onboarding-host-count">Checking…</strong><small id="onboarding-host-note">Reading worker state</small></div>
+            <div class="onboarding-status-card"><span>Appium attach</span><strong id="onboarding-runtime-count">Scanning…</strong><small>Simulator / emulator / Android</small></div>
+            <div class="onboarding-status-card"><span>Physical iPhone</span><strong id="onboarding-iphone-count">Checking…</strong><small>USB + WDA lane</small></div>
+            <div class="onboarding-status-card"><span>Automation</span><strong>2 lanes</strong><small>Appium 3 + isolated WDA</small></div>
         </section>
 
-        <section class="registration-panel" id="candidate-panel">
-            <div class="section-heading"><div><span class="eyebrow">Physical iPhone · WDA</span><h2>Guided iPhone setup</h2></div><button class="button secondary" id="refresh-candidates" type="button">Recheck</button></div>
-            <p>Connect by USB, unlock it, and accept <strong>Trust This Computer</strong>. If Developer Mode has never been enabled, pairing with Xcode makes the setting appear.</p>
-            <div id="candidate-list" class="candidate-list" aria-live="polite">Checking connected devices…</div>
-        </section>
+        <div class="registration-lanes">
+            <section class="registration-panel registration-lane" id="runtime-panel">
+                <div class="section-heading"><div><span class="eyebrow">Fast attach · Appium 3</span><h2>Virtual &amp; Android</h2></div><button class="button secondary" id="refresh-runtimes" type="button">Scan hosts</button></div>
+                <p>Booted iOS Simulators, Android Emulators and authorized Android phones can join immediately and run Portable Flows.</p>
+                <div class="registration-lane-badges"><span class="connection-chip">iOS Simulator</span><span class="connection-chip">Android physical</span><span class="connection-chip">Android Emulator</span></div>
+                <div id="runtime-list" class="candidate-list" aria-live="polite">Scanning execution hosts…</div>
+            </section>
+
+            <section class="registration-panel registration-lane" id="candidate-panel">
+                <div class="section-heading"><div><span class="eyebrow">Physical iPhone · isolated WDA</span><h2>Guided iPhone setup</h2></div><button class="button secondary" id="refresh-candidates" type="button">Recheck USB</button></div>
+                <p>Connect by USB, unlock it, accept <strong>Trust This Computer</strong>, then complete signing/Developer Mode checks only when requested.</p>
+                <div class="registration-lane-badges"><span class="connection-chip">USB</span><span class="connection-chip">Xcode signing</span><span class="connection-chip">WDA + MJPEG</span></div>
+                <div id="candidate-list" class="candidate-list" aria-live="polite">Checking connected devices…</div>
+            </section>
+        </div>
 
         <section class="registration-panel" id="registration-panel" hidden>
             <div class="section-heading"><div><span class="eyebrow">Setup checklist</span><h2 id="registration-title">Device</h2></div><span id="registration-busy" class="status checking" hidden>checking</span></div>

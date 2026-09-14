@@ -145,6 +145,13 @@ test('serves and drives the public registration wizard', async (context) => {
     const page = await inject(app, { method: 'GET', url: '/devices/register' });
     assert.equal(page.statusCode, 200);
     assert.match(page.body.replace(/<[^>]+>/g, ' '), /Register\s+an?\s+(?:iOS\s+)?device/i);
+    assert.match(page.body, /id="onboarding-status"/);
+    assert.match(page.body, /id="onboarding-host-count"/);
+    assert.match(page.body, /id="onboarding-runtime-count"/);
+    assert.match(page.body, /id="onboarding-iphone-count"/);
+    assert.match(page.body, /Fast attach · Appium 3/);
+    assert.match(page.body, /Physical iPhone · isolated WDA/);
+    assert.match(page.body, /id="refresh-runtimes"[^>]*>Scan hosts</);
 
     const candidates = await inject(app, { method: 'GET', url: '/api/device-registrations/candidates' });
     assert.equal(candidates.statusCode, 200);
