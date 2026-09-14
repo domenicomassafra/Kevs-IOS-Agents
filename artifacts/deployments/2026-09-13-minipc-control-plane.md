@@ -67,3 +67,9 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Production source advanced to `899e5cd` on `main`; full regression gate remained 127/127 tests with build/diff/secret checks green.
 - Overview and per-device workspaces now use first-class rename dialogs; the HTMX device fragment no longer injects action scripts.
 - Live fixture smoke verified Overview dialog, pure fragment markup, device dialog and successful rename propagation, then removed the fixture with HTTP 204.
+
+## Inline operational feedback cutover — 2026-09-14
+
+- Production source advanced to `0c33968` on `main`; full regression gate remained 127/127 tests.
+- Runs and per-device task actions now report ordinary operational failures inline rather than using blocking browser alerts.
+- Tailnet smoke confirmed the Runs live-region and production `tasks.js` / `device.js` bundles contain no `alert()` calls.

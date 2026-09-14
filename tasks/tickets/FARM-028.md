@@ -16,3 +16,10 @@ Remove blocking browser alerts from ordinary operational failures while preservi
 - Runs page exposes `runs-action-status` as an `aria-live` region.
 - No `window.alert()` / `alert()` remains in dashboard TypeScript or the API-rendered dashboard scripts.
 - Full regression/build/diff/secret gates pass before deployment.
+
+## Live proof
+
+- Deployed to the MiniPC production control plane on `main` at `0c33968`.
+- Tailnet Runs HTML serves the inline action live-region.
+- Production `tasks.js` and `device.js` bundles contain no browser `alert()` calls.
+- Control-plane and PostgreSQL containers remained healthy after rebuild.

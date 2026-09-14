@@ -96,6 +96,6 @@ Overview device inventory now exposes tags and opens Portable Flow Studio direct
 
 Device naming now uses first-class dialogs in both Overview and the device workspace. The HTMX device fragment is pure markup and no longer injects browser action scripts on each refresh; stable page-level handlers own rename and connect/disconnect behavior instead. Dashboard source no longer contains `window.prompt()` interactions.
 
-### Wave Q — inline operational feedback (source complete)
+### Wave Q — inline operational feedback (source complete, MiniPC live)
 
 Operational failures in Runs and per-device task controls now stay inside accessible live regions instead of interrupting the user with browser alerts. The unthemed fallback follows the same rule, while explicit confirmations remain only for destructive, irreversible or public actions.
