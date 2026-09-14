@@ -76,6 +76,7 @@ interface LoadedDashboardTheme {
     automationsHtml: string;
     devicesDemoHtml: string;
     styles: string;
+    overviewScript: string;
     deviceScript: string;
     tasksScript: string;
     automationsScript: string;
@@ -274,7 +275,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
     if (options.dashboardTheme) {
         const root = options.dashboardTheme.rootDirectory;
         const require = createRequire(import.meta.url);
-        const [indexHtml, deviceHtml, tasksHtml, automationsHtml, registerDeviceHtml, devicesDemoHtml, styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, fleetScript, htmx] = await Promise.all([
+        const [indexHtml, deviceHtml, tasksHtml, automationsHtml, registerDeviceHtml, devicesDemoHtml, styles, overviewScript, deviceScript, tasksScript, automationsScript, registerDeviceScript, fleetScript, htmx] = await Promise.all([
             readFile(path.join(root, 'templates/index.html'), 'utf8'),
             readFile(path.join(root, 'templates/device.html'), 'utf8'),
             readFile(path.join(root, 'templates/tasks.html'), 'utf8'),
@@ -282,6 +283,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             readFile(path.join(root, 'templates/register-device.html'), 'utf8'),
             readFile(path.join(root, 'templates/devices-demo.html'), 'utf8'),
             readFile(path.join(root, 'styles.css'), 'utf8'),
+            readFile(path.join(root, 'assets/overview.js'), 'utf8'),
             readFile(path.join(root, 'assets/device.js'), 'utf8'),
             readFile(path.join(root, 'assets/tasks.js'), 'utf8'),
             readFile(path.join(root, 'assets/automations.js'), 'utf8'),
@@ -292,7 +294,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
         // Content-hash every asset URL in the templates so a changed file gets a
         // fresh URL that no browser or CDN can serve stale.
         const versions: Record<string, string> = {
-            'styles.css': assetHash(styles), 'device.js': assetHash(deviceScript),
+            'styles.css': assetHash(styles), 'overview.js': assetHash(overviewScript), 'device.js': assetHash(deviceScript),
             'tasks.js': assetHash(tasksScript), 'automations.js': assetHash(automationsScript),
             'register-device.js': assetHash(registerDeviceScript),
             'fleet.js': assetHash(fleetScript),
@@ -309,7 +311,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             tasksHtml: finalize(tasksHtml), automationsHtml: finalize(automationsHtml),
             registerDeviceHtml: finalize(registerDeviceHtml),
             devicesDemoHtml: finalize(devicesDemoHtml),
-            styles, deviceScript, tasksScript, automationsScript, registerDeviceScript, fleetScript, htmx,
+            styles, overviewScript, deviceScript, tasksScript, automationsScript, registerDeviceScript, fleetScript, htmx,
         };
     }
 
@@ -1190,6 +1192,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             };
         };
         app.get('/assets/styles.css', asset('text/css', theme.styles));
+        app.get('/assets/overview.js', asset('text/javascript', theme.overviewScript));
         app.get('/assets/device.js', asset('text/javascript', theme.deviceScript));
         app.get('/assets/tasks.js', asset('text/javascript', theme.tasksScript));
         app.get('/assets/automations.js', asset('text/javascript', theme.automationsScript));
