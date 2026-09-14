@@ -224,6 +224,7 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.equal(automations.statusCode, 200);
     assert.match(automations.body, /automation-mode-bar/);
     assert.match(automations.body, /id="flow-pool-name"/);
+    assert.match(automations.body, /id="flow-duplicate-dialog"/);
     assert.match(automations.body, /Schedule &amp; run/);
     assert.doesNotMatch(automations.body, /Create a post/);
 

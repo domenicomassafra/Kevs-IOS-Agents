@@ -10,7 +10,7 @@ import path from 'node:path';
 test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it separately', async (context) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'pf-disable-api-'));
     const configPath = path.join(directory, 'devices.json');
-    await writeFile(configPath, JSON.stringify([{ name: 'Phone A', udid: 'udid-a', pluginData: {} }]));
+    await writeFile(configPath, JSON.stringify([{ name: 'Phone A', udid: 'udid-a', tags: ['staging'], pluginData: {} }]));
     process.env.DEVICES_CONFIG_PATH = configPath;
 
     const { createApp } = await import('../src/api/app.js');
@@ -45,4 +45,8 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     assert.equal(reenabled.statusCode, 200);
     assert.equal(reenabled.json().disabled, undefined);
     assert.equal(JSON.parse(await readFile(configPath, 'utf8'))[0].disabled, undefined);
+
+    const activeFragment = await inject(app, { method: 'GET', url: '/api/fragments/devices' });
+    assert.match(activeFragment.body, /href="\/automations\?template=flow&device=udid-a"[^>]*>Automate</);
+    assert.match(activeFragment.body, /#staging/);
 });

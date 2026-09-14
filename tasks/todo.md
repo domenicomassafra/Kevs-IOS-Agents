@@ -32,6 +32,7 @@
 - [x] FARM-023 execution-host observability: configured offline workers remain visible; online workers report bounded load/RAM/CPU/uptime telemetry.
 - [x] FARM-024 Control Center UX convergence: actionable Overview, staged Automation Studio, Fleet state, cross-platform Runs and corrected saved-pool editing.
 - [x] FARM-025 Runs operations: visual schedule editing plus execution detail/log inspection without raw JSON prompts.
+- [x] FARM-026 Connected actions: Overview device tags + direct Automate links and prompt-free Flow Library duplication.
 - [x] Current source regression gate: `npm run check` => 127/127 tests + TypeScript green (2026-09-14).
 
 ## Live-gated

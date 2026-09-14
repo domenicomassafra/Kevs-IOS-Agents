@@ -191,6 +191,18 @@
             <div id="pipeline-list" class="task-list pipeline-list loading-card"><span class="spinner" aria-hidden="true"></span>Select a device…</div>
         </section>
     </main>
+    <dialog id="flow-duplicate-dialog">
+        <form id="flow-duplicate-form" class="modal">
+            <div class="modal-head">
+                <div><span class="eyebrow">Flow Library</span><h2>Duplicate flow</h2></div>
+                <button id="flow-duplicate-close" class="icon-button" type="button">Close</button>
+            </div>
+            <p>Create a separate flow identity from the currently selected version. Future edits and versions stay independent.</p>
+            <label for="flow-duplicate-name">New flow name</label>
+            <input id="flow-duplicate-name" type="text" maxlength="120" required>
+            <div class="form-actions"><span id="flow-duplicate-result" class="run-meta" aria-live="polite"></span><span class="spacer"></span><button class="button primary" type="submit">Duplicate flow</button></div>
+        </form>
+    </dialog>
     <script type="module" src="/assets/automations.js"></script>
     <footer class="app-footer">__FOOTER__</footer>
 </body>

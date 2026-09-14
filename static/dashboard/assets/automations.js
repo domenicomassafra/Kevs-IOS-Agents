@@ -42,6 +42,11 @@ const elements = {
     flowSave: document.querySelector('#flow-save'),
     flowSaveState: document.querySelector('#flow-save-state'),
     flowDuplicate: document.querySelector('#flow-duplicate'),
+    flowDuplicateDialog: document.querySelector('#flow-duplicate-dialog'),
+    flowDuplicateForm: document.querySelector('#flow-duplicate-form'),
+    flowDuplicateName: document.querySelector('#flow-duplicate-name'),
+    flowDuplicateResult: document.querySelector('#flow-duplicate-result'),
+    flowDuplicateClose: document.querySelector('#flow-duplicate-close'),
     flowDelete: document.querySelector('#flow-delete'),
     flowExport: document.querySelector('#flow-export'),
     flowExportMaestro: document.querySelector('#flow-export-maestro'),
@@ -846,23 +851,44 @@ elements.flowSave.addEventListener('click', async () => {
         elements.flowSave.disabled = false;
     }
 });
-elements.flowDuplicate.addEventListener('click', async () => {
+elements.flowDuplicate.addEventListener('click', () => {
     if (!currentFlowId)
         return;
-    const name = window.prompt('Name for the duplicate', `${elements.flowName.value} copy`);
-    if (name === null)
-        return;
-    try {
-        const data = await jsonRequest(`/api/flows/${encodeURIComponent(currentFlowId)}/duplicate`, {
-            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
-        });
-        await refreshFlowLibrary();
-        await loadSavedFlow(data.flow.id);
-        elements.flowResult.textContent = 'Duplicated.';
-    }
-    catch (error) {
-        elements.flowResult.textContent = errorMessage(error);
-    }
+    elements.flowDuplicateName.value = `${elements.flowName.value.trim() || 'Untitled flow'} copy`;
+    elements.flowDuplicateResult.textContent = '';
+    elements.flowDuplicateDialog.showModal();
+});
+elements.flowDuplicateClose.addEventListener('click', () => elements.flowDuplicateDialog.close());
+elements.flowDuplicateForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void (async () => {
+        if (!currentFlowId)
+            return;
+        const name = elements.flowDuplicateName.value.replace(/\s+/g, ' ').trim();
+        if (!name) {
+            elements.flowDuplicateResult.textContent = 'Flow name is required.';
+            elements.flowDuplicateName.focus();
+            return;
+        }
+        const submit = elements.flowDuplicateForm.querySelector('button[type="submit"]');
+        submit.disabled = true;
+        elements.flowDuplicateResult.textContent = 'Duplicating…';
+        try {
+            const data = await jsonRequest(`/api/flows/${encodeURIComponent(currentFlowId)}/duplicate`, {
+                method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+            });
+            elements.flowDuplicateDialog.close();
+            await refreshFlowLibrary();
+            await loadSavedFlow(data.flow.id);
+            elements.flowResult.textContent = `Duplicated as ${data.flow.name}.`;
+        }
+        catch (error) {
+            elements.flowDuplicateResult.textContent = errorMessage(error);
+        }
+        finally {
+            submit.disabled = false;
+        }
+    })();
 });
 elements.flowDelete.addEventListener('click', async () => {
     if (!currentFlowId || !window.confirm(`Delete ${elements.flowName.value} and all of its saved versions?`))
