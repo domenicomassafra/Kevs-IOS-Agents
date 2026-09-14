@@ -101,3 +101,13 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Production browser acceptance used three temporary fixtures created in non-sorted registry order (Zulu, Alpha, Mike). The live page rendered Alpha → Mike → Zulu, proving the client sort rather than repo-only markup.
 - Compact mode remained active after a periodic `#device-list` HTMX outerHTML refresh and, critically, after a full browser reload followed by the next HTMX settle (`compact=true`, `localStorage=compact`). The live acceptance exposed an `afterSwap` timing issue; final commit `eed219b` re-applies view/filter state on `htmx:afterSettle`.
 - Cleanup completed: Alpha/Mike/Zulu each returned HTTP 204 on delete, `/api/devices` returned `[]`, CDP port 9331 was closed, and the temporary headless-Chrome profile plus FARM-031 scripts/screenshots were removed.
+
+
+## Automation Studio hierarchy cutover — 2026-09-14
+
+- Portable Flow Studio application source advanced to `9c6bf21`, with the live density fix at `f273e43`.
+- Full final source gate on `f273e43`: 127/127 tests, TypeScript green, `build:web` green, `git diff --check` green and gitleaks `no leaks found`.
+- MiniPC completed the full Docker rebuild through `Successfully built`; PostgreSQL and control-plane were healthy, `/health` returned `ok=true`, and the production-container doctor reported `Source readiness: ready` / `Runtime readiness: ready`.
+- The production Tailnet page served the explicit Target → Flow → Schedule → Run journey. `Alpha Automation` and `Beta Automation` temporary devices appeared in the real Target selector. Allocation, Semantic Inspector, import and Flow actions were collapsed by default; Restore/Duplicate/Export/Delete stayed grouped behind Flow actions. Schedule no longer owned the Run button; the final action lived only in stage 4.
+- Full-page production screenshot review exposed conditional Schedule fields being rendered despite their `hidden` state. `f273e43` added explicit hidden-state CSS. Browser retest proved: Run now → all conditional fields hidden; Once → Run at only; Daily → Local time + Timezone only.
+- Cleanup completed: both temporary devices deleted with HTTP 204, `/api/devices` returned `[]`, CDP port 9332 had zero listeners, temporary Chrome profile was absent and no `/tmp/farm32-*` artifacts remained.
