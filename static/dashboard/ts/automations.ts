@@ -89,6 +89,7 @@ const elements = {
     flowPoolKind: document.querySelector<HTMLSelectElement>('#flow-pool-kind')!,
     flowPoolWorker: document.querySelector<HTMLSelectElement>('#flow-pool-worker')!,
     flowSavedPool: document.querySelector<HTMLSelectElement>('#flow-saved-pool')!,
+    flowPoolName: document.querySelector<HTMLInputElement>('#flow-pool-name')!,
     flowPoolTags: document.querySelector<HTMLInputElement>('#flow-pool-tags')!,
     flowPoolSave: document.querySelector<HTMLButtonElement>('#flow-pool-save')!,
     flowPoolDelete: document.querySelector<HTMLButtonElement>('#flow-pool-delete')!,
@@ -154,6 +155,7 @@ let devicePools: DevicePoolRow[] = [];
 let currentFlowId: string | undefined;
 let currentFlowVersion: number | undefined;
 let allocationPreviewUdid = '';
+let selectedPoolDirty = false;
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -264,7 +266,7 @@ function allocationTarget(): Record<string, unknown> {
 }
 
 function allocationRequest(): { poolId?: string; target?: Record<string, unknown> } {
-    return elements.flowSavedPool.value
+    return elements.flowSavedPool.value && !selectedPoolDirty
         ? { poolId: elements.flowSavedPool.value }
         : { target: allocationTarget() };
 }
@@ -275,7 +277,9 @@ function renderSavedPools(): void {
     for (const pool of devicePools) elements.flowSavedPool.add(new Option(pool.name, pool.id));
     if (selected && devicePools.some(({ id }) => id === selected)) elements.flowSavedPool.value = selected;
     elements.flowPoolDelete.disabled = !elements.flowSavedPool.value;
-    elements.flowPoolSave.textContent = elements.flowSavedPool.value ? 'Update pool' : 'Save pool';
+    elements.flowPoolSave.textContent = elements.flowSavedPool.value
+        ? (selectedPoolDirty ? 'Save changes' : 'Update pool')
+        : 'Save pool';
 }
 
 async function refreshDevicePools(): Promise<void> {
@@ -294,23 +298,26 @@ async function refreshDevicePools(): Promise<void> {
 function applySelectedPool(): void {
     const pool = devicePools.find(({ id }) => id === elements.flowSavedPool.value);
     if (!pool) {
+        elements.flowPoolName.value = '';
+        selectedPoolDirty = false;
         elements.flowPoolDelete.disabled = true;
         elements.flowPoolSave.textContent = 'Save pool';
         return;
     }
+    elements.flowPoolName.value = pool.name;
     elements.flowPoolPlatform.value = pool.selector.platform ?? '';
     elements.flowPoolKind.value = pool.selector.kind ?? '';
     elements.flowPoolWorker.value = pool.selector.workerId ?? '';
     elements.flowPoolTags.value = pool.selector.tags?.join(', ') ?? '';
+    selectedPoolDirty = false;
     elements.flowPoolDelete.disabled = false;
     elements.flowPoolSave.textContent = 'Update pool';
 }
 
-function switchToCustomPool(): void {
+function markSelectedPoolDirty(): void {
     if (!elements.flowSavedPool.value) return;
-    elements.flowSavedPool.value = '';
-    elements.flowPoolDelete.disabled = true;
-    elements.flowPoolSave.textContent = 'Save pool';
+    selectedPoolDirty = true;
+    elements.flowPoolSave.textContent = 'Save changes';
 }
 
 async function refreshAllocationPreview(): Promise<void> {
@@ -319,15 +326,18 @@ async function refreshAllocationPreview(): Promise<void> {
     elements.flowPoolFields.hidden = !allocating;
     elements.flowAllocationHint.hidden = !allocating;
     if (!allocating) { allocationPreviewUdid = ''; return; }
-    elements.flowAllocationHint.textContent = 'Finding an idle matching device…';
+    elements.flowAllocationHint.textContent = selectedPoolDirty
+        ? 'Previewing unsaved pool changes…'
+        : 'Finding an idle matching device…';
     const data = await jsonRequest('/api/allocation/preview', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(allocationRequest()),
     }) as { candidates: Array<{ name: string; platform: string; kind: string; workerId?: string; activeSchedules: number }> };
     const candidate = data.candidates[0];
     allocationPreviewUdid = (candidate as { udid?: string } | undefined)?.udid ?? '';
+    const dirtyPrefix = selectedPoolDirty ? 'Unsaved pool changes · ' : '';
     elements.flowAllocationHint.textContent = candidate
-        ? `Next allocation: ${candidate.name} · ${candidate.platform}/${candidate.kind}${candidate.workerId ? ` · ${candidate.workerId}` : ''} · ${candidate.activeSchedules} active schedule${candidate.activeSchedules === 1 ? '' : 's'}`
-        : 'No idle connected device currently matches this target.';
+        ? `${dirtyPrefix}Next allocation: ${candidate.name} · ${candidate.platform}/${candidate.kind}${candidate.workerId ? ` · ${candidate.workerId}` : ''} · ${candidate.activeSchedules} active schedule${candidate.activeSchedules === 1 ? '' : 's'}`
+        : `${dirtyPrefix}No idle connected device currently matches this target.`;
 }
 
 interface InspectorElement {
@@ -667,6 +677,9 @@ async function runPortableFlow(): Promise<{ id?: string; schedule?: { id?: strin
         ...(currentFlowId && currentFlowVersion ? { sourceFlowId: currentFlowId, sourceFlowVersion: currentFlowVersion } : {}),
     };
     if (!allocating && !deviceUdid) throw new Error('Choose a device first.');
+    if (allocating && elements.flowSavedPool.value && selectedPoolDirty) {
+        throw new Error('Save the device pool changes before scheduling from this saved pool.');
+    }
     const timing = selectedFlowTiming();
     const common = {
         task: { pluginId: 'com.phone-farm.flow', taskType: 'flow', taskVersion: 1, payload },
@@ -842,22 +855,28 @@ elements.flowTargetMode.addEventListener('change', updateFlowTimingUi);
 elements.flowTimingKind.addEventListener('change', updateFlowTimingUi);
 for (const field of [elements.flowPoolPlatform, elements.flowPoolKind, elements.flowPoolWorker]) {
     field.addEventListener('change', () => {
-        switchToCustomPool();
+        markSelectedPoolDirty();
         void refreshAllocationPreview().catch((error) => { elements.flowAllocationHint.textContent = errorMessage(error); });
     });
 }
 elements.flowPoolTags.addEventListener('change', () => {
-    switchToCustomPool();
+    markSelectedPoolDirty();
     void refreshAllocationPreview().catch((error) => { elements.flowAllocationHint.textContent = errorMessage(error); });
 });
+elements.flowPoolName.addEventListener('input', markSelectedPoolDirty);
 elements.flowSavedPool.addEventListener('change', () => {
     applySelectedPool();
     void refreshAllocationPreview().catch((error) => { elements.flowAllocationHint.textContent = errorMessage(error); });
 });
 elements.flowPoolSave.addEventListener('click', async () => {
     const existing = devicePools.find(({ id }) => id === elements.flowSavedPool.value);
-    const name = existing?.name ?? window.prompt('Name this reusable device pool', 'Automation pool');
-    if (!name) return;
+    const name = elements.flowPoolName.value.replace(/\s+/g, ' ').trim();
+    if (!name) {
+        elements.flowAllocationHint.hidden = false;
+        elements.flowAllocationHint.textContent = 'Give this reusable device pool a name before saving it.';
+        elements.flowPoolName.focus();
+        return;
+    }
     elements.flowPoolSave.disabled = true;
     try {
         const data = await jsonRequest(existing ? `/api/pools/${encodeURIComponent(existing.id)}` : '/api/pools', {
@@ -883,6 +902,7 @@ elements.flowPoolDelete.addEventListener('click', async () => {
     try {
         await jsonRequest(`/api/pools/${encodeURIComponent(pool.id)}`, { method: 'DELETE' });
         elements.flowSavedPool.value = '';
+        applySelectedPool();
         await refreshDevicePools();
         elements.flowResult.textContent = `Deleted pool ${pool.name}.`;
         await refreshAllocationPreview();

@@ -45,41 +45,23 @@
             <div role="listitem"><strong>Maestro bridge</strong><span>Bounded YAML import/export</span></div>
         </div>
 
-        <section class="panel">
-            <div class="section-heading">
-                <div><span class="eyebrow">Catalog</span><h2>Templates</h2></div>
+        <section class="automation-mode-bar" aria-label="Automation mode">
+            <div class="automation-mode-copy">
+                <span class="eyebrow">Workspace</span>
+                <strong>Choose what you want to operate</strong>
+                <p>Portable flows are the cross-platform default. The post pipeline is the dedicated queued publishing surface.</p>
             </div>
-            <div class="automation-template-grid" role="list">
+            <div class="automation-mode-switch" role="list">
                 <button type="button" class="automation-template" data-template="flow" role="listitem" aria-pressed="false">
                     <span class="automation-template-app">iOS + Android</span>
                     <span class="automation-template-title">Portable flow</span>
-                    <span class="automation-template-desc">Compose accessibility-first actions like tap text, wait/assert visible and input into a field, with coordinate gestures only when needed.</span>
-                    <span class="automation-template-meta">Semantic selectors · auto-wait · scheduler-backed</span>
+                    <span class="automation-template-meta">Semantic · versioned · schedulable</span>
                 </button>
                 <button type="button" class="automation-template" data-template="pipeline" role="listitem" aria-pressed="false">
                     <span class="automation-template-app">TikTok</span>
                     <span class="automation-template-title">Post pipeline</span>
-                    <span class="automation-template-desc">Queue video + title/caption. Auto-check on a cadence you choose (production slots or fast test intervals) and publish the next ready item straight to TikTok.</span>
-                    <span class="automation-template-meta">Video · caption · publish</span>
+                    <span class="automation-template-meta">Queue · cadence · publish</span>
                 </button>
-                <a class="automation-template muted-template" href="/" role="listitem">
-                    <span class="automation-template-app">TikTok</span>
-                    <span class="automation-template-title">Warmup</span>
-                    <span class="automation-template-desc">For You browse session — open a device to configure duration, personality, and engagement.</span>
-                    <span class="automation-template-meta">Open a device →</span>
-                </a>
-                <a class="automation-template muted-template" href="/" role="listitem">
-                    <span class="automation-template-app">TikTok</span>
-                    <span class="automation-template-title">Engagement</span>
-                    <span class="automation-template-desc">Following-feed session on people you already follow. Run from a device page.</span>
-                    <span class="automation-template-meta">Open a device →</span>
-                </a>
-                <a class="automation-template muted-template" href="/" role="listitem">
-                    <span class="automation-template-app">TikTok</span>
-                    <span class="automation-template-title">Create a post</span>
-                    <span class="automation-template-desc">One-shot publish with media attached now. Use the pipeline when you want a queue drained on a clock.</span>
-                    <span class="automation-template-meta">Open a device →</span>
-                </a>
             </div>
         </section>
 
@@ -95,11 +77,14 @@
                     <button id="flow-import" class="button secondary" type="button">Import flow</button>
                 </aside>
                 <div class="flow-editor-panel">
-                    <div class="flow-toolbar">
+                    <section class="flow-stage">
+                        <div class="flow-stage-head"><span class="flow-stage-index">1</span><div><strong>Target</strong><span>Pick one runtime or allocate from a reusable pool.</span></div></div>
+                        <div class="flow-toolbar">
                         <label class="field"><span>Target</span><select id="flow-target-mode"><option value="device">Specific device</option><option value="allocate">Any matching idle device</option></select></label>
                         <label id="flow-device-field" class="field"><span>Device</span><select id="flow-device"><option value="">Select a device…</option></select></label>
                         <div id="flow-pool-fields" class="flow-pool-fields" hidden>
                             <label class="field"><span>Saved pool</span><select id="flow-saved-pool"><option value="">Custom target</option></select></label>
+                            <label class="field"><span>Pool name</span><input id="flow-pool-name" type="text" maxlength="80" placeholder="e.g. Android staging"></label>
                             <label class="field"><span>Platform</span><select id="flow-pool-platform"><option value="">Any</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
                             <label class="field"><span>Kind</span><select id="flow-pool-kind"><option value="">Any</option><option value="physical">Physical</option><option value="simulator">Simulator</option><option value="emulator">Emulator</option></select></label>
                             <label class="field"><span>Host</span><select id="flow-pool-worker"><option value="">Any host</option></select></label>
@@ -110,9 +95,11 @@
                             </div>
                         </div>
                         <label class="field"><span>Flow name</span><input id="flow-name" type="text" maxlength="120" value="My mobile flow"></label>
-                        <button id="flow-add" class="button secondary" type="button">Add step</button>
                     </div>
                     <p id="flow-allocation-hint" class="flow-allocation-hint" hidden></p>
+                    </section>
+                    <section class="flow-stage">
+                        <div class="flow-stage-head"><span class="flow-stage-index">2</span><div><strong>Author</strong><span>Build semantic steps, inspect the live accessibility tree, then save a version.</span></div><button id="flow-add" class="button secondary" type="button">Add step</button></div>
                     <details class="flow-inspector-panel">
                         <summary><span>Semantic Inspector</span><small>Pick live accessibility elements instead of typing selectors by hand</small></summary>
                         <div class="flow-inspector-toolbar">
@@ -134,6 +121,9 @@
                         <button id="flow-save" class="button secondary" type="button">Save</button>
                     </div>
                     <div id="flow-steps" class="flow-steps" aria-live="polite"></div>
+                    </section>
+                    <section class="flow-stage">
+                        <div class="flow-stage-head"><span class="flow-stage-index">3</span><div><strong>Schedule &amp; run</strong><span>Run immediately or keep the flow on a durable recurring schedule.</span></div></div>
                     <div class="flow-schedule-bar">
                         <label class="field"><span>Timing</span><select id="flow-timing-kind"><option value="now">Run now</option><option value="once">Once</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="interval">Interval</option></select></label>
                         <label id="flow-once-field" class="field" hidden><span>Run at</span><input id="flow-run-at" type="datetime-local"></label>
@@ -147,6 +137,7 @@
                         <span id="flow-result" class="run-meta"></span><span class="spacer"></span>
                         <button id="flow-run" class="button primary" type="button">Run now</button>
                     </div>
+                    </section>
                 </div>
             </div>
         </section>

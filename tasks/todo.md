@@ -30,7 +30,8 @@
 - [x] FARM-022 Semantic Inspector: live accessibility elements → tap/wait/assert/input authoring without hand-entering selectors.
 - [x] FARM-023 device tags + named PostgreSQL allocation pools + Fleet search/pool authoring.
 - [x] FARM-023 execution-host observability: configured offline workers remain visible; online workers report bounded load/RAM/CPU/uptime telemetry.
-- [x] Current source regression gate: `npm run check` => 126/126 tests + TypeScript green (2026-09-14).
+- [x] FARM-024 Control Center UX convergence: actionable Overview, staged Automation Studio, Fleet state, cross-platform Runs and corrected saved-pool editing.
+- [x] Current source regression gate: `npm run check` => 127/127 tests + TypeScript green (2026-09-14).
 
 ## Live-gated
 

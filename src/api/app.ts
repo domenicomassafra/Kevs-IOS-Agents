@@ -1210,6 +1210,23 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             const activeSchedules = schedules.filter(({ status }) => status === 'active').length;
             const running = executions.filter(({ status }) => status === 'running').length;
             const queued = executions.filter(({ status }) => status === 'queued').length;
+            const recentExecutions = executions.slice(0, 6);
+            const recentFailures = executions.slice(0, 20).filter(({ status }) => status === 'failed').length;
+            const attention: Array<{ title: string; copy: string; href: string }> = [];
+            if (!devices.length) attention.push({
+                title: 'No devices registered', copy: 'Attach a phone, simulator or emulator before scheduling automation.', href: '/devices/register',
+            });
+            else if (onlineDevices === 0) attention.push({
+                title: 'All devices offline', copy: 'Check execution hosts or boot a virtual runtime from the execution layer.', href: '/fleet',
+            });
+            if (hosts.length && onlineHosts < hosts.length) attention.push({
+                title: `${hosts.length - onlineHosts} execution host${hosts.length - onlineHosts === 1 ? '' : 's'} offline`,
+                copy: 'Configured hosts remain visible and devices will return automatically when workers reconnect.', href: '#host-list',
+            });
+            if (recentFailures) attention.push({
+                title: `${recentFailures} recent failure${recentFailures === 1 ? '' : 's'}`,
+                copy: 'Inspect execution history before retrying failed or interrupted work.', href: '/tasks',
+            });
             const cards = [
                 {
                     href: '/fleet', eyebrow: 'Fleet', title: `${onlineDevices}/${devices.length} online`,
@@ -1242,7 +1259,16 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                     meta: 'WDA · Appium · optional scrcpy H.264',
                 },
             ].map((card) => `<a class="command-card" href="${card.href}"><span class="command-card-eyebrow">${escapeHtml(card.eyebrow)}</span><strong>${escapeHtml(card.title)}</strong><p>${escapeHtml(card.copy)}</p><span class="command-card-meta">${escapeHtml(card.meta)} <span aria-hidden="true">→</span></span></a>`).join('');
-            return reply.type('text/html').send(`<section id="control-center" class="control-center" hx-get="/api/fragments/control-center" hx-trigger="every 15s" hx-swap="outerHTML"><div class="overview-section-head"><div><span class="eyebrow">Workspace</span><h2>Control center</h2></div><span class="control-center-live"><span></span>live</span></div><div class="command-grid">${cards}</div></section>`);
+            const healthState = attention.length
+                ? `<div class="control-alerts">${attention.map((item) => `<a class="control-alert" href="${item.href}"><span class="control-alert-mark"></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.copy)}</small></span><span aria-hidden="true">→</span></a>`).join('')}</div>`
+                : '<div class="control-alert healthy"><span class="control-alert-mark"></span><span><strong>Control plane healthy</strong><small>No device, host or recent execution failures require attention.</small></span></div>';
+            const pluginName = (pluginId: string) => pluginId === 'com.phone-farm.flow'
+                ? 'Portable flow'
+                : pluginId === 'com.git-agni.instagram' ? 'Instagram' : pluginId === 'com.git-agni.tiktok' ? 'TikTok' : pluginId;
+            const recent = recentExecutions.length
+                ? recentExecutions.map((execution) => `<a class="recent-run" href="/tasks"><span class="status ${escapeHtml(execution.status)}">${escapeHtml(execution.status)}</span><span class="recent-run-copy"><strong>${escapeHtml(pluginName(execution.pluginId))} · ${escapeHtml(execution.taskType)}</strong><small>${escapeHtml(execution.deviceUdid)} · ${escapeHtml(execution.scheduledFor.toISOString())}</small></span><span aria-hidden="true">→</span></a>`).join('')
+                : '<div class="empty-state-inline">No executions yet. Build a flow to create the first scheduler run.</div>';
+            return reply.type('text/html').send(`<section id="control-center" class="control-center" hx-get="/api/fragments/control-center" hx-trigger="every 15s" hx-swap="outerHTML"><div class="overview-section-head"><div><span class="eyebrow">Workspace</span><h2>Control center</h2></div><span class="control-center-live ${attention.length ? 'attention' : ''}"><span></span>${attention.length ? `${attention.length} attention` : 'healthy'}</span></div>${healthState}<div class="command-grid">${cards}</div><div class="recent-runs"><div class="recent-runs-head"><div><span class="eyebrow">Scheduler</span><h3>Recent runs</h3></div><a href="/tasks">View all →</a></div><div class="recent-run-list">${recent}</div></div></section>`);
         });
         app.get('/api/fragments/devices', async (_request, reply) => {
             const devices = await registeredWithStatus(discoverDevices);
@@ -1273,7 +1299,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 ? `<details class="disabled-devices"${disabled.length ? '' : ' hidden'}><summary>Disconnected devices (${disabled.length})</summary><ul>${disabled.map((device) => `<li><span class="device-name">${escapeHtml(device.name)}</span><span class="inline-actions">${renameButton(device.udid)}${toggleButton(device.udid, 'Reconnect', false)}</span></li>`).join('')}</ul></details>`
                 : '';
             const deviceListScript = `<script>if(!window.__deviceListActions){window.__deviceListActions=1;document.addEventListener('click',async function(e){var rename=e.target.closest('[data-rename-device]');if(rename){e.preventDefault();var root=rename.closest('.device-card,li')||rename.parentElement;var title=root&&root.querySelector('.device-name');var current=(title&&title.textContent||'').replace(/\\s+/g,' ').trim();var next=window.prompt('Rename this phone for the farm grid',current);if(next===null)return;next=next.replace(/\\s+/g,' ').trim();if(!next){alert('Name cannot be empty');return}rename.disabled=true;var rr=await fetch('/api/devices/'+rename.dataset.renameDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name:next})});if(rr.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{rename.disabled=false;var err=((await rr.json().catch(function(){return{}}))||{}).error||('Rename failed ('+rr.status+')');alert(err)}return}var b=e.target.closest('[data-toggle-device]');if(!b)return;e.preventDefault();b.disabled=true;var r=await fetch('/api/devices/'+b.dataset.toggleDevice,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({disabled:b.dataset.disabled==='true'})});if(r.ok){if(window.htmx)htmx.ajax('GET','/api/fragments/devices',{target:'#device-list',swap:'outerHTML'})}else{b.disabled=false;alert(((await r.json().catch(function(){return{}}))||{}).error||'Request failed')}})}</script>`;
-            return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || '<div class="empty-state"><h2>No active devices</h2></div>'}${disabledPanel}${deviceListScript}</section>`);
+            const emptyDevices = '<div class="empty-state"><span class="empty-state-kicker">Device layer</span><h2>No active devices</h2><p>Attach a real phone, simulator or emulator, or reconnect a disabled device below.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Add device</a><a class="button secondary" href="/automations?template=flow">Open Automation Studio</a></div></div>';
+            return reply.type('text/html').send(`<section id="device-list" class="device-list" hx-get="/api/fragments/devices" hx-trigger="every 5s" hx-swap="outerHTML" aria-live="polite">${cards || emptyDevices}${disabledPanel}${deviceListScript}</section>`);
         });
         app.get('/api/fragments/hosts', async (_request, reply) => {
             const [hosts, runtimes] = await Promise.all([
@@ -1310,7 +1337,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 return `<article class="host-card${online ? '' : ' offline'}"><div class="host-card-head"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div>${status}</div>${metricHtml}<div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">capabilities unavailable</span>'}</div>${error}${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : empty}</article>`;
             }).join('');
             const onlineHosts = hosts.filter((host) => host.online !== false).length;
-            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${onlineHosts}/${hosts.length} online</p></div><div class="host-grid">${cards || '<div class="empty-state"><h2>No execution hosts configured</h2><p>Pair a Mac/PC worker with the control plane to expose real or virtual devices.</p></div>'}</div></section>`);
+            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${onlineHosts}/${hosts.length} online</p></div><div class="host-grid">${cards || '<div class="empty-state"><span class="empty-state-kicker">Execution layer</span><h2>No execution hosts configured</h2><p>Pair a Mac/PC worker with the control plane to expose physical devices and virtual runtimes.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Open device setup</a></div></div>'}</div></section>`);
         });
         app.get('/api/fragments/fleet-health', async (_request, reply) => {
             const [devices, registered, schedules, executions, campaignRows] = await Promise.all([

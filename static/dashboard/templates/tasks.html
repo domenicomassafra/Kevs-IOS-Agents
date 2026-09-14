@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Tasks · IOS AGENTS</title>
+    <title>Runs · Mobile Farm</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,17 +15,23 @@
             <a class="brand" href="/">
                 <span class="brand-mark" aria-hidden="true"></span>
                 <span class="brand-text">
-                    <span class="brand-name">IOS AGENTS</span>
-                    <span class="brand-by">by kevbuilds apps</span>
+                    <span class="brand-name">MOBILE FARM</span>
+                    <span class="brand-by">real + virtual device control</span>
                 </span>
             </a>
             <nav class="topbar-nav"><a class="nav-link" href="/">Overview</a><a class="nav-link" href="/fleet">Fleet</a><a class="nav-link" href="/automations">Automations</a><a class="nav-link is-active" href="/tasks">Runs</a><button id="refresh-tasks" class="button secondary" type="button">Refresh</button>__PLUGIN_NAV____AUTH_NAV__</nav>
         </div>
     </header>
     <main class="shell">
-        <header class="page-header">
-            <div><span class="eyebrow">Durable scheduler</span><h1>Queued <em>tasks</em></h1><p>Schedules and execution history across every device.</p></div>
+        <header class="page-header command-header">
+            <div><span class="eyebrow">Durable scheduler</span><h1>Runs</h1><p>Schedules and execution history across every device, plugin and portable flow.</p></div>
+            <a class="button primary" href="/automations?template=flow">Create automation</a>
         </header>
+        <section class="runs-toolbar" aria-label="Run filters">
+            <input id="runs-search" type="search" placeholder="Search device, plugin, task…" aria-label="Search runs">
+            <select id="runs-status" aria-label="Filter run status"><option value="">All statuses</option><option value="active">Active schedules</option><option value="paused">Paused schedules</option><option value="completed">Completed schedules</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option><option value="stopped">Stopped</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select>
+            <span id="runs-summary" class="run-meta">Loading…</span>
+        </section>
         <section class="panel task-section">
             <div class="section-heading"><div><span class="eyebrow">Queue</span><h2>Schedules</h2></div></div>
             <div id="schedules" class="task-list loading-card"><span class="spinner"></span>Loading schedules…</div>

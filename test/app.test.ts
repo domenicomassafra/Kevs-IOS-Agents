@@ -173,6 +173,7 @@ test('serves a live fleet wall instead of the old mock fleet demo', async (conte
     assert.equal(response.statusCode, 200);
     assert.match(response.body, /Live device wall/i);
     assert.match(response.body, /assets\/fleet\.js/);
+    assert.match(response.body, /id="fleet-notice"/);
     assert.doesNotMatch(response.body, /mock fleet of 20 seats/i);
 
     const legacy = await app.inject({ method: 'GET', url: '/demo/devices' });
@@ -185,7 +186,12 @@ test('overview control center exposes the major product surfaces instead of hidi
         async listFlowDefinitions() { return [{ id: 'flow-1' }]; },
         async listDevicePools() { return [{ id: 'pool-1' }, { id: 'pool-2' }]; },
         async listSchedules() { return [{ status: 'active' }, { status: 'paused' }]; },
-        async listExecutions() { return [{ status: 'running' }, { status: 'queued' }]; },
+        async listExecutions() {
+            return [
+                { status: 'running', pluginId: 'com.phone-farm.flow', taskType: 'flow', deviceUdid: 'sim-1', scheduledFor: new Date(0) },
+                { status: 'queued', pluginId: 'com.git-agni.instagram', taskType: 'doomscroll', deviceUdid: 'iphone-1', scheduledFor: new Date(1) },
+            ];
+        },
     } as unknown as SchedulerRepository;
     const app = await createApp({
         plugins: new PluginRegistry([]), scheduler, registrations: registrations(), dashboardTheme: defaultDashboardTheme,
@@ -210,6 +216,22 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(fragment.body, /1 active schedule/);
     assert.match(fragment.body, /1\/1 online/);
     assert.match(fragment.body, /Semantic cross-platform flows/i);
+    assert.match(fragment.body, /Recent runs/);
+    assert.match(fragment.body, /Portable flow/);
+    assert.match(fragment.body, /No devices registered/);
+
+    const automations = await inject(app, { method: 'GET', url: '/automations' });
+    assert.equal(automations.statusCode, 200);
+    assert.match(automations.body, /automation-mode-bar/);
+    assert.match(automations.body, /id="flow-pool-name"/);
+    assert.match(automations.body, /Schedule &amp; run/);
+    assert.doesNotMatch(automations.body, /Create a post/);
+
+    const runs = await inject(app, { method: 'GET', url: '/tasks' });
+    assert.equal(runs.statusCode, 200);
+    assert.match(runs.body, /Runs · Mobile Farm/);
+    assert.match(runs.body, /id="runs-search"/);
+    assert.doesNotMatch(runs.body, /brand-name">IOS AGENTS/);
 });
 
 test('device pool API normalizes selectors and rejects duplicate names', async (context) => {

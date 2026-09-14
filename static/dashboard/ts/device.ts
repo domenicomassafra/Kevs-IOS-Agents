@@ -1586,7 +1586,7 @@ document.addEventListener('click', (event) => {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ name }),
             });
-            document.title = `${name} · IOS AGENTS`;
+            document.title = `${name} · Mobile Farm`;
             const response = await fetch(`/api/devices/${encodeURIComponent(udid)}/fragments/summary`);
             if (!response.ok) throw new Error(`Could not refresh device header (${response.status})`);
             const html = await response.text();

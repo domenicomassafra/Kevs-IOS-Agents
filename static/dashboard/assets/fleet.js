@@ -2,6 +2,7 @@ const grid = document.querySelector('#fleet-grid');
 const count = document.querySelector('#fleet-visible-count');
 const refresh = document.querySelector('#fleet-refresh');
 const search = document.querySelector('#fleet-search');
+const notice = document.querySelector('#fleet-notice');
 const groupBy = document.querySelector('#fleet-group');
 const bulk = document.querySelector('#fleet-bulk');
 const selectedCount = document.querySelector('#fleet-selected-count');
@@ -118,11 +119,20 @@ function render() {
     stats.physical.textContent = String(devices.filter((device) => (device.kind ?? 'physical') === 'physical').length);
     stats.virtual.textContent = String(devices.filter((device) => (device.kind ?? 'physical') !== 'physical').length);
     count.textContent = `Showing ${visible.length} of ${devices.length}`;
+    const online = devices.filter((device) => Boolean(device.connected) && !device.disabled).length;
+    notice.className = `fleet-notice${devices.length === 0 || online === 0 ? ' needs-attention' : ''}`;
+    notice.innerHTML = devices.length === 0
+        ? '<strong>No devices registered.</strong><span>Add a physical device, simulator or emulator to populate the fleet.</span><a href="/devices/register">Add device →</a>'
+        : online === 0
+            ? `<strong>All ${devices.length} devices are offline.</strong><span>Check the execution host or boot a virtual runtime from Overview.</span><a href="/">Open Overview →</a>`
+            : `<strong>${online}/${devices.length} devices online.</strong><span>${running.size} running now · fleet previews refresh every 8 seconds.</span>`;
     for (const udid of [...selected])
         if (!devices.some((device) => device.udid === udid))
             selected.delete(udid);
     grid.innerHTML = visible.length ? groupedHtml(visible)
-        : '<div class="empty-state"><h2>No devices match this filter</h2><p>Change the filter or start a runtime from the Devices page.</p></div>';
+        : devices.length
+            ? '<div class="empty-state"><h2>No devices match this filter</h2><p>Clear search/filter criteria or change grouping.</p></div>'
+            : '<div class="empty-state"><h2>Your fleet is empty</h2><p>Attach a real phone or boot a virtual runtime from the control center.</p><a class="button primary" href="/devices/register">Add device</a></div>';
     updateBulkBar();
 }
 async function load() {
