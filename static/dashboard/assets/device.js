@@ -862,13 +862,19 @@ function taskActionButton(label, action) {
     buttonElement.type = 'button';
     buttonElement.textContent = label;
     buttonElement.addEventListener('click', () => {
+        buttonElement.disabled = true;
+        elements.deviceQueueStatus.textContent = `${label}…`;
         void (async () => {
             try {
                 await action();
                 await loadDeviceTasks();
+                elements.deviceQueueStatus.textContent = `${label} complete.`;
             }
             catch (error) {
-                window.alert(errorMessage(error));
+                elements.deviceQueueStatus.textContent = errorMessage(error);
+            }
+            finally {
+                buttonElement.disabled = false;
             }
         })();
     });

@@ -1341,6 +1341,8 @@ dialog#calibrate-dialog { width: min(760px, calc(100% - 28px)); }
 }
 .runs-toolbar input, .runs-toolbar select { min-height: 36px; padding: 7px 9px; }
 .runs-toolbar .run-meta { white-space: nowrap; }
+.runs-action-status { margin: -10px 0 14px; text-align: left; }
+.runs-action-status.error { color: var(--danger); }
 dialog#schedule-edit-dialog { width: min(680px, calc(100% - 28px)); }
 dialog#execution-detail-dialog { width: min(760px, calc(100% - 28px)); }
 .modal-lead { margin: -4px 0 14px; font-size: 12px; }

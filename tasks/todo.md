@@ -34,6 +34,7 @@
 - [x] FARM-025 Runs operations: visual schedule editing plus execution detail/log inspection without raw JSON prompts.
 - [x] FARM-026 Connected actions: Overview device tags + direct Automate links and prompt-free Flow Library duplication.
 - [x] FARM-027 Prompt-free device naming and pure HTMX device fragments.
+- [x] FARM-028 Inline operational feedback; no browser alerts for ordinary action failures.
 - [x] Current source regression gate: `npm run check` => 127/127 tests + TypeScript green (2026-09-14).
 
 ## Live-gated

@@ -32,6 +32,7 @@
             <select id="runs-status" aria-label="Filter run status"><option value="">All statuses</option><option value="active">Active schedules</option><option value="paused">Paused schedules</option><option value="completed">Completed schedules</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option><option value="stopped">Stopped</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select>
             <span id="runs-summary" class="run-meta">Loading…</span>
         </section>
+        <p id="runs-action-status" class="runs-action-status run-meta" aria-live="polite" hidden></p>
         <section class="panel task-section">
             <div class="section-heading"><div><span class="eyebrow">Queue</span><h2>Schedules</h2></div></div>
             <div id="schedules" class="task-list loading-card"><span class="spinner"></span>Loading schedules…</div>

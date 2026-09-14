@@ -43,6 +43,7 @@ const refresh = document.querySelector<HTMLButtonElement>('#refresh-tasks')!;
 const search = document.querySelector<HTMLInputElement>('#runs-search')!;
 const statusFilter = document.querySelector<HTMLSelectElement>('#runs-status')!;
 const summary = document.querySelector<HTMLElement>('#runs-summary')!;
+const actionStatus = document.querySelector<HTMLElement>('#runs-action-status')!;
 const scheduleDialog = document.querySelector<HTMLDialogElement>('#schedule-edit-dialog')!;
 const scheduleForm = document.querySelector<HTMLFormElement>('#schedule-edit-form')!;
 const scheduleClose = document.querySelector<HTMLButtonElement>('#schedule-edit-close')!;
@@ -232,9 +233,18 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 function button(label: string, action: () => Promise<void>): HTMLButtonElement {
     const value = document.createElement('button');
     value.className = 'icon-button'; value.type = 'button'; value.textContent = label;
-    value.addEventListener('click', () => void action().catch((error) => {
-        window.alert(error instanceof Error ? error.message : String(error));
-    }));
+    value.addEventListener('click', () => {
+        value.disabled = true;
+        actionStatus.hidden = false;
+        actionStatus.classList.remove('error');
+        actionStatus.textContent = `${label}…`;
+        void action().then(() => {
+            actionStatus.textContent = `${label} complete.`;
+        }).catch((error) => {
+            actionStatus.classList.add('error');
+            actionStatus.textContent = error instanceof Error ? error.message : String(error);
+        }).finally(() => { value.disabled = false; });
+    });
     return value;
 }
 
