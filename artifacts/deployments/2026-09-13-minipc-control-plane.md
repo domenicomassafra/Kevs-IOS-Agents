@@ -90,3 +90,14 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - MiniPC completed a second full Docker rebuild on `aeb17b2`; `overview.js` returned HTTP 200 as `text/javascript`, control-plane/PostgreSQL were healthy and `/health` returned `ok=true`.
 - Production browser smoke created two temporary iOS registry entries (one active/offline with `staging` tag, one disconnected) and verified shown/total counts, tag search, disconnected filtering, platform zero-state, reset and HTMX filter persistence.
 - Both temporary devices were deleted with HTTP 204, `/api/devices` returned `[]`, and the temporary headless Chrome process/profile were removed. No smoke fixture remains.
+
+
+## Device inventory hierarchy/density cutover — 2026-09-14
+
+- Final production application commit: `eed219b` on `main` (feature lineage `15d413a` → `1641503` → `eed219b`).
+- Final source gate on the exact runtime code: 127/127 tests, TypeScript green, `build:web` green, `git diff --check` green, and gitleaks reported no leaks.
+- The MiniPC completed the Docker build through `Successfully built`; the recreated control-plane and PostgreSQL both reported `healthy`, `/health` returned `ok=true`, and the production-container doctor reported `Source readiness: ready` and `Runtime readiness: ready`.
+- The actually served Tailnet Overview exposed the new sort selector, Grid/Compact controls, tighter name/status/runtime hierarchy, primary `Open`, secondary `Automate`, and `•••` maintenance menu containing Rename/Disconnect.
+- Production browser acceptance used three temporary fixtures created in non-sorted registry order (Zulu, Alpha, Mike). The live page rendered Alpha → Mike → Zulu, proving the client sort rather than repo-only markup.
+- Compact mode remained active after a periodic `#device-list` HTMX outerHTML refresh and, critically, after a full browser reload followed by the next HTMX settle (`compact=true`, `localStorage=compact`). The live acceptance exposed an `afterSwap` timing issue; final commit `eed219b` re-applies view/filter state on `htmx:afterSettle`.
+- Cleanup completed: Alpha/Mike/Zulu each returned HTTP 204 on delete, `/api/devices` returned `[]`, CDP port 9331 was closed, and the temporary headless-Chrome profile plus FARM-031 scripts/screenshots were removed.
