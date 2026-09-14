@@ -2476,3 +2476,11 @@ body:not([data-runtime-backend="wda"]) .wda-only { display: none !important; }
 .system-control-list { display:grid; gap:6px; margin-top:8px; }
 .workflows-panel .wda-only { border-top:1px solid var(--border); padding-top:12px; }
 @media (max-width:760px) { .device-command-bar { align-items:stretch; flex-direction:column; } .device-command-primary { display:grid; grid-template-columns:1fr; } .device-command-bar .button { width:100%; } .device-manage-menu { margin-left:0; } .device-manage-menu > summary { width:100%; } .device-manage-popover { position:static; width:100%; margin-top:6px; } .device-action-status { margin-left:0; text-align:left; } .stream-toolbar { justify-content:flex-start; } }
+
+.device-secondary-section { margin-top:14px; border:1px solid var(--border); border-radius:14px; background:rgb(255 255 255 / 1.5%); overflow:hidden; }
+.device-secondary-section > summary { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:11px 12px; cursor:pointer; font-size:12px; font-weight:750; }
+.device-secondary-section > summary small { color:var(--muted); font-size:10px; font-weight:500; }
+.device-secondary-section[open] > summary { border-bottom:1px solid var(--border); }
+.device-secondary-content { padding:0 12px 12px; }
+.device-secondary-content > .workflow-group { border-top:0; padding-top:0; }
+@media (max-width:860px) { .workspace-grid { grid-template-columns:1fr; } .remote-panel { order:0; } .action-stack { order:1; } }

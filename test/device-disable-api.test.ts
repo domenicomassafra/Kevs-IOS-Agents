@@ -68,6 +68,7 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     assert.match(devicePage.body, /id="stream-mode"/);
     assert.match(devicePage.body, /id="refresh-preview"/);
     assert.match(devicePage.body, /class="device-manage-menu"/);
+    assert.match(devicePage.body, /class="device-secondary-section wda-only"/);
     assert.match(devicePage.body, /data-runtime-disabled="false"/);
     assert.match(devicePage.body, /wda-only/);
 });
