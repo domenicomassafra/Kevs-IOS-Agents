@@ -37,40 +37,40 @@
                 <h1>Live device wall</h1>
                 <p>Search, group and operate the whole fleet. Still previews stay cheap; only the focused device upgrades to live streaming.</p>
             </div>
-            <div class="fleet-stats" aria-label="Fleet summary">
+            <div class="fleet-stats" aria-label="Fleet connectivity summary">
                 <div class="fleet-stat"><span id="fleet-total" class="fleet-stat-value">—</span><span class="fleet-stat-label">Devices</span></div>
                 <div class="fleet-stat"><span id="fleet-online" class="fleet-stat-value">—</span><span class="fleet-stat-label">Online</span></div>
-                <div class="fleet-stat"><span id="fleet-physical" class="fleet-stat-value">—</span><span class="fleet-stat-label">Physical</span></div>
-                <div class="fleet-stat"><span id="fleet-virtual" class="fleet-stat-value">—</span><span class="fleet-stat-label">Virtual</span></div>
+                <div class="fleet-stat"><span id="fleet-offline" class="fleet-stat-value">—</span><span class="fleet-stat-label">Offline</span></div>
+                <div class="fleet-stat"><span id="fleet-disconnected" class="fleet-stat-value">—</span><span class="fleet-stat-label">Disconnected</span></div>
             </div>
         </header>
 
         <div id="fleet-notice" class="fleet-notice" aria-live="polite">Loading fleet state…</div>
 
-        <div class="fleet-toolbar">
-            <div class="fleet-filters" role="group" aria-label="Filter devices">
-                <button type="button" class="fleet-filter is-active" data-filter="all">All</button>
-                <button type="button" class="fleet-filter" data-filter="online">Online</button>
-                <button type="button" class="fleet-filter" data-filter="ios">iOS</button>
-                <button type="button" class="fleet-filter" data-filter="android">Android</button>
-                <button type="button" class="fleet-filter" data-filter="physical">Physical</button>
-                <button type="button" class="fleet-filter" data-filter="virtual">Virtual</button>
-                <button type="button" class="fleet-filter" data-filter="running">Running</button>
+        <section class="fleet-toolbar" aria-label="Fleet controls">
+            <div class="fleet-toolbar-primary">
+                <label class="fleet-search-field"><span class="sr-only">Search fleet</span><input id="fleet-search" type="search" placeholder="Search name, UDID, tag, host…"></label>
+                <label><span class="sr-only">Filter connectivity</span><select id="fleet-status"><option value="">All states</option><option value="online">Online</option><option value="offline">Offline</option><option value="disconnected">Disconnected</option></select></label>
+                <label><span class="sr-only">Filter platform</span><select id="fleet-platform"><option value="">All platforms</option><option value="ios">iOS</option><option value="android">Android</option></select></label>
+                <label><span class="sr-only">Filter device kind</span><select id="fleet-kind"><option value="">All kinds</option><option value="physical">Physical</option><option value="simulator">Simulator</option><option value="emulator">Emulator</option></select></label>
+                <label><span class="sr-only">Group devices</span><select id="fleet-group"><option value="host" selected>Group by host</option><option value="platform">Group by platform</option><option value="kind">Group by kind</option><option value="none">No grouping</option></select></label>
             </div>
-            <div class="inline-actions">
-                <input id="fleet-search" class="fleet-search" type="search" placeholder="Search name, UDID, host, tag…" aria-label="Search devices">
-                <label class="fleet-group-field">Group <select id="fleet-group"><option value="none">None</option><option value="host">Host</option><option value="platform">Platform</option><option value="kind">Kind</option></select></label>
-                <p class="fleet-toolbar-meta" id="fleet-visible-count">Loading…</p><button id="fleet-refresh" class="button secondary" type="button">Refresh</button>
+            <div class="fleet-toolbar-secondary">
+                <label class="fleet-auto-refresh"><input id="fleet-auto-refresh" type="checkbox" checked><span>Auto · 8s</span></label>
+                <button id="fleet-reset" class="button secondary" type="button">Reset filters</button>
+                <button id="fleet-refresh" class="button secondary" type="button">Refresh now</button>
+                <span id="fleet-visible-count" class="fleet-toolbar-meta">Loading…</span>
+                <span id="fleet-last-updated" class="run-meta">Waiting for refresh</span>
             </div>
-        </div>
+        </section>
 
         <div id="fleet-bulk" class="fleet-bulk-bar" hidden>
-            <strong id="fleet-selected-count">0 selected</strong>
+            <div><span class="eyebrow">Bulk operations</span><strong id="fleet-selected-count">0 selected</strong></div>
             <button id="fleet-select-visible" class="button secondary" type="button">Select visible</button>
             <button id="fleet-clear-selection" class="button secondary" type="button">Clear</button>
             <span class="spacer"></span>
-            <select id="fleet-bulk-action"><option value="">Bulk action…</option><option value="reconnect">Reconnect</option><option value="clear-queue">Clear queue / stop automation</option><option value="enable">Enable</option><option value="disable">Disable</option></select>
-            <button id="fleet-bulk-apply" class="button primary" type="button">Apply</button>
+            <select id="fleet-bulk-action"><option value="">Choose safe action…</option><option value="reconnect">Reconnect</option><option value="enable">Enable</option><option value="disable">Disconnect / disable</option><option value="clear-queue">Clear queue + stop</option></select>
+            <button id="fleet-bulk-apply" class="button primary" type="button">Review & apply</button>
             <span id="fleet-bulk-status" class="run-meta"></span>
         </div>
 
@@ -80,12 +80,15 @@
             </section>
             <aside id="fleet-focus" class="fleet-focus" hidden>
                 <div class="section-heading">
-                    <div><span class="eyebrow">Focused device</span><h2 id="fleet-focus-name">Device</h2><p id="fleet-focus-meta"></p></div>
+                    <div><span class="eyebrow">One live stream</span><h2 id="fleet-focus-name">Device</h2><p id="fleet-focus-meta"></p></div>
                     <button id="fleet-focus-close" class="icon-button" type="button">Close</button>
                 </div>
                 <div class="fleet-focus-phone"><img id="fleet-focus-screen" alt="Live focused device screen" draggable="false"></div>
-                <div class="form-actions">
-                    <span id="fleet-focus-status" class="run-meta">Select a device</span><span class="spacer"></span>
+                <div class="fleet-focus-state"><span id="fleet-focus-mode" class="connection-chip">Idle</span><span id="fleet-focus-status" class="run-meta">Select a device</span></div>
+                <div class="form-actions fleet-focus-actions">
+                    <button id="fleet-focus-retry" class="button secondary" type="button">Retry live</button>
+                    <button id="fleet-focus-still" class="button secondary" type="button">Refresh still</button>
+                    <span class="spacer"></span>
                     <a id="fleet-focus-open" class="button primary" href="/">Open workspace</a>
                 </div>
             </aside>

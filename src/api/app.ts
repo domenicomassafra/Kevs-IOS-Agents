@@ -439,14 +439,23 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
 
         if (action === 'enable' || action === 'disable') {
             const disabled = action === 'disable';
+            const blocked = new Set<string>();
+            if (disabled) {
+                for (const udid of deviceUdids) {
+                    if (await options.scheduler.activeExecution(udid)) blocked.add(udid);
+                }
+            }
             await mutateDevices((devices) => {
                 for (const device of devices) {
-                    if (!deviceUdids.includes(device.udid)) continue;
+                    if (!deviceUdids.includes(device.udid) || blocked.has(device.udid)) continue;
                     if (disabled) device.disabled = true;
                     else delete device.disabled;
                 }
             });
-            return { ok: true, action, affected: deviceUdids.length };
+            const results = deviceUdids.map((udid) => blocked.has(udid)
+                ? { udid, ok: false, message: 'automation is running; clear queue / stop before disabling' }
+                : { udid, ok: true, message: disabled ? 'disabled' : 'enabled' });
+            return { ok: results.every(({ ok }) => ok), action, affected: results.filter(({ ok }) => ok).length, results };
         }
 
         const results: Array<{ udid: string; ok: boolean; message: string }> = [];

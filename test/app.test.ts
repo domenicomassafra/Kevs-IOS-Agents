@@ -181,7 +181,21 @@ test('serves a live fleet wall instead of the old mock fleet demo', async (conte
     assert.match(response.body, /Live device wall/i);
     assert.match(response.body, /assets\/fleet\.js/);
     assert.match(response.body, /id="fleet-notice"/);
+    assert.match(response.body, /id="fleet-status"/);
+    assert.match(response.body, /id="fleet-platform"/);
+    assert.match(response.body, /id="fleet-kind"/);
+    assert.match(response.body, /id="fleet-group"[^>]*>[\s\S]*Group by host/);
+    assert.match(response.body, /id="fleet-auto-refresh"/);
+    assert.match(response.body, /id="fleet-focus-retry"/);
+    assert.match(response.body, /id="fleet-focus-still"/);
+    assert.match(response.body, /Review & apply/);
     assert.doesNotMatch(response.body, /mock fleet of 20 seats/i);
+
+    const fleetAsset = await app.inject({ method: 'GET', url: '/assets/fleet.js' });
+    assert.equal(fleetAsset.statusCode, 200);
+    assert.match(fleetAsset.body, /disconnected/);
+    assert.match(fleetAsset.body, /Only this focused device is streaming live/);
+    assert.match(fleetAsset.body, /Clear queued work and request stop/);
 
     const legacy = await app.inject({ method: 'GET', url: '/demo/devices' });
     assert.equal(legacy.statusCode, 200);

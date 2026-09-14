@@ -105,6 +105,10 @@ The Open-device workspace now follows device status → live/still screen → ac
 
 Runs now centers recent execution state and evidence. Recent runs are primary, schedules are secondary, filters are explicit for device/flow/status, live refresh and manual refresh state are visible, and run details expose device/flow context, timestamps, exit code, errors and evidence logs without changing scheduler behavior. Production browser acceptance also removed the lingering “Details complete.” success noise from dialog-opening actions. Physical-iPhone WDA Add Device remains separately live-gated.
 
+### Wave X — Fleet wall hierarchy (in progress)
+
+Fleet is being reorganized around a still-preview device wall with exactly one focused live stream, explicit Online / Offline / Disconnected connectivity, host/platform/kind grouping, Device-List-style search/filter controls and confirmed bulk operations. Physical-iPhone WDA Add Device remains separately live-gated.
+
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 
 The dashboard now presents the farm as one control plane instead of a set of disconnected technical pages. Overview exposes product capabilities, attention state and recent runs; Fleet makes offline/empty/online state explicit; Runs supports cross-platform Portable Flow tasks, search and status filtering; Automation Studio uses a compact workspace switch and staged Target → Author → Schedule flow. Saved pool editing now has explicit names and dirty-state protection so previewed edits cannot accidentally schedule against the stale persisted pool.

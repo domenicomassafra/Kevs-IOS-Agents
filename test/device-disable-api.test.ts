@@ -18,8 +18,9 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     const { PluginRegistry } = await import('../src/registry.js');
     type SchedulerRepository = import('../src/scheduler/repository.js').SchedulerRepository;
 
+    let running = false;
     const scheduler = {
-        async activeExecution() { return null; },
+        async activeExecution(udid: string) { return running && udid === 'udid-a' ? { id: 'run-1' } : null; },
         async createTask() { return { id: 'sched-1' }; },
     } as unknown as SchedulerRepository;
 
@@ -71,4 +72,23 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     assert.match(devicePage.body, /class="device-secondary-section wda-only"/);
     assert.match(devicePage.body, /data-runtime-disabled="false"/);
     assert.match(devicePage.body, /wda-only/);
+
+    running = true;
+    const unsafeBulkDisable = await inject(app, {
+        method: 'POST', url: '/api/fleet/actions', payload: { deviceUdids: ['udid-a'], action: 'disable' },
+    });
+    assert.equal(unsafeBulkDisable.statusCode, 200);
+    assert.equal(unsafeBulkDisable.json().ok, false);
+    assert.equal(unsafeBulkDisable.json().affected, 0);
+    assert.match(unsafeBulkDisable.json().results[0].message, /clear queue \/ stop before disabling/);
+    assert.equal(JSON.parse(await readFile(configPath, 'utf8'))[0].disabled, undefined);
+
+    running = false;
+    const safeBulkDisable = await inject(app, {
+        method: 'POST', url: '/api/fleet/actions', payload: { deviceUdids: ['udid-a'], action: 'disable' },
+    });
+    assert.equal(safeBulkDisable.statusCode, 200);
+    assert.equal(safeBulkDisable.json().ok, true);
+    assert.equal(safeBulkDisable.json().affected, 1);
+    assert.equal(JSON.parse(await readFile(configPath, 'utf8'))[0].disabled, true);
 });
