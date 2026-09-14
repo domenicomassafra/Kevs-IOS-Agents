@@ -111,3 +111,15 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - The production Tailnet page served the explicit Target → Flow → Schedule → Run journey. `Alpha Automation` and `Beta Automation` temporary devices appeared in the real Target selector. Allocation, Semantic Inspector, import and Flow actions were collapsed by default; Restore/Duplicate/Export/Delete stayed grouped behind Flow actions. Schedule no longer owned the Run button; the final action lived only in stage 4.
 - Full-page production screenshot review exposed conditional Schedule fields being rendered despite their `hidden` state. `f273e43` added explicit hidden-state CSS. Browser retest proved: Run now → all conditional fields hidden; Once → Run at only; Daily → Local time + Timezone only.
 - Cleanup completed: both temporary devices deleted with HTTP 204, `/api/devices` returned `[]`, CDP port 9332 had zero listeners, temporary Chrome profile was absent and no `/tmp/farm32-*` artifacts remained.
+
+
+## Single-device workspace cutover — 2026-09-14
+
+- Single-device workspace application source advanced to `d1a84c3`, with responsive/density correction at `3cd7f42`.
+- Full final source gate on `3cd7f42`: 127/127 tests, TypeScript green, `build:web` green, `git diff --check` green and gitleaks `no leaks found`.
+- MiniPC completed the full Docker rebuild through `Successfully built`; PostgreSQL and control-plane were healthy, `/health` returned `ok=true`, and the production-container doctor reported `Source readiness: ready` / `Runtime readiness: ready`.
+- The production page now presents status → local lifecycle command bar → live/still screen → workflows/activity. Device actions no longer pollute the global navigation. Reconnect, Enable/Disable and Tasks & runs stay primary; Rename, Tags and destructive/configuration operations are grouped under Manage.
+- A contract-compatible Android/Appium fixture proved capability gating (zero WDA-only controls visible), real registry Disable/Enable PATCH behavior, Tasks & runs access, and automatic failed-stream → still-screenshot fallback. A contract-compatible iOS/WDA fixture proved the WDA-specific controls appear only on the supported backend.
+- Production screenshot review caught two visual regressions before closeout: narrow layouts placed the screen after actions, and WDA social workflows were still too dense. `3cd7f42` keeps the screen primary at narrow widths and collapses iPhone/WDA automations behind a secondary section. Final browser acceptance at 820px passed for both fixtures.
+- Cleanup completed: both temporary devices returned HTTP 204 on delete, `/api/devices` returned `[]`, worker port 3010 and CDP 9333 were zero, the temporary browser profile was absent, no `/tmp/farm33-*` artifacts remained, and temporary Preview windows were closed.
+- This does **not** close physical-iPhone Add Device acceptance. Full Xcode + a real iPhone are still required for the separate `acceptance:live` WDA onboarding proof.

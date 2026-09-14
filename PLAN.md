@@ -97,9 +97,9 @@ The Overview inventory adds semantic sorting plus persistent Grid/Compact views,
 Automation Studio now follows one explicit Target → Flow → Schedule → Run path. Pool management, version/export operations and destructive flow actions remain available but no longer compete visually with target selection, authoring, timing and execution. The surface stays monochrome/graphite and keeps all existing scheduler, allocation and versioning behavior. Production browser acceptance also caught and fixed conditional Schedule fields that CSS had made visible despite `hidden`, reducing the live `Run now` surface to only the controls that actually apply.
 
 
-### Wave V — Single-device workspace hierarchy (in progress)
+### Wave V — Single-device workspace hierarchy (source complete, MiniPC/browser live)
 
-The Open-device workspace is being reorganized around device status → live/still screen → actions/activity. Lifecycle actions move out of global navigation into a local command bar, stream fallback becomes explicit, and WDA-only controls are capability-gated. The physical-iPhone Add Device flow remains explicitly live-gated until full Xcode + a real iPhone are available.
+The Open-device workspace now follows device status → live/still screen → actions/activity. Lifecycle actions moved out of global navigation into a local command bar, live video falls back explicitly to a still screenshot, and WDA-only controls are capability-gated. Production browser review also kept the screen ahead of actions at narrow widths and collapsed WDA social automations behind a secondary section. The physical-iPhone Add Device flow remains explicitly live-gated until full Xcode + a real iPhone are available.
 
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 
