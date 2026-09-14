@@ -31,7 +31,7 @@
 - [x] FARM-023 device tags + named PostgreSQL allocation pools + Fleet search/pool authoring.
 - [x] FARM-023 execution-host observability: configured offline workers remain visible; online workers report bounded load/RAM/CPU/uptime telemetry.
 - [x] FARM-029 Add Device operational onboarding: live host/runtime/iPhone status, explicit Appium 3 vs WDA lanes, browser-proven scan → attach.
-- [ ] FARM-030 Device inventory command bar: searchable/filterable Overview list, shown/total counts and HTMX-stable filters.
+- [x] FARM-030 Device inventory command bar: searchable/filterable Overview list, shown/total counts and HTMX-stable filters.
 - [x] FARM-024 Control Center UX convergence: actionable Overview, staged Automation Studio, Fleet state, cross-platform Runs and corrected saved-pool editing.
 - [x] FARM-025 Runs operations: visual schedule editing plus execution detail/log inspection without raw JSON prompts.
 - [x] FARM-026 Connected actions: Overview device tags + direct Automate links and prompt-free Flow Library duplication.

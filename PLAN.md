@@ -84,9 +84,9 @@ Devices now carry normalized operator tags used by Fleet search and allocation. 
 
 Add Device presents the real two-lane runtime model directly: Appium 3 for iOS Simulator/Android and the isolated WDA lane for physical iPhone. A live readiness strip reports execution-host availability, attachable runtimes and detected unregistered iPhones from the existing control-plane APIs. `Scan hosts` refreshes both host readiness and runtime discovery, and empty states point to the execution layer or USB/WDA recovery path instead of stopping at generic setup text. Production browser acceptance proved `Scan hosts → Attach` end-to-end against the MiniPC using a temporary contract-compatible worker fixture, then removed every fixture and returned the configured Mac worker to its normal offline state.
 
-### Wave S — Overview device inventory UX (in progress)
+### Wave S — Overview device inventory UX (source complete, MiniPC/browser live)
 
-The Overview device inventory gains a compact command bar for search, status filtering, platform filtering and shown/total counts while keeping Fleet as the detailed wall. Device fragments expose stable filter metadata so the current query survives HTMX refreshes, and rename/connect/disconnect behavior moves into a dedicated compiled Overview bundle with inline operational feedback.
+The Overview device inventory gains a compact command bar for search, status filtering, platform filtering and shown/total counts while keeping Fleet as the detailed wall. Device fragments expose stable filter metadata so the current query survives HTMX refreshes, and rename/connect/disconnect behavior moves into a dedicated compiled Overview bundle with inline operational feedback. Browser acceptance caught and fixed a missing static-asset route for the new bundle, then proved search/status/platform filters, zero-result state, reset and HTMX filter persistence against the production MiniPC.
 
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 

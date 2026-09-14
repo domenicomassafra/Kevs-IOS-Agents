@@ -82,3 +82,11 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Add Device now exposes explicit Appium 3 (iOS Simulator / Android) and isolated physical-iPhone WDA lanes plus live host/runtime/iPhone readiness counters.
 - Browser acceptance exercised the real MiniPC page and API chain. A temporary contract-compatible worker supplied one Appium simulator candidate; the page reported `1/1 online` and `1 attachable`, `Scan hosts` exposed the candidate, and `Attach to farm` navigated to `/devices/FARM029-SIM-001`.
 - The worker fixture and temporary browser profile were stopped/deleted; the smoke device was removed with HTTP 204, `/api/devices` returned `[]`, and the configured `macstudio` worker returned to its expected offline state. No production fixture remains.
+
+## Overview device inventory command bar cutover — 2026-09-14
+
+- Feature source advanced to `390f211`; browser acceptance discovered that the new `overview.js` bundle was not registered in the themed static-asset loader, and `aeb17b2` fixed preload/content-hash/route serving plus added a regression test for the asset endpoint.
+- The full gate after the fix remained 127/127 tests with TypeScript, `build:web`, `git diff --check` and gitleaks green.
+- MiniPC completed a second full Docker rebuild on `aeb17b2`; `overview.js` returned HTTP 200 as `text/javascript`, control-plane/PostgreSQL were healthy and `/health` returned `ok=true`.
+- Production browser smoke created two temporary iOS registry entries (one active/offline with `staging` tag, one disconnected) and verified shown/total counts, tag search, disconnected filtering, platform zero-state, reset and HTMX filter persistence.
+- Both temporary devices were deleted with HTTP 204, `/api/devices` returned `[]`, and the temporary headless Chrome process/profile were removed. No smoke fixture remains.
