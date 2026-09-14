@@ -61,3 +61,9 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Overview device cards now expose tags and direct device → Portable Flow Studio links.
 - Automation Studio serves a prompt-free duplicate-flow dialog.
 - Live API smoke used a temporary tagged Android-emulator registry entry to verify the rendered Overview tags/Automate link, then deleted the fixture with HTTP 204; no smoke device remained.
+
+## Prompt-free device naming cutover — 2026-09-14
+
+- Production source advanced to `899e5cd` on `main`; full regression gate remained 127/127 tests with build/diff/secret checks green.
+- Overview and per-device workspaces now use first-class rename dialogs; the HTMX device fragment no longer injects action scripts.
+- Live fixture smoke verified Overview dialog, pure fragment markup, device dialog and successful rename propagation, then removed the fixture with HTTP 204.
