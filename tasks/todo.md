@@ -33,6 +33,7 @@
 - [x] FARM-029 Add Device operational onboarding: live host/runtime/iPhone status, explicit Appium 3 vs WDA lanes, browser-proven scan → attach.
 - [x] FARM-030 Device inventory command bar: searchable/filterable Overview list, shown/total counts and HTMX-stable filters.
 - [x] FARM-031 Device inventory hierarchy/density: semantic sorting, Grid/Compact views and quieter secondary actions; MiniPC/browser live proof complete.
+- [ ] FARM-032 Automation Studio hierarchy: Target → Flow → Schedule → Run, grouped secondary actions and reduced visual noise.
 - [x] FARM-024 Control Center UX convergence: actionable Overview, staged Automation Studio, Fleet state, cross-platform Runs and corrected saved-pool editing.
 - [x] FARM-025 Runs operations: visual schedule editing plus execution detail/log inspection without raw JSON prompts.
 - [x] FARM-026 Connected actions: Overview device tags + direct Automate links and prompt-free Flow Library duplication.

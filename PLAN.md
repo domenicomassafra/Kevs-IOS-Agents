@@ -92,6 +92,10 @@ The Overview device inventory gains a compact command bar for search, status fil
 
 The Overview inventory adds semantic sorting plus persistent Grid/Compact views, reduces card density, moves status into the primary title line and demotes maintenance actions into a compact secondary menu. `Open` is the primary inventory CTA, `Automate` remains available without competing visually, and current search/filter/sort/view state survives HTMX refreshes. Production browser acceptance caught two HTMX persistence edge cases before closeout; the final `afterSettle` path now preserves Compact through both periodic outerHTML swaps and a full reload followed by the next `#device-list` settle. Live proof on Alpha/Mike/Zulu also verified alphabetical sorting, CTA hierarchy and the secondary Rename/Disconnect menu before removing all fixtures.
 
+### Wave U — Automation Studio hierarchy (in progress)
+
+Automation Studio is being simplified into one explicit Target → Flow → Schedule → Run path. Pool management, version/export operations and destructive flow actions remain available but no longer compete visually with target selection, authoring, timing and execution. The surface stays monochrome/graphite and keeps all existing scheduler, allocation and versioning behavior.
+
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 
 The dashboard now presents the farm as one control plane instead of a set of disconnected technical pages. Overview exposes product capabilities, attention state and recent runs; Fleet makes offline/empty/online state explicit; Runs supports cross-platform Portable Flow tasks, search and status filtering; Automation Studio uses a compact workspace switch and staged Target → Author → Schedule flow. Saved pool editing now has explicit names and dirty-state protection so previewed edits cannot accidentally schedule against the stale persisted pool.

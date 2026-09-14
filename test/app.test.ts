@@ -250,7 +250,13 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(automations.body, /automation-mode-bar/);
     assert.match(automations.body, /id="flow-pool-name"/);
     assert.match(automations.body, /id="flow-duplicate-dialog"/);
-    assert.match(automations.body, /Schedule &amp; run/);
+    assert.match(automations.body, /class="automation-journey"/);
+    assert.match(automations.body, /data-flow-stage="target"/);
+    assert.match(automations.body, /data-flow-stage="flow"/);
+    assert.match(automations.body, /data-flow-stage="schedule"/);
+    assert.match(automations.body, /data-flow-stage="run"/);
+    assert.match(automations.body, /class="flow-secondary-panel flow-actions-panel"/);
+    assert.doesNotMatch(automations.body, /Schedule &amp; run/);
     assert.doesNotMatch(automations.body, /Create a post/);
 
     const runs = await inject(app, { method: 'GET', url: '/tasks' });
