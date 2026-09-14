@@ -231,6 +231,8 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.equal(runs.statusCode, 200);
     assert.match(runs.body, /Runs · Mobile Farm/);
     assert.match(runs.body, /id="runs-search"/);
+    assert.match(runs.body, /id="schedule-edit-dialog"/);
+    assert.match(runs.body, /id="execution-detail-dialog"/);
     assert.doesNotMatch(runs.body, /brand-name">IOS AGENTS/);
 });
 

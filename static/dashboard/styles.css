@@ -1341,6 +1341,31 @@ dialog#calibrate-dialog { width: min(760px, calc(100% - 28px)); }
 }
 .runs-toolbar input, .runs-toolbar select { min-height: 36px; padding: 7px 9px; }
 .runs-toolbar .run-meta { white-space: nowrap; }
+dialog#schedule-edit-dialog { width: min(680px, calc(100% - 28px)); }
+dialog#execution-detail-dialog { width: min(760px, calc(100% - 28px)); }
+.modal-lead { margin: -4px 0 14px; font-size: 12px; }
+.schedule-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.schedule-editor-grid .field { display: grid; gap: 6px; }
+.schedule-editor-grid .field > span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.schedule-editor-grid input, .schedule-editor-grid select { min-height: 38px; padding: 8px 10px; }
+#schedule-edit-weekdays { margin-top: 14px; }
+#schedule-edit-result { min-height: 1.2em; text-align: left; }
+.execution-detail-modal { display: grid; gap: 14px; }
+.execution-detail-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.execution-detail-meta > div { min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: rgb(255 255 255 / 2%); }
+.execution-detail-meta span, .execution-detail-meta strong { display: block; }
+.execution-detail-meta span { margin-bottom: 3px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.execution-detail-meta strong { overflow: hidden; text-overflow: ellipsis; font-size: 11px; white-space: nowrap; }
+.execution-detail-modal .run-error { margin: 0; padding: 9px 10px; border: 1px solid rgb(255 92 122 / 25%); border-radius: 10px; background: rgb(255 92 122 / 5%); }
+.execution-log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.execution-log-head strong { font-size: 12px; }
+.execution-detail-logs { min-height: 180px; max-height: 360px; border: 1px solid var(--border); border-radius: 10px; background: #050505; }
 .task-list { display: grid; gap: 8px; }
 .tasks-modal h3 {
     margin: 16px 0 8px;
@@ -1382,6 +1407,8 @@ dialog#calibrate-dialog { width: min(760px, calc(100% - 28px)); }
     .workflow-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 540px) {
+    .runs-toolbar, .schedule-editor-grid, .execution-detail-meta { grid-template-columns: 1fr; }
+    .runs-toolbar .run-meta { white-space: normal; }
     .page-header, .device-summary { align-items: flex-start; }
     .device-summary { display: block; }
     .device-summary code { display: block; max-width: none; margin-top: 12px; text-align: left; }

@@ -1,15 +1,22 @@
 export {};
 
+type ScheduleTiming =
+    | { kind: 'now' }
+    | { kind: 'once'; runAt: string }
+    | { kind: 'daily'; localTime: string; timezone: string }
+    | { kind: 'weekly'; localTime: string; timezone: string; weekdays: number[] }
+    | { kind: 'interval'; everyMinutes: number; startOffsetMinutes?: number };
+
 interface Schedule {
     id: string;
     deviceUdid: string;
     pluginId: string;
     taskType: string;
     status: 'active' | 'paused' | 'completed' | 'cancelled';
-    timing: { kind: string; localTime?: string; timezone?: string; weekdays?: number[]; runAt?: string; everyMinutes?: number };
+    timing: ScheduleTiming;
     nextRunAt: string | null;
     runWindowMinutes: number;
-    payload: { type: string; destination?: string };
+    payload: { type?: string; destination?: string };
 }
 
 interface Execution {
@@ -24,15 +31,48 @@ interface Execution {
     error: string | null;
 }
 
+interface ExecutionDetail extends Execution {
+    logs: string[];
+    exitCode?: number | null;
+    deadlineAt?: string;
+}
+
 const schedulesElement = document.querySelector<HTMLElement>('#schedules')!;
 const executionsElement = document.querySelector<HTMLElement>('#executions')!;
 const refresh = document.querySelector<HTMLButtonElement>('#refresh-tasks')!;
 const search = document.querySelector<HTMLInputElement>('#runs-search')!;
 const statusFilter = document.querySelector<HTMLSelectElement>('#runs-status')!;
 const summary = document.querySelector<HTMLElement>('#runs-summary')!;
+const scheduleDialog = document.querySelector<HTMLDialogElement>('#schedule-edit-dialog')!;
+const scheduleForm = document.querySelector<HTMLFormElement>('#schedule-edit-form')!;
+const scheduleClose = document.querySelector<HTMLButtonElement>('#schedule-edit-close')!;
+const scheduleMeta = document.querySelector<HTMLElement>('#schedule-edit-meta')!;
+const scheduleKind = document.querySelector<HTMLSelectElement>('#schedule-edit-kind')!;
+const scheduleWindow = document.querySelector<HTMLInputElement>('#schedule-edit-window')!;
+const scheduleOnceField = document.querySelector<HTMLElement>('#schedule-edit-once-field')!;
+const scheduleRunAt = document.querySelector<HTMLInputElement>('#schedule-edit-run-at')!;
+const scheduleTimeField = document.querySelector<HTMLElement>('#schedule-edit-time-field')!;
+const scheduleLocalTime = document.querySelector<HTMLInputElement>('#schedule-edit-local-time')!;
+const scheduleTimezoneField = document.querySelector<HTMLElement>('#schedule-edit-timezone-field')!;
+const scheduleTimezone = document.querySelector<HTMLInputElement>('#schedule-edit-timezone')!;
+const scheduleIntervalField = document.querySelector<HTMLElement>('#schedule-edit-interval-field')!;
+const scheduleEveryMinutes = document.querySelector<HTMLInputElement>('#schedule-edit-every-minutes')!;
+const scheduleOffsetField = document.querySelector<HTMLElement>('#schedule-edit-offset-field')!;
+const scheduleStartOffset = document.querySelector<HTMLInputElement>('#schedule-edit-start-offset')!;
+const scheduleWeekdays = document.querySelector<HTMLElement>('#schedule-edit-weekdays')!;
+const scheduleWeekdayInputs = Array.from(scheduleWeekdays.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+const scheduleResult = document.querySelector<HTMLElement>('#schedule-edit-result')!;
+const executionDialog = document.querySelector<HTMLDialogElement>('#execution-detail-dialog')!;
+const executionClose = document.querySelector<HTMLButtonElement>('#execution-detail-close')!;
+const executionTitle = document.querySelector<HTMLElement>('#execution-detail-title')!;
+const executionMeta = document.querySelector<HTMLElement>('#execution-detail-meta')!;
+const executionError = document.querySelector<HTMLElement>('#execution-detail-error')!;
+const executionLogCount = document.querySelector<HTMLElement>('#execution-detail-log-count')!;
+const executionLogs = document.querySelector<HTMLElement>('#execution-detail-logs')!;
 let schedulesCache: Schedule[] = [];
 let executionsCache: Execution[] = [];
 let deviceNames = new Map<string, string>();
+let editingSchedule: Schedule | undefined;
 
 function shortDevice(udid: string): string {
     return udid.length > 20 ? `${udid.slice(0, 8)}…${udid.slice(-6)}` : udid;
@@ -63,6 +103,106 @@ function timingLabel(timing: Schedule['timing']): string {
     if ((timing.kind === 'daily' || timing.kind === 'weekly') && timing.localTime) return `${timing.kind} · ${timing.localTime}`;
     if (timing.kind === 'once' && timing.runAt) return `once · ${date(timing.runAt)}`;
     return timing.kind;
+}
+
+function localDatetimeValue(value?: string): string {
+    if (!value) return '';
+    const time = new Date(value);
+    if (Number.isNaN(time.getTime())) return '';
+    return new Date(time.getTime() - time.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function updateScheduleEditorFields(): void {
+    const kind = scheduleKind.value;
+    scheduleOnceField.hidden = kind !== 'once';
+    scheduleTimeField.hidden = kind !== 'daily' && kind !== 'weekly';
+    scheduleTimezoneField.hidden = kind !== 'daily' && kind !== 'weekly';
+    scheduleWeekdays.hidden = kind !== 'weekly';
+    scheduleIntervalField.hidden = kind !== 'interval';
+    scheduleOffsetField.hidden = kind !== 'interval';
+}
+
+function openScheduleEditor(schedule: Schedule): void {
+    editingSchedule = schedule;
+    scheduleMeta.textContent = `${taskLabel(schedule.pluginId, schedule.taskType)} · ${deviceLabel(schedule.deviceUdid)} · ${schedule.status}`;
+    scheduleKind.value = schedule.timing.kind;
+    scheduleWindow.value = String(schedule.runWindowMinutes);
+    scheduleRunAt.value = schedule.timing.kind === 'once' ? localDatetimeValue(schedule.timing.runAt) : '';
+    scheduleLocalTime.value = schedule.timing.kind === 'daily' || schedule.timing.kind === 'weekly' ? schedule.timing.localTime : '09:00';
+    scheduleTimezone.value = schedule.timing.kind === 'daily' || schedule.timing.kind === 'weekly'
+        ? schedule.timing.timezone
+        : (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+    scheduleEveryMinutes.value = schedule.timing.kind === 'interval' ? String(schedule.timing.everyMinutes) : '60';
+    scheduleStartOffset.value = schedule.timing.kind === 'interval' ? String(schedule.timing.startOffsetMinutes ?? 0) : '0';
+    const weekdays = new Set(schedule.timing.kind === 'weekly' ? schedule.timing.weekdays : [1, 2, 3, 4, 5]);
+    for (const input of scheduleWeekdayInputs) input.checked = weekdays.has(Number(input.value));
+    scheduleResult.textContent = '';
+    updateScheduleEditorFields();
+    scheduleDialog.showModal();
+}
+
+function timingFromEditor(): ScheduleTiming {
+    const kind = scheduleKind.value;
+    if (kind === 'now') return { kind: 'now' };
+    if (kind === 'once') {
+        if (!scheduleRunAt.value) throw new Error('Choose when this schedule should run.');
+        const runAt = new Date(scheduleRunAt.value);
+        if (Number.isNaN(runAt.getTime())) throw new Error('Run-at time is invalid.');
+        return { kind: 'once', runAt: runAt.toISOString() };
+    }
+    if (kind === 'daily' || kind === 'weekly') {
+        const localTime = scheduleLocalTime.value;
+        const timezone = scheduleTimezone.value.trim();
+        if (!/^\d{2}:\d{2}$/.test(localTime)) throw new Error('Choose a valid local time.');
+        if (!timezone) throw new Error('Timezone is required.');
+        if (kind === 'daily') return { kind, localTime, timezone };
+        const weekdays = scheduleWeekdayInputs.filter((input) => input.checked).map((input) => Number(input.value));
+        if (!weekdays.length) throw new Error('Choose at least one weekday.');
+        return { kind, localTime, timezone, weekdays };
+    }
+    if (kind === 'interval') {
+        const everyMinutes = Number(scheduleEveryMinutes.value);
+        const startOffsetMinutes = Number(scheduleStartOffset.value || 0);
+        if (!Number.isInteger(everyMinutes) || everyMinutes < 1 || everyMinutes > 1440) throw new Error('Interval must be between 1 and 1440 minutes.');
+        if (!Number.isInteger(startOffsetMinutes) || startOffsetMinutes < 0 || startOffsetMinutes > 1440) throw new Error('Start offset must be between 0 and 1440 minutes.');
+        return { kind, everyMinutes, ...(startOffsetMinutes ? { startOffsetMinutes } : {}) };
+    }
+    throw new Error('Unsupported schedule timing.');
+}
+
+function detailField(label: string, value: string): HTMLElement {
+    const field = document.createElement('div');
+    const name = document.createElement('span'); name.textContent = label;
+    const content = document.createElement('strong'); content.textContent = value;
+    field.append(name, content);
+    return field;
+}
+
+async function openExecutionDetail(id: string): Promise<void> {
+    executionTitle.textContent = 'Run details';
+    executionMeta.replaceChildren();
+    executionError.hidden = true;
+    executionLogs.textContent = 'Loading…';
+    executionLogCount.textContent = '';
+    executionDialog.showModal();
+    try {
+        const execution = await request<ExecutionDetail>(`/api/executions/${encodeURIComponent(id)}`);
+        executionTitle.textContent = `${taskLabel(execution.pluginId, execution.taskType)} · ${deviceLabel(execution.deviceUdid)}`;
+        executionMeta.replaceChildren(
+            detailField('Status', execution.status),
+            detailField('Device', `${deviceLabel(execution.deviceUdid)} · ${shortDevice(execution.deviceUdid)}`),
+            detailField('Scheduled', date(execution.scheduledFor)),
+            detailField('Started', date(execution.startedAt)),
+            detailField('Finished', date(execution.finishedAt)),
+            detailField('Exit code', execution.exitCode === null || execution.exitCode === undefined ? '—' : String(execution.exitCode)),
+        );
+        executionError.hidden = !execution.error;
+        executionError.textContent = execution.error ?? '';
+        executionLogCount.textContent = `${execution.logs.length} line${execution.logs.length === 1 ? '' : 's'}`;
+        executionLogs.textContent = execution.logs.length ? execution.logs.join('\n') : 'No logs recorded for this execution.';
+    } catch (error) {
+        executionLogs.textContent = error instanceof Error ? error.message : String(error);
+    }
 }
 
 function queryMatch(values: string[]): boolean {
@@ -113,21 +253,9 @@ function renderSchedules(items: Schedule[]): void {
         copy.append(title, meta);
         const state = document.createElement('span'); state.className = `status ${schedule.status}`; state.textContent = schedule.status;
         const actions = document.createElement('div'); actions.className = 'inline-actions';
-        if (schedule.status === 'active' || schedule.status === 'paused') actions.append(button('Edit', async () => {
-            const timingText = window.prompt('Edit timing JSON', JSON.stringify(schedule.timing));
-            if (!timingText) return;
-            const windowText = window.prompt('Run-within window in minutes', String(schedule.runWindowMinutes));
-            if (!windowText) return;
-            const timing = JSON.parse(timingText) as Schedule['timing'];
-            const recurringPublish = schedule.payload.type === 'post' && schedule.payload.destination === 'publish'
-                && (timing.kind === 'daily' || timing.kind === 'weekly');
-            if (recurringPublish && !window.confirm('Confirm that this recurring schedule may publish publicly without confirmation on each occurrence.')) return;
-            await request(`/api/schedules/${schedule.id}`, {
-                method: 'PATCH', headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ timing, runWindowMinutes: Number(windowText), recurringPublishConfirmed: recurringPublish }),
-            });
-            await load();
-        }));
+        if (schedule.status === 'active' || schedule.status === 'paused') {
+            actions.append(button('Edit', async () => { openScheduleEditor(schedule); }));
+        }
         if (schedule.status === 'active') actions.append(button('Pause', async () => { await request(`/api/schedules/${schedule.id}/pause`, { method: 'POST' }); await load(); }));
         if (schedule.status === 'paused') actions.append(button('Resume', async () => { await request(`/api/schedules/${schedule.id}/resume`, { method: 'POST' }); await load(); }));
         if (schedule.status !== 'cancelled' && schedule.status !== 'completed') actions.append(button('Cancel', async () => { await request(`/api/schedules/${schedule.id}/cancel`, { method: 'POST' }); await load(); }));
@@ -150,6 +278,7 @@ function renderExecutions(items: Execution[]): void {
         copy.append(title, meta);
         const state = document.createElement('span'); state.className = `status ${execution.status}`; state.textContent = execution.status;
         const actions = document.createElement('div'); actions.className = 'inline-actions';
+        actions.append(button('Details', async () => { await openExecutionDetail(execution.id); }));
         if (execution.status === 'queued' || (execution.status === 'running' && execution.taskType === 'doomscroll')) {
             actions.append(button(execution.status === 'queued' ? 'Cancel' : 'Stop', async () => {
                 await request(`/api/executions/${execution.id}/stop`, { method: 'POST' }); await load();
@@ -196,5 +325,43 @@ function render(): void {
 refresh.addEventListener('click', () => void load());
 search.addEventListener('input', render);
 statusFilter.addEventListener('change', render);
+scheduleKind.addEventListener('change', updateScheduleEditorFields);
+scheduleClose.addEventListener('click', () => {
+    editingSchedule = undefined;
+    scheduleDialog.close();
+});
+scheduleDialog.addEventListener('close', () => { editingSchedule = undefined; });
+executionClose.addEventListener('click', () => executionDialog.close());
+scheduleForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void (async () => {
+        if (!editingSchedule) return;
+        const submit = scheduleForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+        submit.disabled = true;
+        scheduleResult.textContent = 'Saving schedule…';
+        try {
+            const timing = timingFromEditor();
+            const runWindowMinutes = Number(scheduleWindow.value);
+            if (!Number.isInteger(runWindowMinutes) || runWindowMinutes < 1 || runWindowMinutes > 1440) {
+                throw new Error('Run window must be between 1 and 1440 minutes.');
+            }
+            const recurringPublish = editingSchedule.payload.type === 'post'
+                && editingSchedule.payload.destination === 'publish'
+                && (timing.kind === 'daily' || timing.kind === 'weekly');
+            if (recurringPublish && !window.confirm('Confirm that this recurring schedule may publish publicly without confirmation on each occurrence.')) return;
+            await request(`/api/schedules/${encodeURIComponent(editingSchedule.id)}`, {
+                method: 'PATCH', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ timing, runWindowMinutes, recurringPublishConfirmed: recurringPublish }),
+            });
+            scheduleDialog.close();
+            editingSchedule = undefined;
+            await load();
+        } catch (error) {
+            scheduleResult.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+            submit.disabled = false;
+        }
+    })();
+});
 void load();
 setInterval(() => void load(), 5_000);

@@ -41,6 +41,46 @@
             <div id="executions" class="task-list loading-card"><span class="spinner"></span>Loading executions…</div>
         </section>
     </main>
+
+    <dialog id="schedule-edit-dialog">
+        <form id="schedule-edit-form" class="modal">
+            <div class="modal-head">
+                <div><span class="eyebrow">Scheduler</span><h2>Edit schedule</h2></div>
+                <button id="schedule-edit-close" class="icon-button" type="button">Close</button>
+            </div>
+            <p id="schedule-edit-meta" class="modal-lead"></p>
+            <div class="schedule-editor-grid">
+                <label class="field"><span>Timing</span><select id="schedule-edit-kind"><option value="now">Run now</option><option value="once">Once</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="interval">Interval</option></select></label>
+                <label class="field"><span>Run window (minutes)</span><input id="schedule-edit-window" type="number" min="1" max="1440" required></label>
+                <label id="schedule-edit-once-field" class="field" hidden><span>Run at</span><input id="schedule-edit-run-at" type="datetime-local"></label>
+                <label id="schedule-edit-time-field" class="field" hidden><span>Local time</span><input id="schedule-edit-local-time" type="time"></label>
+                <label id="schedule-edit-timezone-field" class="field" hidden><span>Timezone</span><input id="schedule-edit-timezone" type="text" placeholder="Europe/Rome"></label>
+                <label id="schedule-edit-interval-field" class="field" hidden><span>Every minutes</span><input id="schedule-edit-every-minutes" type="number" min="1" max="1440"></label>
+                <label id="schedule-edit-offset-field" class="field" hidden><span>Start offset (minutes)</span><input id="schedule-edit-start-offset" type="number" min="0" max="1440" value="0"></label>
+            </div>
+            <fieldset id="schedule-edit-weekdays" class="weekday-field" hidden>
+                <legend>Weekdays</legend>
+                <div class="weekday-options">
+                    <label><input type="checkbox" value="1"><span>Mon</span></label><label><input type="checkbox" value="2"><span>Tue</span></label><label><input type="checkbox" value="3"><span>Wed</span></label><label><input type="checkbox" value="4"><span>Thu</span></label><label><input type="checkbox" value="5"><span>Fri</span></label><label><input type="checkbox" value="6"><span>Sat</span></label><label><input type="checkbox" value="0"><span>Sun</span></label>
+                </div>
+            </fieldset>
+            <p id="schedule-edit-result" class="run-meta" aria-live="polite"></p>
+            <div class="form-actions"><span class="spacer"></span><button class="button primary" type="submit">Save schedule</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="execution-detail-dialog">
+        <div class="modal execution-detail-modal">
+            <div class="modal-head">
+                <div><span class="eyebrow">Execution</span><h2 id="execution-detail-title">Run details</h2></div>
+                <button id="execution-detail-close" class="icon-button" type="button">Close</button>
+            </div>
+            <div id="execution-detail-meta" class="execution-detail-meta"></div>
+            <div id="execution-detail-error" class="run-error" hidden></div>
+            <div class="execution-log-head"><strong>Logs</strong><span id="execution-detail-log-count" class="run-meta"></span></div>
+            <pre id="execution-detail-logs" class="execution-detail-logs">Loading…</pre>
+        </div>
+    </dialog>
     <script type="module" src="/assets/tasks.js"></script>
     <footer class="app-footer">__FOOTER__</footer>
 </body>

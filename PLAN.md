@@ -83,3 +83,7 @@ Devices now carry normalized operator tags used by Fleet search and allocation. 
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 
 The dashboard now presents the farm as one control plane instead of a set of disconnected technical pages. Overview exposes product capabilities, attention state and recent runs; Fleet makes offline/empty/online state explicit; Runs supports cross-platform Portable Flow tasks, search and status filtering; Automation Studio uses a compact workspace switch and staged Target → Author → Schedule flow. Saved pool editing now has explicit names and dirty-state protection so previewed edits cannot accidentally schedule against the stale persisted pool.
+
+### Wave N — scheduler/run operations UX (source complete)
+
+Runs now provides a visual schedule editor instead of raw JSON prompts. Operators can edit immediate, one-shot, daily, weekly and interval timing plus run windows using bounded controls while preserving recurring-publication confirmation. Execution history also exposes a details/log viewer over the canonical execution-detail endpoint so failures and completed runs can be diagnosed without leaving the dashboard.
