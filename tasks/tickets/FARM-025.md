@@ -19,3 +19,10 @@ Remove the last raw/prototype interactions from the Runs surface and make schedu
 - Runs HTML contains both schedule-editor and execution-detail dialogs.
 - Dashboard TypeScript and generated assets build from source.
 - Full source regression gate, diff check and secret scan pass before production deployment.
+
+## Live proof
+
+- Deployed to the MiniPC production control plane on `main` at `c793d46`.
+- Control-plane and PostgreSQL containers healthy after rebuild; Docker build again passed `control-plane import OK`.
+- Tailnet `/tasks` serves the visual schedule editor and execution-detail dialogs.
+- Tailnet `tasks.js` contains the live `openScheduleEditor`, `openExecutionDetail` and schedule-save logic.

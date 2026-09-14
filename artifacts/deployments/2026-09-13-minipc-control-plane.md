@@ -46,3 +46,11 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Docker rebuild smoke again printed `control-plane import OK`; PostgreSQL stayed healthy and the recreated control-plane returned healthy.
 - Tailnet HTTPS smoke confirmed `/api/fragments/control-center` exposes attention state + recent runs, `/automations` exposes the staged Portable Flow workspace and editable saved-pool name, `/fleet` exposes the fleet state notice, and `/tasks` exposes the Mobile Farm Runs/search UI.
 - This cutover carried no database migration and did not change device/scheduler contracts.
+
+## Scheduler operations UX cutover — 2026-09-14
+
+- Production source advanced to `c793d46` on `main`.
+- Full source gate before deployment remained 127/127 tests with TypeScript/dashboard build green and clean diff/secret scans.
+- Runs now serves a visual schedule editor and execution detail/log viewer over the existing canonical schedule/execution APIs.
+- Tailnet smoke confirmed both dialogs in `/tasks` and the editor/detail logic in the versioned tasks bundle.
+- No database migration or scheduler contract change was required.
