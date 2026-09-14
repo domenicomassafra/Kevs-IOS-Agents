@@ -2232,6 +2232,9 @@ dialog#execution-detail-dialog { width: min(760px, calc(100% - 28px)); }
 .flow-weekdays span { display: grid; place-items: center; min-width: 46px; min-height: 32px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font-size: 11px; }
 .flow-weekdays input:checked + span { border-color: transparent; background: var(--accent-grad); color: #050505; }
 .flow-schedule-hint { margin: 7px 2px 0; color: var(--muted); font-size: 11px; }
+.flow-schedule-bar > [hidden],
+.flow-version-actions > [hidden] { display: none; }
+
 @media (max-width: 760px) {
     .automation-mode-bar { grid-template-columns: 1fr; }
     .automation-mode-switch { grid-template-columns: 1fr; }

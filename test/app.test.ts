@@ -258,6 +258,10 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(automations.body, /class="flow-secondary-panel flow-actions-panel"/);
     assert.doesNotMatch(automations.body, /Schedule &amp; run/);
     assert.doesNotMatch(automations.body, /Create a post/);
+    const automationStyles = await inject(app, { method: 'GET', url: '/assets/styles.css' });
+    assert.equal(automationStyles.statusCode, 200);
+    assert.match(automationStyles.body, /\.flow-schedule-bar > \[hidden\]/);
+    assert.match(automationStyles.body, /\.flow-version-actions > \[hidden\]/);
 
     const runs = await inject(app, { method: 'GET', url: '/tasks' });
     assert.equal(runs.statusCode, 200);
