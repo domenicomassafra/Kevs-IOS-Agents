@@ -1,17 +1,28 @@
 const search = document.querySelector('#device-list-search');
 const statusFilter = document.querySelector('#device-list-status');
 const platformFilter = document.querySelector('#device-list-platform');
+const sortFilter = document.querySelector('#device-list-sort');
 const reset = document.querySelector('#device-list-reset');
 const summary = document.querySelector('#device-list-summary');
 const actionStatus = document.querySelector('#device-list-action-status');
 const filterEmpty = document.querySelector('#device-filter-empty');
 const filterEmptyReset = document.querySelector('#device-filter-empty-reset');
+const viewButtons = Array.from(document.querySelectorAll('[data-device-view]'));
 const dialog = document.querySelector('#overview-rename-dialog');
 const form = document.querySelector('#overview-rename-form');
 const input = document.querySelector('#overview-rename-name');
 const result = document.querySelector('#overview-rename-result');
 const close = document.querySelector('#overview-rename-close');
+const VIEW_STORAGE_KEY = 'mobile-farm.device-list-view';
 let renameUdid = '';
+let currentView = (() => {
+    try {
+        return localStorage.getItem(VIEW_STORAGE_KEY) === 'compact' ? 'compact' : 'grid';
+    }
+    catch {
+        return 'grid';
+    }
+})();
 function refreshDevices() {
     actionStatus.textContent = '';
     if (window.htmx) {
@@ -27,10 +38,65 @@ function clearFilters() {
     applyFilters();
     search.focus();
 }
+function normalized(value) { return (value ?? '').toLowerCase(); }
+function statusRank(value) {
+    if (value === 'online')
+        return 0;
+    if (value === 'offline')
+        return 1;
+    return 2;
+}
+function compareEntries(left, right, mode) {
+    const nameCompare = normalized(left.dataset.name).localeCompare(normalized(right.dataset.name));
+    if (mode === 'name')
+        return nameCompare;
+    if (mode === 'status')
+        return statusRank(left.dataset.status) - statusRank(right.dataset.status) || nameCompare;
+    if (mode === 'platform') {
+        return normalized(left.dataset.platform).localeCompare(normalized(right.dataset.platform))
+            || normalized(left.dataset.kind).localeCompare(normalized(right.dataset.kind)) || nameCompare;
+    }
+    return normalized(left.dataset.worker || 'zzzz').localeCompare(normalized(right.dataset.worker || 'zzzz')) || nameCompare;
+}
+function sortEntries(list) {
+    const mode = sortFilter.value;
+    const disabledPanel = list.querySelector(':scope > .disabled-devices');
+    const activeCards = Array.from(list.querySelectorAll(':scope > .device-card[data-device-entry]'))
+        .sort((a, b) => compareEntries(a, b, mode));
+    for (const card of activeCards)
+        list.insertBefore(card, disabledPanel ?? null);
+    const disabledList = disabledPanel?.querySelector('ul');
+    if (disabledList) {
+        const rows = Array.from(disabledList.querySelectorAll(':scope > li[data-device-entry]'))
+            .sort((a, b) => compareEntries(a, b, mode));
+        for (const row of rows)
+            disabledList.append(row);
+    }
+}
+function applyView(list = document.querySelector('#device-list')) {
+    if (!list)
+        return;
+    list.classList.toggle('is-compact', currentView === 'compact');
+    for (const button of viewButtons) {
+        const active = button.dataset.deviceView === currentView;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+    }
+}
+function setView(view) {
+    currentView = view;
+    try {
+        localStorage.setItem(VIEW_STORAGE_KEY, view);
+    }
+    catch { /* storage may be unavailable */ }
+    applyView();
+}
 function applyFilters() {
     const list = document.querySelector('#device-list');
     if (!list)
         return;
+    sortEntries(list);
+    applyView(list);
     const query = search.value.trim().toLowerCase();
     const wantedStatus = statusFilter.value;
     const wantedPlatform = platformFilter.value;
@@ -78,6 +144,7 @@ document.addEventListener('click', (event) => {
     const rename = target?.closest('[data-rename-device]');
     if (rename) {
         event.preventDefault();
+        rename.closest('details')?.removeAttribute('open');
         const root = rename.closest('.device-card, li') ?? rename.parentElement;
         renameUdid = rename.dataset.renameDevice ?? '';
         input.value = (root?.querySelector('.device-name')?.textContent ?? '').replace(/\s+/g, ' ').trim();
@@ -91,6 +158,7 @@ document.addEventListener('click', (event) => {
     if (!toggle)
         return;
     event.preventDefault();
+    toggle.closest('details')?.removeAttribute('open');
     toggle.disabled = true;
     actionStatus.textContent = toggle.dataset.disabled === 'true' ? 'Disconnecting…' : 'Reconnecting…';
     void patchDevice(toggle.dataset.toggleDevice ?? '', { disabled: toggle.dataset.disabled === 'true' })
@@ -119,8 +187,11 @@ form.addEventListener('submit', (event) => {
 search.addEventListener('input', applyFilters);
 statusFilter.addEventListener('change', applyFilters);
 platformFilter.addEventListener('change', applyFilters);
+sortFilter.addEventListener('change', applyFilters);
 reset.addEventListener('click', clearFilters);
 filterEmptyReset.addEventListener('click', clearFilters);
+for (const button of viewButtons)
+    button.addEventListener('click', () => setView(button.dataset.deviceView === 'compact' ? 'compact' : 'grid'));
 document.body.addEventListener('htmx:afterSwap', (event) => {
     const detailTarget = event.detail?.target;
     const target = detailTarget ?? (event.target instanceof Element ? event.target : undefined);

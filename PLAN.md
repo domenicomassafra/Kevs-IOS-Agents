@@ -88,6 +88,10 @@ Add Device presents the real two-lane runtime model directly: Appium 3 for iOS S
 
 The Overview device inventory gains a compact command bar for search, status filtering, platform filtering and shown/total counts while keeping Fleet as the detailed wall. Device fragments expose stable filter metadata so the current query survives HTMX refreshes, and rename/connect/disconnect behavior moves into a dedicated compiled Overview bundle with inline operational feedback. Browser acceptance caught and fixed a missing static-asset route for the new bundle, then proved search/status/platform filters, zero-result state, reset and HTMX filter persistence against the production MiniPC.
 
+### Wave T — Device inventory hierarchy and density (in progress)
+
+The Overview inventory adds semantic sorting plus persistent Grid/Compact views, reduces card density, moves status into the primary title line and demotes maintenance actions into a compact secondary menu. `Open` is the primary inventory CTA, `Automate` remains available without competing visually, and current search/filter/sort/view state survives HTMX refreshes.
+
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 
 The dashboard now presents the farm as one control plane instead of a set of disconnected technical pages. Overview exposes product capabilities, attention state and recent runs; Fleet makes offline/empty/online state explicit; Runs supports cross-platform Portable Flow tasks, search and status filtering; Automation Studio uses a compact workspace switch and staged Target → Author → Schedule flow. Saved pool editing now has explicit names and dirty-state protection so previewed edits cannot accidentally schedule against the stale persisted pool.

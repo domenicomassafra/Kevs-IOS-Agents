@@ -6,20 +6,30 @@ declare global {
     }
 }
 
+type DeviceView = 'grid' | 'compact';
+type DeviceSort = 'status' | 'name' | 'platform' | 'worker';
+
 const search = document.querySelector<HTMLInputElement>('#device-list-search')!;
 const statusFilter = document.querySelector<HTMLSelectElement>('#device-list-status')!;
 const platformFilter = document.querySelector<HTMLSelectElement>('#device-list-platform')!;
+const sortFilter = document.querySelector<HTMLSelectElement>('#device-list-sort')!;
 const reset = document.querySelector<HTMLButtonElement>('#device-list-reset')!;
 const summary = document.querySelector<HTMLElement>('#device-list-summary')!;
 const actionStatus = document.querySelector<HTMLElement>('#device-list-action-status')!;
 const filterEmpty = document.querySelector<HTMLElement>('#device-filter-empty')!;
 const filterEmptyReset = document.querySelector<HTMLButtonElement>('#device-filter-empty-reset')!;
+const viewButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-device-view]'));
 const dialog = document.querySelector<HTMLDialogElement>('#overview-rename-dialog')!;
 const form = document.querySelector<HTMLFormElement>('#overview-rename-form')!;
 const input = document.querySelector<HTMLInputElement>('#overview-rename-name')!;
 const result = document.querySelector<HTMLElement>('#overview-rename-result')!;
 const close = document.querySelector<HTMLButtonElement>('#overview-rename-close')!;
+const VIEW_STORAGE_KEY = 'mobile-farm.device-list-view';
 let renameUdid = '';
+let currentView: DeviceView = (() => {
+    try { return localStorage.getItem(VIEW_STORAGE_KEY) === 'compact' ? 'compact' : 'grid'; }
+    catch { return 'grid'; }
+})();
 
 function refreshDevices(): void {
     actionStatus.textContent = '';
@@ -38,9 +48,59 @@ function clearFilters(): void {
     search.focus();
 }
 
+function normalized(value: string | undefined): string { return (value ?? '').toLowerCase(); }
+function statusRank(value: string | undefined): number {
+    if (value === 'online') return 0;
+    if (value === 'offline') return 1;
+    return 2;
+}
+
+function compareEntries(left: HTMLElement, right: HTMLElement, mode: DeviceSort): number {
+    const nameCompare = normalized(left.dataset.name).localeCompare(normalized(right.dataset.name));
+    if (mode === 'name') return nameCompare;
+    if (mode === 'status') return statusRank(left.dataset.status) - statusRank(right.dataset.status) || nameCompare;
+    if (mode === 'platform') {
+        return normalized(left.dataset.platform).localeCompare(normalized(right.dataset.platform))
+            || normalized(left.dataset.kind).localeCompare(normalized(right.dataset.kind)) || nameCompare;
+    }
+    return normalized(left.dataset.worker || 'zzzz').localeCompare(normalized(right.dataset.worker || 'zzzz')) || nameCompare;
+}
+
+function sortEntries(list: HTMLElement): void {
+    const mode = sortFilter.value as DeviceSort;
+    const disabledPanel = list.querySelector<HTMLDetailsElement>(':scope > .disabled-devices');
+    const activeCards = Array.from(list.querySelectorAll<HTMLElement>(':scope > .device-card[data-device-entry]'))
+        .sort((a, b) => compareEntries(a, b, mode));
+    for (const card of activeCards) list.insertBefore(card, disabledPanel ?? null);
+    const disabledList = disabledPanel?.querySelector('ul');
+    if (disabledList) {
+        const rows = Array.from(disabledList.querySelectorAll<HTMLElement>(':scope > li[data-device-entry]'))
+            .sort((a, b) => compareEntries(a, b, mode));
+        for (const row of rows) disabledList.append(row);
+    }
+}
+
+function applyView(list = document.querySelector<HTMLElement>('#device-list')): void {
+    if (!list) return;
+    list.classList.toggle('is-compact', currentView === 'compact');
+    for (const button of viewButtons) {
+        const active = button.dataset.deviceView === currentView;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+    }
+}
+
+function setView(view: DeviceView): void {
+    currentView = view;
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* storage may be unavailable */ }
+    applyView();
+}
+
 function applyFilters(): void {
     const list = document.querySelector<HTMLElement>('#device-list');
     if (!list) return;
+    sortEntries(list);
+    applyView(list);
     const query = search.value.trim().toLowerCase();
     const wantedStatus = statusFilter.value;
     const wantedPlatform = platformFilter.value;
@@ -87,6 +147,7 @@ document.addEventListener('click', (event) => {
     const rename = target?.closest<HTMLButtonElement>('[data-rename-device]');
     if (rename) {
         event.preventDefault();
+        rename.closest('details')?.removeAttribute('open');
         const root = rename.closest('.device-card, li') ?? rename.parentElement;
         renameUdid = rename.dataset.renameDevice ?? '';
         input.value = (root?.querySelector('.device-name')?.textContent ?? '').replace(/\s+/g, ' ').trim();
@@ -99,6 +160,7 @@ document.addEventListener('click', (event) => {
     const toggle = target?.closest<HTMLButtonElement>('[data-toggle-device]');
     if (!toggle) return;
     event.preventDefault();
+    toggle.closest('details')?.removeAttribute('open');
     toggle.disabled = true;
     actionStatus.textContent = toggle.dataset.disabled === 'true' ? 'Disconnecting…' : 'Reconnecting…';
     void patchDevice(toggle.dataset.toggleDevice ?? '', { disabled: toggle.dataset.disabled === 'true' })
@@ -126,8 +188,10 @@ form.addEventListener('submit', (event) => {
 search.addEventListener('input', applyFilters);
 statusFilter.addEventListener('change', applyFilters);
 platformFilter.addEventListener('change', applyFilters);
+sortFilter.addEventListener('change', applyFilters);
 reset.addEventListener('click', clearFilters);
 filterEmptyReset.addEventListener('click', clearFilters);
+for (const button of viewButtons) button.addEventListener('click', () => setView(button.dataset.deviceView === 'compact' ? 'compact' : 'grid'));
 document.body.addEventListener('htmx:afterSwap', (event) => {
     const detailTarget = (event as CustomEvent<{ target?: Element }>).detail?.target;
     const target = detailTarget ?? (event.target instanceof Element ? event.target : undefined);

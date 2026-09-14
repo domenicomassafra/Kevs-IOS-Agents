@@ -43,6 +43,9 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     assert.match(fragment.body, /data-device-entry/);
     assert.match(fragment.body, /data-status="disabled"/);
     assert.match(fragment.body, /data-platform="ios"/);
+    assert.match(fragment.body, /data-name=/);
+    assert.match(fragment.body, /data-kind="physical"/);
+    assert.match(fragment.body, /device-actions-menu/);
 
     const reenabled = await inject(app, { method: 'PATCH', url: '/api/devices/udid-a', payload: { disabled: false } });
     assert.equal(reenabled.statusCode, 200);
@@ -50,7 +53,10 @@ test('PATCH toggles disabled, scheduling is blocked, and the fragment lists it s
     assert.equal(JSON.parse(await readFile(configPath, 'utf8'))[0].disabled, undefined);
 
     const activeFragment = await inject(app, { method: 'GET', url: '/api/fragments/devices' });
+    assert.match(activeFragment.body, /href="\/devices\/udid-a"[^>]*>Open/);
     assert.match(activeFragment.body, /href="\/automations\?template=flow&device=udid-a"[^>]*>Automate</);
+    assert.match(activeFragment.body, /device-card-title/);
+    assert.match(activeFragment.body, /More device actions/);
     assert.match(activeFragment.body, /#staging/);
     assert.doesNotMatch(activeFragment.body, /window\.prompt|<script>/);
 

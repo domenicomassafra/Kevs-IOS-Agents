@@ -217,6 +217,9 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(page.body, /id="device-list-search"/);
     assert.match(page.body, /id="device-list-status"/);
     assert.match(page.body, /id="device-list-platform"/);
+    assert.match(page.body, /id="device-list-sort"/);
+    assert.match(page.body, /data-device-view="grid"/);
+    assert.match(page.body, /data-device-view="compact"/);
     assert.match(page.body, /assets\/overview\.js\?v=/);
     assert.match(page.body, /Build a flow/);
 
@@ -224,6 +227,8 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.equal(overviewAsset.statusCode, 200);
     assert.match(overviewAsset.headers['content-type'] ?? '', /text\/javascript/);
     assert.match(overviewAsset.body, /device-list-search/);
+    assert.match(overviewAsset.body, /device-list-sort/);
+    assert.match(overviewAsset.body, /mobile-farm\.device-list-view/);
 
     const fragment = await inject(app, { method: 'GET', url: '/api/fragments/control-center' });
     assert.equal(fragment.statusCode, 200);
