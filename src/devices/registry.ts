@@ -12,7 +12,7 @@ export interface RegisteredDevice {
     /** Legacy entries omit platform/kind and remain iOS physical devices. */
     platform?: MobilePlatform;
     kind?: MobileDeviceKind;
-    /** Legacy iPhone entries use WDA; generic runtimes use Appium. */
+    /** Physical iPhones use WDA; iOS Simulators use Appium/XCUITest. */
     automationBackend?: MobileAutomationBackend;
     /** Execution node that owns the local device transport. Omitted in standalone mode. */
     workerId?: string;
@@ -79,8 +79,8 @@ export async function loadRegisteredDevices(registryPath = defaultRegistryPath):
         const platform = device.platform ?? 'ios';
         const kind = device.kind ?? 'physical';
         const backend = device.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
-        if (!['ios', 'android'].includes(platform)) throw new Error(`Device ${device.udid} has invalid platform ${platform}`);
-        if (!['physical', 'simulator', 'emulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid kind ${kind}`);
+        if (platform !== 'ios') throw new Error(`Device ${device.udid} uses unsupported platform ${platform}; this farm is iOS-only`);
+        if (!['physical', 'simulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid iOS kind ${kind}`);
         if (!['wda', 'appium'].includes(backend)) throw new Error(`Device ${device.udid} has invalid automation backend ${backend}`);
         if (device.tags !== undefined) {
             device.tags = normalizeDeviceTags(device.tags);
@@ -107,8 +107,8 @@ export async function saveRegisteredDevices(devices: RegisteredDevice[], registr
         const platform = device.platform ?? 'ios';
         const kind = device.kind ?? 'physical';
         const backend = device.automationBackend ?? (platform === 'ios' && kind === 'physical' ? 'wda' : 'appium');
-        if (!['ios', 'android'].includes(platform)) throw new Error(`Device ${device.udid} has invalid platform ${platform}`);
-        if (!['physical', 'simulator', 'emulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid kind ${kind}`);
+        if (platform !== 'ios') throw new Error(`Device ${device.udid} uses unsupported platform ${platform}; this farm is iOS-only`);
+        if (!['physical', 'simulator'].includes(kind)) throw new Error(`Device ${device.udid} has invalid iOS kind ${kind}`);
         if (!['wda', 'appium'].includes(backend)) throw new Error(`Device ${device.udid} has invalid automation backend ${backend}`);
         if (device.tags !== undefined) {
             device.tags = normalizeDeviceTags(device.tags);

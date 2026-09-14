@@ -20,7 +20,7 @@ test('device worker client authenticates and proxies screen/action calls without
         const request = new Request(input, init);
         requests.push(request);
         if (request.url.endsWith('/v1/host')) {
-            return Response.json({ id: 'macstudio', hostname: 'studio', os: 'darwin', arch: 'arm64', online: true, observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'], tools: { appium: true, appiumRuntime: true, xcrun: true, adb: false, scrcpyVideo: false } });
+            return Response.json({ id: 'macstudio', hostname: 'studio', os: 'darwin', arch: 'arm64', online: true, observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'], tools: { appium: true, appiumRuntime: true, xcrun: true } });
         }
         if (request.url.endsWith('/info')) {
             return Response.json({ screenSize: { width: 390, height: 844 }, scale: 3 });

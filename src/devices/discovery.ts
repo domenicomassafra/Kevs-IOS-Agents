@@ -15,8 +15,8 @@ export interface Device {
     name: string;
     osVersion: string;
     udid: string;
-    platform?: 'ios' | 'android';
-    kind?: 'physical' | 'simulator' | 'emulator';
+    platform?: 'ios';
+    kind?: 'physical' | 'simulator';
     productType?: string;
     hardwareModel?: string;
     modelName?: string;

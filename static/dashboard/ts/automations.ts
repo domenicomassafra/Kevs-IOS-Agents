@@ -4,8 +4,8 @@ interface DeviceRow {
     udid: string;
     name: string;
     disabled?: boolean;
-    platform?: 'ios' | 'android';
-    kind?: 'physical' | 'simulator' | 'emulator';
+    platform?: 'ios';
+    kind?: 'physical' | 'simulator';
     workerId?: string;
     tags?: string[];
 }
@@ -14,8 +14,8 @@ interface DevicePoolRow {
     id: string;
     name: string;
     selector: {
-        platform?: 'ios' | 'android';
-        kind?: 'physical' | 'simulator' | 'emulator';
+        platform?: 'ios';
+        kind?: 'physical' | 'simulator';
         workerId?: string;
         tags?: string[];
         requireIdle?: boolean;

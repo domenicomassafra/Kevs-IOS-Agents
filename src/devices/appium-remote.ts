@@ -12,8 +12,7 @@ type MobileDriver = Browser & {
     isLocked?(): Promise<boolean>;
 };
 
-function driverBackend(device: RegisteredDevice): { platformName: 'iOS' | 'Android'; automationName: 'XCUITest' | 'UiAutomator2' } {
-    if ((device.platform ?? 'ios') === 'android') return { platformName: 'Android', automationName: 'UiAutomator2' };
+function driverBackend(_device: RegisteredDevice): { platformName: 'iOS'; automationName: 'XCUITest' } {
     return { platformName: 'iOS', automationName: 'XCUITest' };
 }
 
@@ -123,7 +122,6 @@ export class AppiumRemoteControl implements RemoteControl {
     async performAction(udid: string, action: RemoteAction): Promise<void> {
         this.assertTarget(udid);
         const driver = await this.driver();
-        const platform = this.device.platform ?? 'ios';
         if (action.type === 'tap' || action.type === 'swipe') {
             const actions = action.type === 'tap'
                 ? [
@@ -153,11 +151,6 @@ export class AppiumRemoteControl implements RemoteControl {
         if (action.type === 'unlock' || action.type === 'wake') {
             if (driver.unlock) return driver.unlock();
             await driver.execute('mobile: unlock');
-            return;
-        }
-        if (platform === 'android') {
-            const keycode = action.type === 'home' ? 3 : action.type === 'volumeUp' ? 24 : 25;
-            await driver.execute('mobile: pressKey', { keycode });
             return;
         }
         const name = action.type === 'home' ? 'home' : action.type === 'volumeUp' ? 'volumeUp' : 'volumeDown';

@@ -5,13 +5,9 @@ import { access } from 'node:fs/promises';
 export type HostCapability =
     | 'ios.physical'
     | 'ios.simulator'
-    | 'android.physical'
-    | 'android.emulator'
-    | 'android.h264'
     | 'appium'
     | 'wda'
-    | 'simctl'
-    | 'adb';
+    | 'simctl';
 
 export interface HostSnapshot {
     id: string;
@@ -26,8 +22,6 @@ export interface HostSnapshot {
         appium: boolean;
         appiumRuntime: boolean;
         xcrun: boolean;
-        adb: boolean;
-        scrcpyVideo: boolean;
     };
     metrics?: {
         uptimeSeconds: number;
@@ -57,31 +51,23 @@ export async function detectHostCapabilities(options: {
     envPath?: string;
     appiumEntry?: string;
     appiumRuntimeEntry?: string;
-    scrcpyServerJar?: string;
     commandAvailable?: (command: string) => Promise<boolean>;
 } = {}): Promise<HostSnapshot> {
     const platform = options.platform ?? process.platform;
     const probe = options.commandAvailable ?? ((command: string) => commandAvailable(command, options.envPath));
-    const [xcrun, adb, appium, appiumRuntime, scrcpyVideo] = await Promise.all([
+    const [xcrun, appium, appiumRuntime] = await Promise.all([
         probe('xcrun'),
-        probe('adb'),
         exists(options.appiumEntry ?? path.resolve('node_modules/appium/index.js')),
         exists(options.appiumRuntimeEntry ?? path.resolve('node_modules/appium-runtime/index.js')),
-        options.scrcpyServerJar || process.env.PHONE_FARM_SCRCPY_SERVER_JAR
-            ? exists(options.scrcpyServerJar ?? process.env.PHONE_FARM_SCRCPY_SERVER_JAR!)
-            : Promise.resolve(false),
     ]);
     const capabilities: HostCapability[] = [];
     if (appium || appiumRuntime) capabilities.push('appium');
     if (xcrun) capabilities.push('simctl');
-    if (adb) capabilities.push('adb');
     if (platform === 'darwin') {
         capabilities.push('ios.physical');
         if (xcrun) capabilities.push('ios.simulator');
         if (xcrun && appium) capabilities.push('wda');
     }
-    if (adb) capabilities.push('android.physical', 'android.emulator');
-    if (adb && scrcpyVideo) capabilities.push('android.h264');
     return {
         id: options.id ?? process.env.PHONE_FARM_WORKER_ID ?? 'local',
         hostname: options.hostname ?? os.hostname(),
@@ -90,7 +76,7 @@ export async function detectHostCapabilities(options: {
         online: true,
         observedAt: new Date().toISOString(),
         capabilities,
-        tools: { appium, appiumRuntime, xcrun, adb, scrcpyVideo },
+        tools: { appium, appiumRuntime, xcrun },
         metrics: {
             uptimeSeconds: Math.max(0, Math.round(os.uptime())),
             load1: Number((os.loadavg()[0] ?? 0).toFixed(2)),
