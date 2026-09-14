@@ -192,12 +192,14 @@ reset.addEventListener('click', clearFilters);
 filterEmptyReset.addEventListener('click', clearFilters);
 for (const button of viewButtons)
     button.addEventListener('click', () => setView(button.dataset.deviceView === 'compact' ? 'compact' : 'grid'));
-document.body.addEventListener('htmx:afterSwap', (event) => {
+function handleDeviceListSwap(event) {
     const detail = event.detail;
     const target = detail?.elt ?? detail?.target ?? (event.target instanceof Element ? event.target : undefined);
     if (target?.id === 'device-list')
         applyFilters();
-});
+}
+document.body.addEventListener('htmx:afterSwap', handleDeviceListSwap);
+document.body.addEventListener('htmx:afterSettle', handleDeviceListSwap);
 const main = document.querySelector('main');
 if (main) {
     new MutationObserver((records) => {

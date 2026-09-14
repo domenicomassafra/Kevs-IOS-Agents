@@ -230,6 +230,7 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(overviewAsset.body, /device-list-sort/);
     assert.match(overviewAsset.body, /mobile-farm\.device-list-view/);
     assert.match(overviewAsset.body, /MutationObserver/);
+    assert.match(overviewAsset.body, /htmx:afterSettle/);
     assert.match(overviewAsset.body, /detail\?\.elt/);
 
     const fragment = await inject(app, { method: 'GET', url: '/api/fragments/control-center' });
