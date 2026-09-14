@@ -193,8 +193,16 @@ reset.addEventListener('click', clearFilters);
 filterEmptyReset.addEventListener('click', clearFilters);
 for (const button of viewButtons) button.addEventListener('click', () => setView(button.dataset.deviceView === 'compact' ? 'compact' : 'grid'));
 document.body.addEventListener('htmx:afterSwap', (event) => {
-    const detailTarget = (event as CustomEvent<{ target?: Element }>).detail?.target;
-    const target = detailTarget ?? (event.target instanceof Element ? event.target : undefined);
+    const detail = (event as CustomEvent<{ elt?: Element; target?: Element }>).detail;
+    const target = detail?.elt ?? detail?.target ?? (event.target instanceof Element ? event.target : undefined);
     if (target?.id === 'device-list') applyFilters();
 });
+const main = document.querySelector('main');
+if (main) {
+    new MutationObserver((records) => {
+        const replaced = records.some(({ addedNodes }) => Array.from(addedNodes)
+            .some((node) => node instanceof HTMLElement && node.id === 'device-list'));
+        if (replaced) queueMicrotask(applyFilters);
+    }).observe(main, { childList: true });
+}
 applyFilters();
