@@ -5,9 +5,10 @@ This repository is the **single canonical control plane** for the Farming / Farm
 ## Authority
 
 - Canonical working source: `farming/Kevs-IOS-Agents`, branch `main`.
-- Production remote: `origin` → `Git-Agni/prod-FARM-IOS-Core`.
-- Source ancestry remote: `upstream` → `kevinnguyen08/Kevs-IOS-Agents`.
-- `origin/main` is the release line. `upstream/main` is retained only for ancestry/upstream review; it is not a second control plane.
+- Canonical remote: `origin` → `domenicomassafra/Kevs-IOS-Agents`.
+- Source ancestry remote: `upstream` → `kevinbadi/Kevs-IOS-Agents`.
+- `Git-Agni/prod-FARM-IOS-Core` is ancestry only: its `main` diverged at `bec4331` and contains three old README-only commits not carried into the canonical product line.
+- `origin/main` is the release line. `upstream/main` is retained only for ancestry/upstream review; neither upstream nor Git-Agni is a second control plane.
 - No Android runtime, ADB, UiAutomator2, Android Emulator, scrcpy control path, second scheduler or second device registry belongs in this product.
 
 ## Runtime map
