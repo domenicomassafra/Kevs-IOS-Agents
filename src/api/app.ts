@@ -675,7 +675,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             return reply.code(503).header('cache-control', 'no-store').send();
         }
     });
-    let fleetStreamLease: { abort: AbortController; closed: Promise<void> } | undefined;
+    type FleetStreamLease = { abort: AbortController; done: Promise<void>; stop: () => Promise<void> };
+    let fleetStreamLease: FleetStreamLease | undefined;
     app.post<{ Params: { udid: string }; Querystring: { scope?: string } }>('/api/devices/:udid/remote/stream-token', async (request) => {
         const base = `/api/devices/${encodeURIComponent(request.params.udid)}/remote/stream`;
         const scope = request.query.scope === 'fleet' ? 'fleet' : undefined;
@@ -699,49 +700,83 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             }
         }
         // Fleet has a stronger invariant than an ordinary device viewer: only
-        // one focused upstream stream may exist at a time. Abort the previous
-        // lease and wait for it to close before opening the next one. If a
-        // broken transport refuses to close, fail the new request rather than
-        // briefly running two upstream streams in parallel.
+        // one focused upstream stream may exist at a time. `done` is tied to
+        // the upstream fetch reader (not merely the downstream browser reply),
+        // so the next focus cannot open until the worker connection has been
+        // cancelled and given a short quiescence window to release its socket.
         if (request.query.scope === 'fleet' && fleetStreamLease) {
             const previous = fleetStreamLease;
-            previous.abort.abort();
-            const closed = await Promise.race([
-                previous.closed.then(() => true),
-                new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_500)),
+            const stopped = await Promise.race([
+                previous.stop().then(() => true),
+                new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000)),
             ]);
-            if (!closed) return reply.code(409).send({ error: 'Previous focused fleet stream is still closing; retry live.' });
+            if (!stopped) return reply.code(409).send({ error: 'Previous focused fleet stream is still closing; retry live.' });
+            if (fleetStreamLease === previous) fleetStreamLease = undefined;
         }
-        // Close the upstream device stream the moment the browser goes away —
-        // otherwise every viewer navigation leaks a live MJPEG connection.
+
         const abort = new AbortController();
-        request.raw.once('close', () => abort.abort());
-        let releaseFleetLease: (() => void) | undefined;
-        if (request.query.scope === 'fleet') {
-            let resolveClosed!: () => void;
-            let released = false;
-            const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
-            releaseFleetLease = () => {
-                if (released) return;
-                released = true;
-                resolveClosed();
-                if (fleetStreamLease?.abort === abort) fleetStreamLease = undefined;
-            };
-            reply.raw.once('close', releaseFleetLease);
-            reply.raw.once('finish', releaseFleetLease);
-            fleetStreamLease = { abort, closed };
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        let resolveDone!: () => void;
+        let doneResolved = false;
+        const done = new Promise<void>((resolve) => { resolveDone = resolve; });
+        const finishUpstream = async () => {
+            if (doneResolved) return;
+            doneResolved = true;
+            try { await reader?.cancel(); } catch { /* already aborted/closed */ }
+            // Undici/Node may resolve reader.cancel() before the remote HTTP
+            // peer observes the FIN. One frame interval is enough for the
+            // worker to observe cancellation before another Fleet stream is
+            // permitted, avoiding transient double-stream CPU/network load.
+            await new Promise<void>((resolve) => setTimeout(resolve, 350));
+            resolveDone();
+        };
+        let stopPromise: Promise<void> | undefined;
+        const stop = () => {
+            if (!stopPromise) {
+                stopPromise = (async () => {
+                    abort.abort();
+                    try { await reader?.cancel(); } catch { /* reader may already be closed */ }
+                    await done;
+                })();
+            }
+            return stopPromise;
+        };
+        const isFleetStream = request.query.scope === 'fleet';
+        const lease: FleetStreamLease = { abort, done, stop };
+        if (isFleetStream) {
+            fleetStreamLease = lease;
+            reply.raw.once('close', () => { void stop(); });
+        } else {
+            // Ordinary single-device viewers do not share the Fleet lease but
+            // still cancel their upstream fetch as soon as the browser leaves.
+            request.raw.once('close', () => abort.abort());
         }
         try {
             const upstream = await remote.getMjpegStream(request.params.udid, abort.signal);
             if (!upstream.body) {
-                releaseFleetLease?.();
+                await finishUpstream();
+                if (fleetStreamLease === lease) fleetStreamLease = undefined;
                 return reply.code(503).send({ error: 'Device stream is unavailable' });
             }
+            reader = upstream.body.getReader();
+            const streamBody = async function* () {
+                try {
+                    while (true) {
+                        const chunk = await reader!.read();
+                        if (chunk.done) break;
+                        if (chunk.value) yield chunk.value;
+                    }
+                } finally {
+                    await finishUpstream();
+                    if (fleetStreamLease === lease) fleetStreamLease = undefined;
+                }
+            };
             return reply.header('cache-control', 'no-store, no-cache, must-revalidate')
                 .type(upstream.headers.get('content-type') ?? 'multipart/x-mixed-replace; boundary=--BoundaryString')
-                .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
+                .send(Readable.from(streamBody()));
         } catch (error) {
-            releaseFleetLease?.();
+            await finishUpstream();
+            if (fleetStreamLease === lease) fleetStreamLease = undefined;
             throw error;
         }
     });
