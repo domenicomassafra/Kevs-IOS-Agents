@@ -22,3 +22,9 @@ Make the distributed mobile farm read like one coherent product instead of a col
 - Automation page test asserts the staged workspace and pool-name editor.
 - Runs page test rejects the old IOS AGENTS branding.
 - Full `npm run check`, `npm run build:web`, `git diff --check` and secret scan must pass before deployment.
+
+## Live proof
+
+- Deployed to the MiniPC production control plane on `main` at `8fc37e9`.
+- Control-plane and PostgreSQL containers healthy after rebuild.
+- Tailnet smoke confirmed the live Control Center fragment, staged Automation Studio + pool-name editor, Fleet status notice and cross-platform Runs page.

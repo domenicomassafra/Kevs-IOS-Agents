@@ -38,3 +38,11 @@
 ## Remaining physical-device proof
 
 The current Mac Studio is reachable over Tailscale and the gateway network/auth boundary has been smoke-tested, but at this checkpoint it has no full `Xcode.app` selected (only CommandLineTools) and no `devices.json` exists in the searched project/checkouts. Therefore Appium/XCUITest/WDA signing and the physical-iPhone acceptance receipt remain intentionally unclaimed. Production pairing still requires applying the worker/internal tokens to the Mac after full Xcode/signing is ready.
+
+## Control Center UX cutover — 2026-09-14
+
+- Production source advanced to `8fc37e9` on `main`.
+- Full source gate before deployment: 127/127 tests, TypeScript green, dashboard build green, diff/secret checks clean.
+- Docker rebuild smoke again printed `control-plane import OK`; PostgreSQL stayed healthy and the recreated control-plane returned healthy.
+- Tailnet HTTPS smoke confirmed `/api/fragments/control-center` exposes attention state + recent runs, `/automations` exposes the staged Portable Flow workspace and editable saved-pool name, `/fleet` exposes the fleet state notice, and `/tasks` exposes the Mobile Farm Runs/search UI.
+- This cutover carried no database migration and did not change device/scheduler contracts.
