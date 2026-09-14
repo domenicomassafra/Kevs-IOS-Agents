@@ -267,10 +267,28 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.equal(runs.statusCode, 200);
     assert.match(runs.body, /Runs · Mobile Farm/);
     assert.match(runs.body, /id="runs-search"/);
+    assert.match(runs.body, /id="runs-device"/);
+    assert.match(runs.body, /id="runs-flow"/);
+    assert.match(runs.body, /id="runs-live-refresh"/);
+    assert.match(runs.body, /id="runs-kpi-attention"/);
+    assert.match(runs.body, /Recent runs/);
+    assert.match(runs.body, /Execution history/);
+    assert.match(runs.body, /Upcoming &amp; recurring/);
     assert.match(runs.body, /id="runs-action-status"/);
     assert.match(runs.body, /id="schedule-edit-dialog"/);
     assert.match(runs.body, /id="execution-detail-dialog"/);
+    assert.match(runs.body, /id="execution-detail-links"/);
+    assert.match(runs.body, /id="execution-detail-error-section"/);
     assert.doesNotMatch(runs.body, /brand-name">IOS AGENTS/);
+
+    const tasksAsset = await inject(app, { method: 'GET', url: '/assets/tasks.js' });
+    assert.equal(tasksAsset.statusCode, 200);
+    assert.match(tasksAsset.body, /runs-device/);
+    assert.match(tasksAsset.body, /runs-flow/);
+    assert.match(tasksAsset.body, /sourceFlowId/);
+    assert.match(tasksAsset.body, /Live refresh|runs-live-refresh/);
+    const runsStyles = await inject(app, { method: 'GET', url: '/assets/styles.css' });
+    assert.match(runsStyles.body, /\.schedule-editor-grid > \[hidden\]/);
 });
 
 test('device pool API normalizes selectors and rejects duplicate names', async (context) => {

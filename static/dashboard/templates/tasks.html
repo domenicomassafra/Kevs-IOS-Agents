@@ -19,27 +19,46 @@
                     <span class="brand-by">real + virtual device control</span>
                 </span>
             </a>
-            <nav class="topbar-nav"><a class="nav-link" href="/">Overview</a><a class="nav-link" href="/fleet">Fleet</a><a class="nav-link" href="/automations">Automations</a><a class="nav-link is-active" href="/tasks">Runs</a><button id="refresh-tasks" class="button secondary" type="button">Refresh</button>__PLUGIN_NAV____AUTH_NAV__</nav>
+            <nav class="topbar-nav"><a class="nav-link" href="/">Overview</a><a class="nav-link" href="/fleet">Fleet</a><a class="nav-link" href="/automations">Automations</a><a class="nav-link is-active" href="/tasks">Runs</a>__PLUGIN_NAV____AUTH_NAV__</nav>
         </div>
     </header>
-    <main class="shell">
+    <main class="shell runs-shell">
         <header class="page-header command-header">
-            <div><span class="eyebrow">Durable scheduler</span><h1>Runs</h1><p>Schedules and execution history across every device, plugin and portable flow.</p></div>
+            <div><span class="eyebrow">Run operations</span><h1>Runs</h1><p>Recent execution state, evidence and scheduler controls across every device and portable flow.</p></div>
             <a class="button primary" href="/automations?template=flow">Create automation</a>
         </header>
-        <section class="runs-toolbar" aria-label="Run filters">
-            <input id="runs-search" type="search" placeholder="Search device, plugin, task…" aria-label="Search runs">
-            <select id="runs-status" aria-label="Filter run status"><option value="">All statuses</option><option value="active">Active schedules</option><option value="paused">Paused schedules</option><option value="completed">Completed schedules</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option><option value="stopped">Stopped</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select>
-            <span id="runs-summary" class="run-meta">Loading…</span>
+
+        <section class="runs-overview" aria-label="Run status summary">
+            <div class="run-kpi"><span>Recent</span><strong id="runs-kpi-recent">—</strong><small>last 24 hours</small></div>
+            <div class="run-kpi"><span>In flight</span><strong id="runs-kpi-active">—</strong><small>running + queued</small></div>
+            <div class="run-kpi"><span>Succeeded</span><strong id="runs-kpi-success">—</strong><small>recent executions</small></div>
+            <div class="run-kpi"><span>Needs attention</span><strong id="runs-kpi-attention">—</strong><small>failed + stopped</small></div>
+        </section>
+
+        <section class="runs-toolbar" aria-label="Run filters and refresh controls">
+            <div class="runs-filter-grid">
+                <label class="runs-filter runs-filter-search"><span>Search</span><input id="runs-search" type="search" placeholder="Run, device, flow, plugin…" aria-label="Search runs"></label>
+                <label class="runs-filter"><span>Device</span><select id="runs-device" aria-label="Filter by device"><option value="">All devices</option></select></label>
+                <label class="runs-filter"><span>Flow</span><select id="runs-flow" aria-label="Filter by flow"><option value="">All flows</option></select></label>
+                <label class="runs-filter"><span>Status</span><select id="runs-status" aria-label="Filter run status"><option value="">All statuses</option><option value="active">Active schedules</option><option value="paused">Paused schedules</option><option value="completed">Completed schedules</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option><option value="stopped">Stopped</option><option value="cancelled">Cancelled</option><option value="skipped">Skipped</option></select></label>
+            </div>
+            <div class="runs-refresh-bar">
+                <label class="runs-live-toggle"><input id="runs-live-refresh" type="checkbox" checked><span>Live refresh</span></label>
+                <span id="runs-last-updated" class="run-meta">Not refreshed yet</span>
+                <span id="runs-summary" class="run-meta">Loading…</span>
+                <button id="refresh-tasks" class="button secondary" type="button">Refresh now</button>
+            </div>
         </section>
         <p id="runs-action-status" class="runs-action-status run-meta" aria-live="polite" hidden></p>
+
         <section class="panel task-section">
-            <div class="section-heading"><div><span class="eyebrow">Queue</span><h2>Schedules</h2></div></div>
-            <div id="schedules" class="task-list loading-card"><span class="spinner"></span>Loading schedules…</div>
+            <div class="section-heading runs-section-heading"><div><span class="eyebrow">Recent runs</span><h2>Execution history</h2><p>Newest first. Open a run for timestamps, error state, exit code and evidence logs.</p></div><span id="execution-count" class="run-meta"></span></div>
+            <div id="executions" class="task-list run-history loading-card"><span class="spinner"></span>Loading executions…</div>
         </section>
-        <section class="panel task-section">
-            <div class="section-heading"><div><span class="eyebrow">History</span><h2>Executions</h2></div></div>
-            <div id="executions" class="task-list loading-card"><span class="spinner"></span>Loading executions…</div>
+
+        <section class="panel task-section runs-schedules-section">
+            <div class="section-heading runs-section-heading"><div><span class="eyebrow">Scheduler</span><h2>Upcoming &amp; recurring</h2><p>Schedules are secondary to run history. Edit timing or pause future work here.</p></div><span id="schedule-count" class="run-meta"></span></div>
+            <div id="schedules" class="task-list loading-card"><span class="spinner"></span>Loading schedules…</div>
         </section>
     </main>
 
@@ -76,9 +95,10 @@
                 <div><span class="eyebrow">Execution</span><h2 id="execution-detail-title">Run details</h2></div>
                 <button id="execution-detail-close" class="icon-button" type="button">Close</button>
             </div>
+            <div id="execution-detail-links" class="execution-detail-links"></div>
             <div id="execution-detail-meta" class="execution-detail-meta"></div>
-            <div id="execution-detail-error" class="run-error" hidden></div>
-            <div class="execution-log-head"><strong>Logs</strong><span id="execution-detail-log-count" class="run-meta"></span></div>
+            <section id="execution-detail-error-section" class="execution-error-panel" hidden><span class="eyebrow">Error</span><div id="execution-detail-error" class="run-error"></div></section>
+            <div class="execution-log-head"><div><span class="eyebrow">Evidence</span><strong>Execution log</strong></div><span id="execution-detail-log-count" class="run-meta"></span></div>
             <pre id="execution-detail-logs" class="execution-detail-logs">Loading…</pre>
         </div>
     </dialog>

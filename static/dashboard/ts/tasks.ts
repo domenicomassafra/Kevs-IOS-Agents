@@ -16,7 +16,7 @@ interface Schedule {
     timing: ScheduleTiming;
     nextRunAt: string | null;
     runWindowMinutes: number;
-    payload: { type?: string; destination?: string };
+    payload: { type?: string; destination?: string; name?: string; sourceFlowId?: string; sourceFlowVersion?: number };
 }
 
 interface Execution {
@@ -29,6 +29,9 @@ interface Execution {
     startedAt: string | null;
     finishedAt: string | null;
     error: string | null;
+    exitCode?: number | null;
+    scheduleId?: string | null;
+    payload: { name?: string; sourceFlowId?: string; sourceFlowVersion?: number; [key: string]: unknown };
 }
 
 interface ExecutionDetail extends Execution {
@@ -41,8 +44,18 @@ const schedulesElement = document.querySelector<HTMLElement>('#schedules')!;
 const executionsElement = document.querySelector<HTMLElement>('#executions')!;
 const refresh = document.querySelector<HTMLButtonElement>('#refresh-tasks')!;
 const search = document.querySelector<HTMLInputElement>('#runs-search')!;
+const deviceFilter = document.querySelector<HTMLSelectElement>('#runs-device')!;
+const flowFilter = document.querySelector<HTMLSelectElement>('#runs-flow')!;
 const statusFilter = document.querySelector<HTMLSelectElement>('#runs-status')!;
+const liveRefresh = document.querySelector<HTMLInputElement>('#runs-live-refresh')!;
+const lastUpdated = document.querySelector<HTMLElement>('#runs-last-updated')!;
 const summary = document.querySelector<HTMLElement>('#runs-summary')!;
+const executionCount = document.querySelector<HTMLElement>('#execution-count')!;
+const scheduleCount = document.querySelector<HTMLElement>('#schedule-count')!;
+const kpiRecent = document.querySelector<HTMLElement>('#runs-kpi-recent')!;
+const kpiActive = document.querySelector<HTMLElement>('#runs-kpi-active')!;
+const kpiSuccess = document.querySelector<HTMLElement>('#runs-kpi-success')!;
+const kpiAttention = document.querySelector<HTMLElement>('#runs-kpi-attention')!;
 const actionStatus = document.querySelector<HTMLElement>('#runs-action-status')!;
 const scheduleDialog = document.querySelector<HTMLDialogElement>('#schedule-edit-dialog')!;
 const scheduleForm = document.querySelector<HTMLFormElement>('#schedule-edit-form')!;
@@ -66,7 +79,9 @@ const scheduleResult = document.querySelector<HTMLElement>('#schedule-edit-resul
 const executionDialog = document.querySelector<HTMLDialogElement>('#execution-detail-dialog')!;
 const executionClose = document.querySelector<HTMLButtonElement>('#execution-detail-close')!;
 const executionTitle = document.querySelector<HTMLElement>('#execution-detail-title')!;
+const executionLinks = document.querySelector<HTMLElement>('#execution-detail-links')!;
 const executionMeta = document.querySelector<HTMLElement>('#execution-detail-meta')!;
+const executionErrorSection = document.querySelector<HTMLElement>('#execution-detail-error-section')!;
 const executionError = document.querySelector<HTMLElement>('#execution-detail-error')!;
 const executionLogCount = document.querySelector<HTMLElement>('#execution-detail-log-count')!;
 const executionLogs = document.querySelector<HTMLElement>('#execution-detail-logs')!;
@@ -97,6 +112,23 @@ function pluginLabel(pluginId: string): string {
 function taskLabel(pluginId: string, taskType: string): string {
     if (pluginId === 'com.phone-farm.flow' && taskType === 'flow') return 'Portable flow';
     return `${pluginLabel(pluginId)} ${taskType}`;
+}
+
+function flowName(item: Pick<Execution, 'pluginId' | 'taskType' | 'payload'> | Pick<Schedule, 'pluginId' | 'taskType' | 'payload'>): string | undefined {
+    if (item.pluginId !== 'com.phone-farm.flow' || item.taskType !== 'flow') return undefined;
+    const name = item.payload?.name;
+    return typeof name === 'string' && name.trim() ? name.trim() : 'Portable flow';
+}
+
+function flowKey(item: Pick<Execution, 'pluginId' | 'taskType' | 'payload'> | Pick<Schedule, 'pluginId' | 'taskType' | 'payload'>): string | undefined {
+    const name = flowName(item);
+    if (!name) return undefined;
+    return typeof item.payload.sourceFlowId === 'string' && item.payload.sourceFlowId
+        ? `id:${item.payload.sourceFlowId}` : `name:${name.toLowerCase()}`;
+}
+
+function runTitle(item: Pick<Execution, 'pluginId' | 'taskType' | 'payload'> | Pick<Schedule, 'pluginId' | 'taskType' | 'payload'>): string {
+    return flowName(item) ?? taskLabel(item.pluginId, item.taskType);
 }
 
 function timingLabel(timing: Schedule['timing']): string {
@@ -179,25 +211,50 @@ function detailField(label: string, value: string): HTMLElement {
     return field;
 }
 
+function detailLink(label: string, href: string): HTMLAnchorElement {
+    const link = document.createElement('a');
+    link.className = 'execution-context-link';
+    link.href = href;
+    const kicker = document.createElement('span'); kicker.textContent = label;
+    const value = document.createElement('strong'); value.textContent = label === 'Device' ? 'Open device' : 'Open flow source';
+    link.append(kicker, value);
+    return link;
+}
+
 async function openExecutionDetail(id: string): Promise<void> {
     executionTitle.textContent = 'Run details';
+    executionLinks.replaceChildren();
     executionMeta.replaceChildren();
-    executionError.hidden = true;
+    executionErrorSection.hidden = true;
     executionLogs.textContent = 'Loading…';
     executionLogCount.textContent = '';
     executionDialog.showModal();
     try {
         const execution = await request<ExecutionDetail>(`/api/executions/${encodeURIComponent(id)}`);
-        executionTitle.textContent = `${taskLabel(execution.pluginId, execution.taskType)} · ${deviceLabel(execution.deviceUdid)}`;
+        executionTitle.textContent = `${runTitle(execution)} · ${deviceLabel(execution.deviceUdid)}`;
+        const links: HTMLAnchorElement[] = [
+            detailLink('Device', `/devices/${encodeURIComponent(execution.deviceUdid)}`),
+        ];
+        if (execution.pluginId === 'com.phone-farm.flow' && execution.taskType === 'flow') {
+            const sourceFlowId = typeof execution.payload.sourceFlowId === 'string' ? execution.payload.sourceFlowId : undefined;
+            links.push(detailLink(
+                sourceFlowId ? 'Saved flow' : 'Flow workspace',
+                sourceFlowId ? `/api/flows/${encodeURIComponent(sourceFlowId)}` : `/automations?template=flow&device=${encodeURIComponent(execution.deviceUdid)}`,
+            ));
+        }
+        executionLinks.replaceChildren(...links);
         executionMeta.replaceChildren(
             detailField('Status', execution.status),
             detailField('Device', `${deviceLabel(execution.deviceUdid)} · ${shortDevice(execution.deviceUdid)}`),
+            detailField('Run ID', execution.id),
             detailField('Scheduled', date(execution.scheduledFor)),
             detailField('Started', date(execution.startedAt)),
             detailField('Finished', date(execution.finishedAt)),
             detailField('Exit code', execution.exitCode === null || execution.exitCode === undefined ? '—' : String(execution.exitCode)),
+            detailField('Schedule', execution.scheduleId ?? 'ad-hoc'),
+            ...(flowName(execution) ? [detailField('Flow', `${flowName(execution)}${execution.payload.sourceFlowVersion ? ` · v${execution.payload.sourceFlowVersion}` : ''}`)] : []),
         );
-        executionError.hidden = !execution.error;
+        executionErrorSection.hidden = !execution.error;
         executionError.textContent = execution.error ?? '';
         executionLogCount.textContent = `${execution.logs.length} line${execution.logs.length === 1 ? '' : 's'}`;
         executionLogs.textContent = execution.logs.length ? execution.logs.join('\n') : 'No logs recorded for this execution.';
@@ -213,14 +270,41 @@ function queryMatch(values: string[]): boolean {
 
 function filteredSchedules(): Schedule[] {
     const wanted = statusFilter.value;
+    const wantedDevice = deviceFilter.value;
+    const wantedFlow = flowFilter.value;
     return schedulesCache.filter((schedule) => (!wanted || schedule.status === wanted)
-        && queryMatch([deviceLabel(schedule.deviceUdid), schedule.deviceUdid, schedule.pluginId, pluginLabel(schedule.pluginId), schedule.taskType, taskLabel(schedule.pluginId, schedule.taskType)]));
+        && (!wantedDevice || schedule.deviceUdid === wantedDevice)
+        && (!wantedFlow || flowKey(schedule) === wantedFlow)
+        && queryMatch([deviceLabel(schedule.deviceUdid), schedule.deviceUdid, flowName(schedule) ?? '', schedule.pluginId, pluginLabel(schedule.pluginId), schedule.taskType, taskLabel(schedule.pluginId, schedule.taskType)]));
 }
 
 function filteredExecutions(): Execution[] {
     const wanted = statusFilter.value;
+    const wantedDevice = deviceFilter.value;
+    const wantedFlow = flowFilter.value;
     return executionsCache.filter((execution) => (!wanted || execution.status === wanted)
-        && queryMatch([deviceLabel(execution.deviceUdid), execution.deviceUdid, execution.pluginId, pluginLabel(execution.pluginId), execution.taskType, taskLabel(execution.pluginId, execution.taskType)]));
+        && (!wantedDevice || execution.deviceUdid === wantedDevice)
+        && (!wantedFlow || flowKey(execution) === wantedFlow)
+        && queryMatch([deviceLabel(execution.deviceUdid), execution.deviceUdid, flowName(execution) ?? '', execution.pluginId, pluginLabel(execution.pluginId), execution.taskType, taskLabel(execution.pluginId, execution.taskType)]));
+}
+
+function syncFilters(): void {
+    const selectedDevice = deviceFilter.value;
+    const allDeviceIds = new Set([...deviceNames.keys(), ...schedulesCache.map(({ deviceUdid }) => deviceUdid), ...executionsCache.map(({ deviceUdid }) => deviceUdid)]);
+    const devices = [...allDeviceIds].map((udid) => [udid, deviceLabel(udid)] as const).sort((a, b) => a[1].localeCompare(b[1]));
+    deviceFilter.replaceChildren(new Option('All devices', ''), ...devices.map(([udid, name]) => new Option(name, udid)));
+    if (selectedDevice && allDeviceIds.has(selectedDevice)) deviceFilter.value = selectedDevice;
+
+    const selectedFlow = flowFilter.value;
+    const flows = new Map<string, string>();
+    for (const item of [...executionsCache, ...schedulesCache]) {
+        const key = flowKey(item);
+        const name = flowName(item);
+        if (key && name) flows.set(key, name);
+    }
+    const options = [...flows.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([key, name]) => new Option(name, key));
+    flowFilter.replaceChildren(new Option('All flows', ''), ...options);
+    if (selectedFlow && flows.has(selectedFlow)) flowFilter.value = selectedFlow;
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -256,9 +340,9 @@ function renderSchedules(items: Schedule[]): void {
     }
     schedulesElement.className = 'task-list';
     schedulesElement.replaceChildren(...items.map((schedule) => {
-        const row = document.createElement('article'); row.className = 'task-row';
+        const row = document.createElement('article'); row.className = 'task-row schedule-row';
         const copy = document.createElement('div');
-        const title = document.createElement('h3'); title.textContent = `${taskLabel(schedule.pluginId, schedule.taskType)} · ${deviceLabel(schedule.deviceUdid)}`;
+        const title = document.createElement('h3'); title.textContent = `${runTitle(schedule)} · ${deviceLabel(schedule.deviceUdid)}`;
         const meta = document.createElement('p'); meta.textContent = `${shortDevice(schedule.deviceUdid)} · ${timingLabel(schedule.timing)} · next ${date(schedule.nextRunAt)}`;
         copy.append(title, meta);
         const state = document.createElement('span'); state.className = `status ${schedule.status}`; state.textContent = schedule.status;
@@ -281,11 +365,23 @@ function renderExecutions(items: Execution[]): void {
     }
     executionsElement.className = 'task-list';
     executionsElement.replaceChildren(...items.map((execution) => {
-        const row = document.createElement('article'); row.className = 'task-row';
-        const copy = document.createElement('div');
-        const title = document.createElement('h3'); title.textContent = `${taskLabel(execution.pluginId, execution.taskType)} · ${deviceLabel(execution.deviceUdid)}`;
-        const meta = document.createElement('p'); meta.textContent = `${shortDevice(execution.deviceUdid)} · ${date(execution.scheduledFor)}${execution.error ? ` · ${execution.error}` : ''}`;
-        copy.append(title, meta);
+        const row = document.createElement('article'); row.className = `task-row run-card${execution.error ? ' has-error' : ''}`;
+        const copy = document.createElement('div'); copy.className = 'run-card-copy';
+        const context = document.createElement('div'); context.className = 'run-card-context';
+        const device = document.createElement('a'); device.href = `/devices/${encodeURIComponent(execution.deviceUdid)}`; device.textContent = deviceLabel(execution.deviceUdid);
+        const flow = flowName(execution);
+        if (flow) {
+            const source = typeof execution.payload.sourceFlowId === 'string' ? execution.payload.sourceFlowId : undefined;
+            const flowLink = document.createElement('a'); flowLink.href = source ? `/api/flows/${encodeURIComponent(source)}` : `/automations?template=flow&device=${encodeURIComponent(execution.deviceUdid)}`; flowLink.textContent = flow;
+            context.append(device, flowLink);
+        } else context.append(device);
+        const title = document.createElement('h3'); title.textContent = runTitle(execution);
+        const meta = document.createElement('p'); meta.textContent = `${date(execution.scheduledFor)} · ${shortDevice(execution.deviceUdid)}${execution.exitCode !== null && execution.exitCode !== undefined ? ` · exit ${execution.exitCode}` : ''}`;
+        copy.append(context, title, meta);
+        if (execution.error) {
+            const error = document.createElement('p'); error.className = 'run-card-error'; error.textContent = execution.error;
+            copy.append(error);
+        }
         const state = document.createElement('span'); state.className = `status ${execution.status}`; state.textContent = execution.status;
         const actions = document.createElement('div'); actions.className = 'inline-actions';
         actions.append(button('Details', async () => { await openExecutionDetail(execution.id); }));
@@ -316,7 +412,9 @@ async function load(): Promise<void> {
         deviceNames = new Map(devices.map((device) => [device.udid, device.name]));
         schedulesCache = scheduleData.schedules;
         executionsCache = executionData.executions;
+        syncFilters();
         render();
+        lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         schedulesElement.textContent = message; executionsElement.textContent = message;
@@ -324,16 +422,32 @@ async function load(): Promise<void> {
 }
 
 function render(): void {
-    renderSchedules(filteredSchedules());
-    renderExecutions(filteredExecutions());
+    const schedules = filteredSchedules();
+    const executions = filteredExecutions();
+    renderSchedules(schedules);
+    renderExecutions(executions);
     const queued = executionsCache.filter(({ status }) => status === 'queued').length;
     const running = executionsCache.filter(({ status }) => status === 'running').length;
     const failed = executionsCache.filter(({ status }) => status === 'failed').length;
-    summary.textContent = `${schedulesCache.length} schedules · ${running} running · ${queued} queued${failed ? ` · ${failed} failed` : ''}`;
+    const stopped = executionsCache.filter(({ status }) => status === 'stopped').length;
+    const dayAgo = Date.now() - 24 * 60 * 60_000;
+    const recentItems = executionsCache.filter(({ scheduledFor }) => new Date(scheduledFor).getTime() >= dayAgo);
+    const recent = recentItems.length;
+    const succeeded = recentItems.filter(({ status }) => status === 'succeeded').length;
+    const recentAttention = recentItems.filter(({ status }) => status === 'failed' || status === 'stopped').length;
+    kpiRecent.textContent = String(recent);
+    kpiActive.textContent = String(running + queued);
+    kpiSuccess.textContent = String(succeeded);
+    kpiAttention.textContent = String(recentAttention);
+    executionCount.textContent = `${executions.length} shown · ${executionsCache.length} total`;
+    scheduleCount.textContent = `${schedules.length} shown · ${schedulesCache.length} total`;
+    summary.textContent = `${running} running · ${queued} queued${failed ? ` · ${failed} failed` : ''}`;
 }
 
 refresh.addEventListener('click', () => void load());
 search.addEventListener('input', render);
+deviceFilter.addEventListener('change', render);
+flowFilter.addEventListener('change', render);
 statusFilter.addEventListener('change', render);
 scheduleKind.addEventListener('change', updateScheduleEditorFields);
 scheduleClose.addEventListener('click', () => {
@@ -374,4 +488,6 @@ scheduleForm.addEventListener('submit', (event) => {
     })();
 });
 void load();
-setInterval(() => void load(), 5_000);
+setInterval(() => {
+    if (liveRefresh.checked && !document.hidden) void load();
+}, 5_000);

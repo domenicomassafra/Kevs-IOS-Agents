@@ -101,6 +101,10 @@ Automation Studio now follows one explicit Target → Flow → Schedule → Run 
 
 The Open-device workspace now follows device status → live/still screen → actions/activity. Lifecycle actions moved out of global navigation into a local command bar, live video falls back explicitly to a still screenshot, and WDA-only controls are capability-gated. Production browser review also kept the screen ahead of actions at narrow widths and collapsed WDA social automations behind a secondary section. The physical-iPhone Add Device flow remains explicitly live-gated until full Xcode + a real iPhone are available.
 
+### Wave W — Runs workspace hierarchy (in progress)
+
+Runs is being reorganized around recent execution state and evidence. Recent runs become primary, schedules become secondary, filters are explicit for device/flow/status, live refresh is visible, and run details expose device/flow context, timestamps, exit code, errors and logs without changing scheduler behavior.
+
 ### Wave M — Control Center UX convergence (source complete, MiniPC live)
 
 The dashboard now presents the farm as one control plane instead of a set of disconnected technical pages. Overview exposes product capabilities, attention state and recent runs; Fleet makes offline/empty/online state explicit; Runs supports cross-platform Portable Flow tasks, search and status filtering; Automation Studio uses a compact workspace switch and staged Target → Author → Schedule flow. Saved pool editing now has explicit names and dirty-state protection so previewed edits cannot accidentally schedule against the stale persisted pool.
