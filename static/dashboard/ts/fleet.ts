@@ -57,8 +57,10 @@ let devices: FleetDevice[] = [];
 let running = new Map<string, Execution>();
 let focusedUdid = '';
 let focusFallbackActive = false;
+let focusGeneration = 0;
 let grouping: Grouping = 'host';
 const selected = new Set<string>();
+const EMPTY_FOCUS_FRAME = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
 function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, (character) => ({
@@ -198,9 +200,10 @@ function render(): void {
 }
 
 function closeFocus(): void {
+    focusGeneration += 1;
     focusedUdid = '';
     focusFallbackActive = false;
-    focusScreen.removeAttribute('src');
+    focusScreen.src = EMPTY_FOCUS_FRAME;
     focus.hidden = true;
     focusMode.className = 'connection-chip';
     focusMode.textContent = 'Idle';
@@ -244,18 +247,28 @@ function setFocusMode(mode: 'live' | 'still' | 'unavailable', text: string): voi
 }
 
 function showStill(udid: string, message = 'Still preview refreshed'): void {
+    focusGeneration += 1;
     focusFallbackActive = true;
-    focusScreen.removeAttribute('src');
     focusScreen.src = screenshotUrl(udid);
     setFocusMode('still', message);
 }
 
 async function connectLive(udid: string): Promise<void> {
+    const generation = ++focusGeneration;
     focusFallbackActive = false;
-    focusScreen.removeAttribute('src');
+    // Replacing the src with a local frame first forces Chromium to tear down
+    // the existing multipart request before we ask the control plane for the
+    // next device stream. The generation guard also prevents fast A→B clicks
+    // from allowing an older token request to win the race.
+    focusScreen.src = EMPTY_FOCUS_FRAME;
+    setFocusMode('live', 'Switching focused stream…');
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 180));
+    if (generation !== focusGeneration || focusedUdid !== udid) return;
     setFocusMode('live', 'Connecting live stream…');
     try {
-        focusScreen.src = await liveStreamUrl(udid);
+        const url = await liveStreamUrl(udid);
+        if (generation !== focusGeneration || focusedUdid !== udid) return;
+        focusScreen.src = url;
         setFocusMode('live', 'Only this focused device is streaming live');
     } catch (error) {
         showStill(udid, error instanceof Error ? `${error.message} · showing still preview` : 'Live unavailable · showing still preview');

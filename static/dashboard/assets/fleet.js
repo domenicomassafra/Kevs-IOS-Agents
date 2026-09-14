@@ -37,8 +37,10 @@ let devices = [];
 let running = new Map();
 let focusedUdid = '';
 let focusFallbackActive = false;
+let focusGeneration = 0;
 let grouping = 'host';
 const selected = new Set();
+const EMPTY_FOCUS_FRAME = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 function escapeHtml(value) {
     return value.replace(/[&<>"']/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -176,9 +178,10 @@ function render() {
     updateBulkBar();
 }
 function closeFocus() {
+    focusGeneration += 1;
     focusedUdid = '';
     focusFallbackActive = false;
-    focusScreen.removeAttribute('src');
+    focusScreen.src = EMPTY_FOCUS_FRAME;
     focus.hidden = true;
     focusMode.className = 'connection-chip';
     focusMode.textContent = 'Idle';
@@ -222,17 +225,29 @@ function setFocusMode(mode, text) {
     focusStatus.textContent = text;
 }
 function showStill(udid, message = 'Still preview refreshed') {
+    focusGeneration += 1;
     focusFallbackActive = true;
-    focusScreen.removeAttribute('src');
     focusScreen.src = screenshotUrl(udid);
     setFocusMode('still', message);
 }
 async function connectLive(udid) {
+    const generation = ++focusGeneration;
     focusFallbackActive = false;
-    focusScreen.removeAttribute('src');
+    // Replacing the src with a local frame first forces Chromium to tear down
+    // the existing multipart request before we ask the control plane for the
+    // next device stream. The generation guard also prevents fast A→B clicks
+    // from allowing an older token request to win the race.
+    focusScreen.src = EMPTY_FOCUS_FRAME;
+    setFocusMode('live', 'Switching focused stream…');
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    if (generation !== focusGeneration || focusedUdid !== udid)
+        return;
     setFocusMode('live', 'Connecting live stream…');
     try {
-        focusScreen.src = await liveStreamUrl(udid);
+        const url = await liveStreamUrl(udid);
+        if (generation !== focusGeneration || focusedUdid !== udid)
+            return;
+        focusScreen.src = url;
         setFocusMode('live', 'Only this focused device is streaming live');
     }
     catch (error) {
