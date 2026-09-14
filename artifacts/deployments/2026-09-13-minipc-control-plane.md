@@ -123,3 +123,13 @@ The current Mac Studio is reachable over Tailscale and the gateway network/auth 
 - Production screenshot review caught two visual regressions before closeout: narrow layouts placed the screen after actions, and WDA social workflows were still too dense. `3cd7f42` keeps the screen primary at narrow widths and collapses iPhone/WDA automations behind a secondary section. Final browser acceptance at 820px passed for both fixtures.
 - Cleanup completed: both temporary devices returned HTTP 204 on delete, `/api/devices` returned `[]`, worker port 3010 and CDP 9333 were zero, the temporary browser profile was absent, no `/tmp/farm33-*` artifacts remained, and temporary Preview windows were closed.
 - This does **not** close physical-iPhone Add Device acceptance. Full Xcode + a real iPhone are still required for the separate `acceptance:live` WDA onboarding proof.
+
+## Runs workspace hierarchy cutover — 2026-09-14
+
+- Runs application source advanced to `73b3a4e`, with final dialog-feedback cleanup at `0d2575e`.
+- Full final source gate on `0d2575e`: 127/127 tests, TypeScript green, `build:web` green, `git diff --check` green, and gitleaks `no leaks found`.
+- MiniPC completed the full Docker rebuild through `Successfully built`; PostgreSQL and control-plane were healthy, `/health` returned `ok=true`, and the production-container doctor reported `Source readiness: ready` / `Runtime readiness: ready`.
+- Production browser acceptance used `Farm34 Alpha` / `Farm34 Beta`, two saved flow fixtures, two schedules and two execution fixtures. The real Tailnet page rendered Recent runs ahead of schedules, showed Device/Flow/Status filters and flow-name search, exposed live refresh plus manual refresh timing, and kept the converged black/graphite/white surface (`rgb(5,5,5)` body, `rgb(8,8,10)` toolbar).
+- The failed-run detail showed status, run id, schedule id, Scheduled/Started/Finished timestamps, exit code 17, explicit error text, four evidence-log lines, a device link and an exact saved-flow source link. Final `0d2575e` browser retest proved dialog opens no longer leave persistent “Details complete.” feedback.
+- Cleanup completed: both device fixtures returned HTTP 204 on delete, `/api/devices` returned `[]`, PostgreSQL reported 0 FARM-034 executions, 0 schedules and 0 flow definitions, CDP 9334 was closed, the temporary Chrome profile was absent, and no `/tmp/farm034-*` artifacts remained locally or remotely.
+- This does **not** close physical-iPhone Add Device acceptance. Full Xcode + a real iPhone are still required for the separate `acceptance:live` WDA onboarding proof.
