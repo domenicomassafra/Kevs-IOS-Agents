@@ -223,6 +223,7 @@ test('overview control center exposes the major product surfaces instead of hidi
             id: 'macstudio', hostname: 'studio', os: 'darwin', arch: 'arm64', online: true,
             observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'],
             tools: { appium: true, appiumRuntime: true, xcrun: true },
+            error: 'ignored unsupported worker advertisement',
         }],
     });
     context.after(() => app.close());
@@ -261,6 +262,12 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(fragment.body, /Recent runs/);
     assert.match(fragment.body, /Portable flow/);
     assert.match(fragment.body, /No devices registered/);
+
+    const hosts = await inject(app, { method: 'GET', url: '/api/fragments/hosts' });
+    assert.equal(hosts.statusCode, 200);
+    assert.match(hosts.body, /degraded/);
+    assert.match(hosts.body, /ignored unsupported worker advertisement/);
+    assert.doesNotMatch(hosts.body, /connection-chip ready">online/);
 
     const automations = await inject(app, { method: 'GET', url: '/automations' });
     assert.equal(automations.statusCode, 200);

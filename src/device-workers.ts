@@ -1,10 +1,21 @@
 import type { DeviceConnectionStatus } from './devices/connection-manager.js';
 import type { Device } from './devices/discovery.js';
-import { loadRegisteredDevices, mutateRegisteredDevices, type RegisteredDevice } from './devices/registry.js';
+import { loadRegisteredDevices, mutateRegisteredDevices, normalizeDeviceTags, type RegisteredDevice } from './devices/registry.js';
+import { coordinatesForProfile, validateCoordinateOverrides } from './devices/coordinates.js';
 import type { RemoteAction, RemoteControl, ScreenInfo } from './devices/wda-remote.js';
-import type { HostSnapshot } from './hosts/capabilities.js';
+import type { HostCapability, HostSnapshot } from './hosts/capabilities.js';
 import type { RuntimeDevice } from './devices/runtime-discovery.js';
 import type { VirtualRuntime, VirtualRuntimePlatform } from './devices/virtual-runtime.js';
+
+export const DEVICE_WORKER_PROTOCOL_VERSION = 1;
+
+interface DeviceWorkerHealth {
+    ok: true;
+    role: 'device-worker';
+    workerId: string;
+    protocolVersion: number;
+    platforms: ['ios'];
+}
 
 export interface DeviceWorkerDescriptor {
     id: string;
@@ -16,6 +27,175 @@ export interface DeviceWorkerDevice {
     registered: Omit<RegisteredDevice, 'passcode'> & { hasPasscode: boolean };
     connected: Device | null;
     status?: DeviceConnectionStatus;
+}
+
+const HOST_CAPABILITIES = new Set<HostCapability>(['ios.physical', 'ios.simulator', 'appium', 'wda', 'simctl']);
+
+function record(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function sanitizedWorkerDevice(value: unknown): { device?: DeviceWorkerDevice; warning?: string } {
+    const snapshot = record(value);
+    const source = record(snapshot?.registered);
+    const udid = nonEmptyString(source?.udid);
+    const name = nonEmptyString(source?.name);
+    if (!snapshot || !source || !udid || !name) return { warning: 'ignored malformed device advertisement' };
+    const platform = source.platform ?? 'ios';
+    const kind = source.kind ?? 'physical';
+    const automationBackend = source.automationBackend ?? (kind === 'physical' ? 'wda' : 'appium');
+    if (platform !== 'ios') return { warning: `ignored unsupported device ${udid}: platform ${String(platform)}` };
+    if (kind !== 'physical' && kind !== 'simulator') return { warning: `ignored unsupported device ${udid}: kind ${String(kind)}` };
+    if (automationBackend !== 'wda' && automationBackend !== 'appium') {
+        return { warning: `ignored unsupported device ${udid}: backend ${String(automationBackend)}` };
+    }
+    let tags: string[] = [];
+    try { tags = normalizeDeviceTags(source.tags); }
+    catch (error) {
+        return { warning: `ignored malformed device ${udid}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    let coordinateProfile: RegisteredDevice['coordinateProfile'];
+    if (source.coordinateProfile !== undefined) {
+        if (typeof source.coordinateProfile !== 'string') return { warning: `ignored malformed device ${udid}: coordinate profile must be a string` };
+        try {
+            coordinatesForProfile(source.coordinateProfile);
+            coordinateProfile = source.coordinateProfile as RegisteredDevice['coordinateProfile'];
+        } catch {
+            return { warning: `ignored malformed device ${udid}: unknown coordinate profile ${source.coordinateProfile}` };
+        }
+    }
+    let coordinates: RegisteredDevice['coordinates'];
+    let instagramCoordinates: RegisteredDevice['instagramCoordinates'];
+    try {
+        if (source.coordinates !== undefined) coordinates = validateCoordinateOverrides(source.coordinates, coordinateProfile);
+        if (source.instagramCoordinates !== undefined) instagramCoordinates = validateCoordinateOverrides(source.instagramCoordinates, coordinateProfile);
+    } catch (error) {
+        return { warning: `ignored malformed device ${udid}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    const pluginData = record(source.pluginData) ?? {};
+    const registered: DeviceWorkerDevice['registered'] = {
+        name,
+        udid,
+        platform: 'ios',
+        kind,
+        automationBackend,
+        hasPasscode: source.hasPasscode === true,
+        pluginData: pluginData as RegisteredDevice['pluginData'],
+        ...(nonEmptyString(source.osVersion) ? { osVersion: nonEmptyString(source.osVersion) } : {}),
+        ...(nonEmptyString(source.productType) ? { productType: nonEmptyString(source.productType) } : {}),
+        ...(tags.length ? { tags } : {}),
+        ...(coordinateProfile ? { coordinateProfile } : {}),
+        ...(coordinates && Object.keys(coordinates).length ? { coordinates } : {}),
+        ...(instagramCoordinates && Object.keys(instagramCoordinates).length ? { instagramCoordinates } : {}),
+    };
+    const connectedSource = snapshot.connected === null ? null : record(snapshot.connected);
+    let connected: Device | null = null;
+    if (connectedSource) {
+        const connectedUdid = nonEmptyString(connectedSource.udid);
+        const connectedName = nonEmptyString(connectedSource.name);
+        const osVersion = nonEmptyString(connectedSource.osVersion);
+        const connectedPlatform = connectedSource.platform ?? 'ios';
+        const connectedKind = connectedSource.kind ?? kind;
+        if (connectedUdid !== udid || !connectedName || !osVersion || connectedPlatform !== 'ios'
+            || (connectedKind !== 'physical' && connectedKind !== 'simulator')) {
+            return { warning: `ignored malformed connected-state advertisement for ${udid}` };
+        }
+        connected = {
+            name: connectedName,
+            osVersion,
+            udid,
+            platform: 'ios',
+            kind: connectedKind,
+            ...(nonEmptyString(connectedSource.productType) ? { productType: nonEmptyString(connectedSource.productType) } : {}),
+            ...(nonEmptyString(connectedSource.hardwareModel) ? { hardwareModel: nonEmptyString(connectedSource.hardwareModel) } : {}),
+            ...(nonEmptyString(connectedSource.modelName) ? { modelName: nonEmptyString(connectedSource.modelName) } : {}),
+        };
+    } else if (snapshot.connected !== null && snapshot.connected !== undefined) {
+        return { warning: `ignored malformed connected-state advertisement for ${udid}` };
+    }
+    return { device: { registered, connected } };
+}
+
+function sanitizedHostSnapshot(value: unknown, descriptor: DeviceWorkerDescriptor): HostSnapshot {
+    const source = record(value);
+    if (!source) throw new Error(`Device worker ${descriptor.id} returned an invalid host payload`);
+    const hostname = nonEmptyString(source.hostname) ?? descriptor.url.hostname;
+    const os = nonEmptyString(source.os);
+    const arch = nonEmptyString(source.arch) ?? 'unknown';
+    const rawCapabilities = Array.isArray(source.capabilities) ? source.capabilities : [];
+    const unsupportedCapabilities = rawCapabilities.filter((capability) => typeof capability !== 'string' || !HOST_CAPABILITIES.has(capability as HostCapability));
+    const capabilities = rawCapabilities.filter((capability): capability is HostCapability => (
+        typeof capability === 'string' && HOST_CAPABILITIES.has(capability as HostCapability)
+    ));
+    const toolsSource = record(source.tools);
+    const metricsSource = record(source.metrics);
+    const metrics = metricsSource ? {
+        uptimeSeconds: finiteNumber(metricsSource.uptimeSeconds) ?? 0,
+        load1: finiteNumber(metricsSource.load1) ?? 0,
+        cpuCount: finiteNumber(metricsSource.cpuCount) ?? 0,
+        totalMemoryBytes: finiteNumber(metricsSource.totalMemoryBytes) ?? 0,
+        freeMemoryBytes: finiteNumber(metricsSource.freeMemoryBytes) ?? 0,
+    } : undefined;
+    const warnings = [
+        nonEmptyString(source.error),
+        unsupportedCapabilities.length ? `ignored unsupported capabilities: ${unsupportedCapabilities.map(String).join(', ')}` : undefined,
+    ].filter(Boolean) as string[];
+    return {
+        id: descriptor.id,
+        hostname,
+        os: os === 'darwin' || os === 'linux' || os === 'win32' ? os : 'unknown',
+        arch,
+        online: source.online !== false,
+        observedAt: nonEmptyString(source.observedAt) ?? new Date().toISOString(),
+        ...(warnings.length ? { error: warnings.join('; ') } : {}),
+        capabilities,
+        tools: {
+            appium: toolsSource?.appium === true,
+            appiumRuntime: toolsSource?.appiumRuntime === true,
+            xcrun: toolsSource?.xcrun === true,
+        },
+        ...(metrics ? { metrics } : {}),
+    };
+}
+
+function sanitizedRuntimeDevice(value: unknown): RuntimeDevice | undefined {
+    const source = record(value);
+    const name = nonEmptyString(source?.name);
+    const osVersion = nonEmptyString(source?.osVersion);
+    const udid = nonEmptyString(source?.udid);
+    if (!source || !name || !osVersion || !udid || source.platform !== 'ios') return;
+    if (source.kind !== 'physical' && source.kind !== 'simulator') return;
+    if (source.automationBackend !== 'wda' && source.automationBackend !== 'appium') return;
+    return {
+        name, osVersion, udid, platform: 'ios', kind: source.kind, automationBackend: source.automationBackend,
+        ...(nonEmptyString(source.productType) ? { productType: nonEmptyString(source.productType) } : {}),
+        ...(nonEmptyString(source.hardwareModel) ? { hardwareModel: nonEmptyString(source.hardwareModel) } : {}),
+        ...(nonEmptyString(source.modelName) ? { modelName: nonEmptyString(source.modelName) } : {}),
+    };
+}
+
+function sanitizedVirtualRuntime(value: unknown): VirtualRuntime | undefined {
+    const source = record(value);
+    const id = nonEmptyString(source?.id);
+    const name = nonEmptyString(source?.name);
+    if (!source || !id || !name || source.platform !== 'ios' || source.kind !== 'simulator') return;
+    if (source.state !== 'booted' && source.state !== 'shutdown') return;
+    return {
+        id, name, platform: 'ios', kind: 'simulator', state: source.state,
+        ...(nonEmptyString(source.osVersion) ? { osVersion: nonEmptyString(source.osVersion) } : {}),
+    };
+}
+
+function appendHostWarning(host: HostSnapshot, warning: string): HostSnapshot {
+    return { ...host, error: [host.error, warning].filter(Boolean).join('; ') };
 }
 
 export function configuredDeviceWorkers(
@@ -68,17 +248,47 @@ export class DeviceWorkerClient {
         return response;
     }
 
-    async devices(): Promise<DeviceWorkerDevice[]> {
+    async health(): Promise<DeviceWorkerHealth> {
+        const body = await (await this.request('/health', {}, 5_000)).json() as Partial<DeviceWorkerHealth>;
+        if (body.ok !== true || body.role !== 'device-worker') throw new Error(`Device worker ${this.descriptor.id} returned an invalid health payload`);
+        if (body.workerId !== this.descriptor.id) {
+            throw new Error(`Device worker identity mismatch: configured ${this.descriptor.id}, reported ${String(body.workerId)}`);
+        }
+        if (body.protocolVersion !== DEVICE_WORKER_PROTOCOL_VERSION) {
+            throw new Error(`Device worker ${this.descriptor.id} protocol ${String(body.protocolVersion)} is incompatible with control-plane protocol ${DEVICE_WORKER_PROTOCOL_VERSION}`);
+        }
+        if (!Array.isArray(body.platforms) || body.platforms.length !== 1 || body.platforms[0] !== 'ios') {
+            throw new Error(`Device worker ${this.descriptor.id} is not an iOS-only worker`);
+        }
+        return body as DeviceWorkerHealth;
+    }
+
+    async devices(): Promise<{ devices: DeviceWorkerDevice[]; warnings: string[] }> {
         const response = await this.request('/v1/devices');
-        return (await response.json() as { devices: DeviceWorkerDevice[] }).devices;
+        const body = record(await response.json());
+        if (!Array.isArray(body?.devices)) throw new Error(`Device worker ${this.descriptor.id} returned an invalid device inventory`);
+        const warnings: string[] = [];
+        const devices = body.devices.flatMap((value) => {
+            const result = sanitizedWorkerDevice(value);
+            if (result.warning) warnings.push(result.warning);
+            return result.device ? [result.device] : [];
+        });
+        warnings.forEach((warning) => console.warn(`Device worker ${this.descriptor.id}: ${warning}`));
+        return { devices, warnings };
     }
 
     async host(): Promise<HostSnapshot> {
-        return await (await this.request('/v1/host')).json() as HostSnapshot;
+        return sanitizedHostSnapshot(await (await this.request('/v1/host')).json(), this.descriptor);
     }
 
     async runtimeDevices(): Promise<RuntimeDevice[]> {
-        return (await (await this.request('/v1/runtime-devices')).json() as { devices: RuntimeDevice[] }).devices;
+        const body = record(await (await this.request('/v1/runtime-devices')).json());
+        if (!Array.isArray(body?.devices)) throw new Error(`Device worker ${this.descriptor.id} returned an invalid runtime inventory`);
+        return body.devices.flatMap((value) => {
+            const device = sanitizedRuntimeDevice(value);
+            if (!device) console.warn(`Device worker ${this.descriptor.id}: ignored unsupported runtime advertisement`);
+            return device ? [device] : [];
+        });
     }
 
     async registerRuntimeDevice(udid: string, name?: string): Promise<void> {
@@ -88,7 +298,13 @@ export class DeviceWorkerClient {
     }
 
     async virtualRuntimes(): Promise<VirtualRuntime[]> {
-        return (await (await this.request('/v1/virtual-runtimes')).json() as { runtimes: VirtualRuntime[] }).runtimes;
+        const body = record(await (await this.request('/v1/virtual-runtimes')).json());
+        if (!Array.isArray(body?.runtimes)) throw new Error(`Device worker ${this.descriptor.id} returned an invalid virtual-runtime inventory`);
+        return body.runtimes.flatMap((value) => {
+            const runtime = sanitizedVirtualRuntime(value);
+            if (!runtime) console.warn(`Device worker ${this.descriptor.id}: ignored unsupported virtual-runtime advertisement`);
+            return runtime ? [runtime] : [];
+        });
     }
 
     async changeVirtualRuntimeState(platform: VirtualRuntimePlatform, id: string, action: 'boot' | 'shutdown'): Promise<void> {
@@ -154,7 +370,11 @@ export class DeviceWorkerFleet implements RemoteControl {
     private snapshots: DeviceWorkerDevice[] = [];
     private hostSnapshots: HostSnapshot[] = [];
 
-    constructor(descriptors: readonly DeviceWorkerDescriptor[], fetchImpl: typeof fetch = fetch) {
+    constructor(
+        descriptors: readonly DeviceWorkerDescriptor[],
+        fetchImpl: typeof fetch = fetch,
+        private readonly registryPath?: string,
+    ) {
         this.clients = new Map(descriptors.map((descriptor) => [descriptor.id, new DeviceWorkerClient(descriptor, fetchImpl)]));
     }
 
@@ -175,23 +395,40 @@ export class DeviceWorkerFleet implements RemoteControl {
     async refresh(): Promise<DeviceWorkerDevice[]> {
         const batches = await Promise.all(Array.from(this.clients.entries(), async ([id, client]) => {
             try {
-                const devices = await client.devices();
-                const host = await client.host().catch((error) => this.unavailableHost(id, client, error, true));
+                await client.health();
+                const inventory = await client.devices();
+                let host = await client.host().catch((error) => this.unavailableHost(id, client, error, true));
+                if (inventory.warnings.length) host = appendHostWarning(host, inventory.warnings.join('; '));
+                const devices = inventory.devices;
                 return { id, devices, host };
             } catch (error) {
                 console.warn(`Device worker ${id} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
                 return { id, devices: [] as DeviceWorkerDevice[], host: this.unavailableHost(id, client, error, false) };
             }
         }));
-        this.hostSnapshots = batches.map(({ host }) => host);
+        const hostById = new Map(batches.map(({ id, host }) => [id, host]));
+        const advertisers = new Map<string, string[]>();
+        for (const batch of batches) {
+            for (const snapshot of batch.devices) {
+                const ids = advertisers.get(snapshot.registered.udid) ?? [];
+                ids.push(batch.id);
+                advertisers.set(snapshot.registered.udid, ids);
+            }
+        }
+        const duplicateUdids = new Set(Array.from(advertisers.entries()).filter(([, ids]) => new Set(ids).size > 1).map(([udid]) => udid));
+        for (const udid of duplicateUdids) {
+            const ids = [...new Set(advertisers.get(udid) ?? [])];
+            for (const id of ids) {
+                const host = hostById.get(id);
+                if (host) hostById.set(id, appendHostWarning(host, `quarantined duplicate device ${udid} advertised by ${ids.join(', ')}`));
+            }
+        }
+        this.hostSnapshots = batches.map(({ id, host }) => hostById.get(id) ?? host);
         const ownership = new Map<string, string>();
         const snapshots: DeviceWorkerDevice[] = [];
         for (const batch of batches) {
             for (const snapshot of batch.devices) {
-                const previous = ownership.get(snapshot.registered.udid);
-                if (previous && previous !== batch.id) {
-                    throw new Error(`Device ${snapshot.registered.udid} is advertised by both ${previous} and ${batch.id}`);
-                }
+                if (duplicateUdids.has(snapshot.registered.udid)) continue;
                 ownership.set(snapshot.registered.udid, batch.id);
                 snapshots.push(snapshot);
             }
@@ -229,11 +466,11 @@ export class DeviceWorkerFleet implements RemoteControl {
                     pluginData: snapshot.registered.pluginData ?? {},
                 });
             }
-        });
+        }, this.registryPath);
         this.ownership.clear();
         for (const [udid, id] of ownership) this.ownership.set(udid, id);
         this.snapshots = snapshots;
-        const authoritative = await loadRegisteredDevices();
+        const authoritative = await loadRegisteredDevices(this.registryPath);
         const syncResults = await Promise.allSettled(authoritative
             .filter(({ workerId }) => Boolean(workerId) && this.clients.has(workerId!))
             .map((device) => this.syncDeviceConfiguration(device)));
@@ -284,7 +521,7 @@ export class DeviceWorkerFleet implements RemoteControl {
 
     private async clientFor(udid: string): Promise<DeviceWorkerClient> {
         let workerId = this.ownership.get(udid);
-        if (!workerId) workerId = (await loadRegisteredDevices()).find((device) => device.udid === udid)?.workerId;
+        if (!workerId) workerId = (await loadRegisteredDevices(this.registryPath)).find((device) => device.udid === udid)?.workerId;
         const client = workerId ? this.clients.get(workerId) : undefined;
         if (!client) throw new Error(`No device worker is configured for ${udid}`);
         return client;

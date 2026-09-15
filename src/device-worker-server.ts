@@ -12,6 +12,7 @@ import type { JsonObject } from './types.js';
 import { detectHostCapabilities } from './hosts/capabilities.js';
 import { discoverRuntimeDevices, registerRuntimeDevice } from './devices/runtime-discovery.js';
 import { changeVirtualRuntimeState, listVirtualRuntimes, type VirtualRuntimePlatform } from './devices/virtual-runtime.js';
+import { DEVICE_WORKER_PROTOCOL_VERSION } from './device-workers.js';
 
 function safeEqual(left: string, right: string): boolean {
     const a = Buffer.from(left);
@@ -99,7 +100,13 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
         if (!supplied || !safeEqual(supplied, token)) return reply.code(401).send({ error: 'Device worker authentication required' });
     });
 
-    app.get('/health', async () => ({ ok: true, role: 'device-worker', workerId }));
+    app.get('/health', async () => ({
+        ok: true,
+        role: 'device-worker',
+        workerId,
+        protocolVersion: DEVICE_WORKER_PROTOCOL_VERSION,
+        platforms: ['ios'] as const,
+    }));
     app.get('/v1/host', async () => detectHostCapabilities({ id: workerId }));
     app.get('/v1/runtime-devices', async () => ({ devices: await discoverRuntimeDevices() }));
     app.get('/v1/virtual-runtimes', async () => ({ runtimes: await listVirtualRuntimes() }));

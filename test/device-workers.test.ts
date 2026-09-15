@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
-import { configuredDeviceWorkers, DeviceWorkerClient, DeviceWorkerFleet } from '../src/device-workers.js';
+import { configuredDeviceWorkers, DEVICE_WORKER_PROTOCOL_VERSION, DeviceWorkerClient, DeviceWorkerFleet } from '../src/device-workers.js';
 
 test('device worker descriptors are explicit, unique, and share the configured bearer token', () => {
     const workers = configuredDeviceWorkers(
@@ -62,4 +65,97 @@ test('configured workers remain visible as offline instead of disappearing from 
     assert.equal(host?.online, false);
     assert.match(host?.error ?? '', /ECONNREFUSED/);
     assert.deepEqual(host?.capabilities, []);
+});
+
+test('worker protocol handshake rejects stale gateways before they can publish device state', async () => {
+    const requests: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+        const request = new Request(input);
+        requests.push(new URL(request.url).pathname);
+        if (request.url.endsWith('/health')) return new Response('not found', { status: 404 });
+        throw new Error('stale worker inventory must not be queried after health failure');
+    };
+    const fleet = new DeviceWorkerFleet([
+        { id: 'stale-mac', url: new URL('http://stale-mac:3010/'), token: 'secret' },
+    ], fetchImpl);
+    assert.deepEqual(await fleet.refresh(), []);
+    assert.deepEqual(requests, ['/health']);
+    const [host] = fleet.hosts();
+    assert.equal(host?.online, false);
+    assert.match(host?.error ?? '', /404/);
+});
+
+test('an iOS-only control plane quarantines unsupported worker devices without poisoning its registry', async (context) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'phone-farm-worker-'));
+    const registryPath = path.join(directory, 'devices.json');
+    context.after(() => rm(directory, { recursive: true, force: true }));
+    const fetchImpl: typeof fetch = async (input) => {
+        const pathname = new URL(new Request(input).url).pathname;
+        if (pathname === '/health') return Response.json({
+            ok: true, role: 'device-worker', workerId: 'macstudio',
+            protocolVersion: DEVICE_WORKER_PROTOCOL_VERSION, platforms: ['ios'],
+        });
+        if (pathname === '/v1/devices') return Response.json({ devices: [{
+            registered: {
+                name: 'stale Android fixture', udid: 'ANDROID-STALE', platform: 'android', kind: 'emulator',
+                automationBackend: 'appium', hasPasscode: false, pluginData: {},
+            },
+            connected: null,
+        }] });
+        if (pathname === '/v1/host') return Response.json({
+            id: 'wrong-id', hostname: 'studio', os: 'darwin', arch: 'arm64', online: true,
+            observedAt: new Date(0).toISOString(), capabilities: ['ios.physical', 'android.emulator'],
+            tools: { appium: true, appiumRuntime: true, xcrun: true },
+        });
+        throw new Error(`Unexpected request ${pathname}`);
+    };
+    const fleet = new DeviceWorkerFleet([
+        { id: 'macstudio', url: new URL('http://macstudio:3010/'), token: 'secret' },
+    ], fetchImpl, registryPath);
+    assert.deepEqual(await fleet.refresh(), []);
+    assert.deepEqual(JSON.parse(await readFile(registryPath, 'utf8')), []);
+    const [host] = fleet.hosts();
+    assert.equal(host?.id, 'macstudio');
+    assert.equal(host?.online, true);
+    assert.deepEqual(host?.capabilities, ['ios.physical']);
+    assert.match(host?.error ?? '', /unsupported device ANDROID-STALE/);
+    assert.match(host?.error ?? '', /unsupported capabilities: android\.emulator/);
+});
+
+test('duplicate UDIDs from two workers are quarantined instead of choosing an arbitrary owner', async (context) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'phone-farm-duplicate-'));
+    const registryPath = path.join(directory, 'devices.json');
+    context.after(() => rm(directory, { recursive: true, force: true }));
+    const fetchImpl: typeof fetch = async (input) => {
+        const request = new Request(input);
+        const url = new URL(request.url);
+        const id = url.hostname;
+        if (url.pathname === '/health') return Response.json({
+            ok: true, role: 'device-worker', workerId: id,
+            protocolVersion: DEVICE_WORKER_PROTOCOL_VERSION, platforms: ['ios'],
+        });
+        if (url.pathname === '/v1/devices') return Response.json({ devices: [{
+            registered: {
+                name: 'Same iPhone', udid: 'DUPLICATE-UDID', platform: 'ios', kind: 'physical',
+                automationBackend: 'wda', hasPasscode: false, pluginData: {},
+            },
+            connected: { name: 'Same iPhone', udid: 'DUPLICATE-UDID', osVersion: '26.0', platform: 'ios', kind: 'physical' },
+        }] });
+        if (url.pathname === '/v1/host') return Response.json({
+            id, hostname: id, os: 'darwin', arch: 'arm64', online: true,
+            observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'],
+            tools: { appium: true, appiumRuntime: true, xcrun: true },
+        });
+        if (url.pathname.endsWith('/config')) return Response.json({ ok: true });
+        throw new Error(`Unexpected request ${url.pathname}`);
+    };
+    const fleet = new DeviceWorkerFleet([
+        { id: 'mac-one', url: new URL('http://mac-one:3010/'), token: 'secret' },
+        { id: 'mac-two', url: new URL('http://mac-two:3010/'), token: 'secret' },
+    ], fetchImpl, registryPath);
+    assert.deepEqual(await fleet.refresh(), []);
+    assert.deepEqual(JSON.parse(await readFile(registryPath, 'utf8')), []);
+    const hosts = fleet.hosts();
+    assert.equal(hosts.length, 2);
+    assert.equal(hosts.every((host) => /quarantined duplicate device DUPLICATE-UDID/.test(host.error ?? '')), true);
 });

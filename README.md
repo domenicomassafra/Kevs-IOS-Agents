@@ -69,6 +69,8 @@ npm run doctor:device-worker
 
 Physical iPhone registration stays on the guided WDA path. iOS Simulator discovery/boot/attach stays on the Appium/XCUITest path. The worker exposes one authenticated worker API back to the MiniPC; it does not run a second scheduler or product database.
 
+The control plane and device worker use a versioned handshake. Run workers from the same released `main` line: stale, mismatched or non-iOS workers are kept offline/degraded and their advertised devices are never imported into the canonical registry. If two workers advertise the same UDID, that device is quarantined until ownership is unambiguous.
+
 ## Hermes contract
 
 Hermes remains stock. `integrations/hermes/SKILL.md` is only a thin client contract over the Phone Farm API. It must never start WebDriverAgent, Appium, a second device registry or another scheduler. The Phone Farm scheduler has final ownership of device conflicts and can reject interactive actions while automation is running.

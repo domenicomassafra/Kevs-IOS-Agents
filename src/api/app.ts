@@ -1376,7 +1376,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             ]);
             const cards = hosts.map((host) => {
                 const online = host.online !== false;
-                const capabilities = host.capabilities.map((capability) => `<span class="connection-chip ${online ? 'ready' : 'unavailable'}">${escapeHtml(capability)}</span>`).join('');
+                const degraded = online && Boolean(host.error);
+                const capabilities = host.capabilities.map((capability) => `<span class="connection-chip ${online && !degraded ? 'ready' : 'unavailable'}">${escapeHtml(capability)}</span>`).join('');
                 const hostRuntimes = runtimes.filter((runtime) => (runtime.workerId ?? 'local') === host.id);
                 const metrics = host.metrics;
                 const metricHtml = metrics ? (() => {
@@ -1396,12 +1397,12 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                     const stateClass = runtime.state === 'booted' ? 'ready' : 'unavailable';
                     return `<div class="host-runtime"><div><strong>${escapeHtml(runtime.name)}</strong><span>${escapeHtml(runtime.platform)} · ${escapeHtml(runtime.kind)}${runtime.osVersion ? ` · ${escapeHtml(runtime.osVersion)}` : ''}</span></div><div class="inline-actions"><span class="connection-chip ${stateClass}">${escapeHtml(runtime.state)}</span><button class="button secondary runtime-action" type="button" hx-post="${url}" hx-swap="none" hx-on::after-request="setTimeout(function(){htmx.ajax('GET','/api/fragments/hosts',{target:'#host-list',swap:'outerHTML'})},1200)">${label}</button></div></div>`;
                 }).join('');
-                const status = `<span class="connection-chip ${online ? 'ready' : 'unavailable'}">${online ? 'online' : 'offline'}</span>`;
-                const error = !online && host.error ? `<p class="host-error">${escapeHtml(host.error)}</p>` : '';
+                const status = `<span class="connection-chip ${online && !degraded ? 'ready' : 'unavailable'}">${degraded ? 'degraded' : online ? 'online' : 'offline'}</span>`;
+                const error = host.error ? `<p class="host-error">${escapeHtml(host.error)}</p>` : '';
                 const empty = online
                     ? '<p class="host-runtime-empty">No iOS Simulator definitions detected on this host.</p>'
                     : '<p class="host-runtime-empty">Worker is configured but unreachable. Its devices stay registered and will return when the node reconnects.</p>';
-                return `<article class="host-card${online ? '' : ' offline'}"><div class="host-card-head"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div>${status}</div>${metricHtml}<div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">capabilities unavailable</span>'}</div>${error}${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : empty}</article>`;
+                return `<article class="host-card${online ? degraded ? ' degraded' : '' : ' offline'}"><div class="host-card-head"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div>${status}</div>${metricHtml}<div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">capabilities unavailable</span>'}</div>${error}${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : empty}</article>`;
             }).join('');
             const onlineHosts = hosts.filter((host) => host.online !== false).length;
             return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${onlineHosts}/${hosts.length} online</p></div><div class="host-grid">${cards || '<div class="empty-state"><span class="empty-state-kicker">Execution layer</span><h2>No execution hosts configured</h2><p>Pair a Mac/PC worker with the control plane to expose physical devices and virtual runtimes.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Open device setup</a></div></div>'}</div></section>`);
