@@ -4,7 +4,9 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { remote, type Browser, type Capabilities } from '../devices/appium-driver.js';
 
-import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
+import { loadRegisteredDevices } from '../devices/registry.js';
+import { resolveDeviceCoordinates } from '../devices/coordinates.js';
+import { WdaRemoteControl } from '../devices/wda-remote.js';
 import type { PostManifest } from './post-manifest.js';
 import { type TikTokCoordinates } from './coordinates.js';
 import { coordinateProfile, registeredAccounts } from './runtime-settings.js';

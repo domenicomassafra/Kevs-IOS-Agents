@@ -3,7 +3,9 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
-import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
+import { loadRegisteredDevices } from '../devices/registry.js';
+import { resolveDeviceCoordinates } from '../devices/coordinates.js';
+import { WdaRemoteControl } from '../devices/wda-remote.js';
 import { coordinateProfile } from '../instagram/runtime-settings.js';
 import { recognizeWords, type OcrWord } from '../instagram/ocr.js';
 import { classifyHingeScreen, type HingeScreen } from './screen.js';

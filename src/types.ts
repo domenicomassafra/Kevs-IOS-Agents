@@ -1,3 +1,5 @@
+import type { DeviceCoordinateOverrides, DeviceProfileName } from './devices/coordinates.js';
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -25,12 +27,12 @@ export interface RegisteredDevice extends DeviceIdentity {
     wdaLocalPort?: number;
     mjpegLocalPort?: number;
     /** Compiled tap-layout key; canonical here, not in pluginData. */
-    coordinateProfile?: string;
+    coordinateProfile?: DeviceProfileName;
     passcode?: string;
     /** TikTok single-tap overrides (legacy flat map). */
-    coordinates?: Record<string, { x: number; y: number }>;
+    coordinates?: DeviceCoordinateOverrides;
     /** Instagram single-tap overrides. */
-    instagramCoordinates?: Record<string, { x: number; y: number }>;
+    instagramCoordinates?: DeviceCoordinateOverrides;
     disabled?: boolean;
     /** Operator-defined labels used for search and allocation pools. */
     tags?: string[];

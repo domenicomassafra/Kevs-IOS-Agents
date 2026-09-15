@@ -1,36 +1,10 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { coordinatesForProfile, validateCoordinateOverrides, type DeviceCoordinateOverrides, type DeviceProfileName } from './coordinates.js';
-import type { JsonObject, MobileAutomationBackend, MobileDeviceKind, MobilePlatform } from '../types.js';
+import { coordinatesForProfile, validateCoordinateOverrides } from './coordinates.js';
+import type { RegisteredDevice } from '../types.js';
 
-export interface RegisteredDevice {
-    name: string;
-    udid: string;
-    osVersion?: string;
-    productType?: string;
-    /** Legacy entries omit platform/kind and remain iOS physical devices. */
-    platform?: MobilePlatform;
-    kind?: MobileDeviceKind;
-    /** Physical iPhones use WDA; iOS Simulators use Appium/XCUITest. */
-    automationBackend?: MobileAutomationBackend;
-    /** Execution node that owns the local device transport. Omitted in standalone mode. */
-    workerId?: string;
-    coordinateProfile?: DeviceProfileName;
-    wdaLocalPort?: number;
-    mjpegLocalPort?: number;
-    /** Device unlock passcode. Lives here (devices.json is 0600 and git-ignored), never in an API response. */
-    passcode?: string;
-    /** Per-device single-tap coordinate overrides (dashboard calibration). */
-    coordinates?: DeviceCoordinateOverrides;
-    /** Instagram single-tap overrides (dashboard calibration). */
-    instagramCoordinates?: DeviceCoordinateOverrides;
-    /** When true the farm keeps the entry but stops supervising it — no WDA, no worker, no discovery polling. */
-    disabled?: boolean;
-    /** Operator-defined labels used for search/allocation. */
-    tags?: string[];
-    pluginData: Record<string, JsonObject>;
-}
+export type { RegisteredDevice } from '../types.js';
 
 /** Devices the farm should actively supervise (everything except the disabled ones). */
 export function activeDevices(devices: readonly RegisteredDevice[]): RegisteredDevice[] {

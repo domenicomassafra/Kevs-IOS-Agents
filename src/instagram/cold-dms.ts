@@ -1,6 +1,8 @@
 import { remote, type Browser, type Capabilities } from '../devices/appium-driver.js';
 
-import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
+import { loadRegisteredDevices } from '../devices/registry.js';
+import { resolveDeviceCoordinates } from '../devices/coordinates.js';
+import { WdaRemoteControl } from '../devices/wda-remote.js';
 import { coordinateProfile, registeredAccounts } from './runtime-settings.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
