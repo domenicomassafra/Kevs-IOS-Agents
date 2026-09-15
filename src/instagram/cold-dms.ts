@@ -1,4 +1,4 @@
-import { remote, type Browser } from 'webdriverio';
+import { remote, type Browser, type Capabilities } from '../devices/appium-driver.js';
 
 import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { coordinateProfile, registeredAccounts } from './runtime-settings.js';
@@ -121,7 +121,7 @@ if (switchAccountName && !allowedAccounts.includes(switchAccountName)) {
 const wdaUrl = process.env.WDA_URL;
 const instagramBundleId = process.env.INSTAGRAM_BUNDLE_ID ?? 'com.burbn.instagram';
 
-const capabilities: WebdriverIO.Capabilities & Record<string, unknown> = {
+const capabilities: Capabilities = {
     platformName: 'iOS',
     'appium:automationName': 'XCUITest',
     'appium:udid': udid,

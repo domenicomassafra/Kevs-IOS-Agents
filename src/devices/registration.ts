@@ -4,7 +4,7 @@ import { access, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { remote, type Browser } from 'webdriverio';
+import { remote, type Browser } from './appium-driver.js';
 
 import { switchTikTokAccount, tapCoordinate } from '../tiktok/actions.js';
 import { switchInstagramAccount } from '../instagram/actions.js';

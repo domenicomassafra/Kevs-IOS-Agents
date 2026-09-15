@@ -1,4 +1,4 @@
-import { remote, type Browser } from 'webdriverio';
+import { remote, type Browser, type Capabilities } from '../devices/appium-driver.js';
 
 import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { coordinateProfile } from './runtime-settings.js';
@@ -60,7 +60,7 @@ let { x: saveX, y: saveY } = tiktokCoordinates.save;
 const wdaUrl = process.env.WDA_URL;
 const tiktokBundleId = process.env.TIKTOK_BUNDLE_ID ?? 'com.zhiliaoapp.musically';
 
-const capabilities: WebdriverIO.Capabilities & Record<string, unknown> = {
+const capabilities: Capabilities = {
     platformName: 'iOS',
     'appium:automationName': 'XCUITest',
     'appium:udid': udid,

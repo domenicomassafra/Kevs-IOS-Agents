@@ -100,7 +100,7 @@ export const likeTask: TaskDefinition<LikePayload> = {
         }
         return { exitCode: 0, stopped: false };
 
-        // Option B: hand off to a subprocess (webdriverio, OCR, ffmpeg …).
+        // Option B: hand off to a subprocess (OCR, ffmpeg …).
         // return context.runProcess({
         //     entrypoint: fileURLToPath(new URL('./like-feed.ts', import.meta.url)),
         //     env: { LIKE_COUNT: String(payload.count) },

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Browser } from 'webdriverio';
+import type { Browser } from '../devices/appium-driver.js';
 
 import type { WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { findHandleMatch, pointFromWord, recognizeWords, type OcrWord } from './ocr.js';

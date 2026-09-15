@@ -1,56 +1,41 @@
-import { remote, type Browser } from 'webdriverio';
-
 import type { RegisteredDevice } from './registry.js';
 import type { RemoteAction, RemoteControl, ScreenInfo } from './wda-remote.js';
 import { normalizeAppiumPageSource } from '../semantic/appium-source.js';
-
-type MobileDriver = Browser & {
-    activateApp?(appId: string): Promise<void>;
-    terminateApp?(appId: string): Promise<void>;
-    lock?(seconds?: number): Promise<void>;
-    unlock?(): Promise<void>;
-    isLocked?(): Promise<boolean>;
-};
-
-function driverBackend(_device: RegisteredDevice): { platformName: 'iOS'; automationName: 'XCUITest' } {
-    return { platformName: 'iOS', automationName: 'XCUITest' };
-}
+import { remoteWithFetch, type Browser } from './appium-driver.js';
 
 export class AppiumRemoteControl implements RemoteControl {
-    private driverPromise?: Promise<MobileDriver>;
+    private driverPromise?: Promise<Browser>;
     readonly passcode: string | undefined = undefined;
 
     constructor(
         readonly device: RegisteredDevice,
         readonly appiumHost = process.env.APPIUM_RUNTIME_HOST ?? '127.0.0.1',
         readonly appiumPort = Number(process.env.APPIUM_RUNTIME_PORT ?? 4726),
+        private readonly fetchImpl: typeof fetch = fetch,
     ) {}
 
     private assertTarget(udid: string): void {
         if (udid !== this.device.udid) throw new Error('Appium remote control is not configured for this device');
     }
 
-    private async driver(): Promise<MobileDriver> {
-        this.driverPromise ??= (async () => {
-            const selected = driverBackend(this.device);
-            const browser = await remote({
-                hostname: this.appiumHost,
-                port: this.appiumPort,
-                path: '/',
-                logLevel: 'error',
-                capabilities: {
-                    platformName: selected.platformName,
-                    'appium:automationName': selected.automationName,
-                    'appium:udid': this.device.udid,
-                    'appium:noReset': true,
-                    'appium:newCommandTimeout': 300,
-                },
+    private async driver(): Promise<Browser> {
+        this.driverPromise ??= remoteWithFetch({
+            hostname: this.appiumHost,
+            port: this.appiumPort,
+            path: '/',
+            connectionRetryTimeout: 120_000,
+            capabilities: {
+                platformName: 'iOS',
+                'appium:automationName': 'XCUITest',
+                'appium:udid': this.device.udid,
+                'appium:noReset': true,
+                'appium:newCommandTimeout': 300,
+            },
+        }, this.fetchImpl)
+            .catch((error) => {
+                this.driverPromise = undefined;
+                throw error;
             });
-            return browser as MobileDriver;
-        })().catch((error) => {
-            this.driverPromise = undefined;
-            throw error;
-        });
         return this.driverPromise;
     }
 
@@ -61,27 +46,22 @@ export class AppiumRemoteControl implements RemoteControl {
     }
 
     async activateApp(appId: string): Promise<void> {
-        const driver = await this.driver();
-        if (driver.activateApp) return driver.activateApp(appId);
-        await driver.execute('mobile: activateApp', { bundleId: appId, appId });
+        await (await this.driver()).activateApp(appId);
     }
 
     async terminateApp(appId: string): Promise<void> {
-        const driver = await this.driver();
-        if (driver.terminateApp) return driver.terminateApp(appId);
-        await driver.execute('mobile: terminateApp', { bundleId: appId, appId });
+        await (await this.driver()).terminateApp(appId);
     }
 
     async getScreenInfo(udid: string): Promise<ScreenInfo> {
         this.assertTarget(udid);
         const size = await (await this.driver()).getWindowSize();
-        return { screenSize: { width: Number(size.width), height: Number(size.height) }, scale: 1 };
+        return { screenSize: { width: size.width, height: size.height }, scale: 1 };
     }
 
     async getAccessibilityTree(udid: string): Promise<unknown> {
         this.assertTarget(udid);
-        const source = await (await this.driver()).getPageSource();
-        return normalizeAppiumPageSource(source);
+        return normalizeAppiumPageSource(await (await this.driver()).getPageSource());
     }
 
     async getScreenshot(udid: string): Promise<Buffer> {
@@ -134,7 +114,7 @@ export class AppiumRemoteControl implements RemoteControl {
                     { type: 'pointerMove', duration: action.durationMs, x: action.endX, y: action.endY, origin: 'viewport' },
                     { type: 'pointerUp', button: 0 },
                 ];
-            await driver.performActions([{ type: 'pointer', id: 'finger1', parameters: { pointerType: 'touch' }, actions }] as never);
+            await driver.performActions([{ type: 'pointer', id: 'finger1', parameters: { pointerType: 'touch' }, actions }]);
             await driver.releaseActions();
             return;
         }
@@ -144,13 +124,11 @@ export class AppiumRemoteControl implements RemoteControl {
             return;
         }
         if (action.type === 'lock') {
-            if (driver.lock) return driver.lock();
-            await driver.execute('mobile: lock');
+            await driver.lock();
             return;
         }
         if (action.type === 'unlock' || action.type === 'wake') {
-            if (driver.unlock) return driver.unlock();
-            await driver.execute('mobile: unlock');
+            await driver.unlock();
             return;
         }
         const name = action.type === 'home' ? 'home' : action.type === 'volumeUp' ? 'volumeUp' : 'volumeDown';
@@ -159,8 +137,6 @@ export class AppiumRemoteControl implements RemoteControl {
 
     async isLocked(udid: string): Promise<boolean> {
         this.assertTarget(udid);
-        const driver = await this.driver();
-        if (driver.isLocked) return driver.isLocked();
-        return false;
+        return (await this.driver()).isLocked();
     }
 }

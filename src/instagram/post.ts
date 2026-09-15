@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { remote, type Browser } from 'webdriverio';
+import { remote, type Browser, type Capabilities } from '../devices/appium-driver.js';
 
 import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
 import type { PostManifest } from './post-manifest.js';
@@ -244,7 +244,7 @@ await deviceRemote.unlock(manifest.device.udid);
 const assetCount = await importMedia(manifest);
 
 const bundleId = process.env.INSTAGRAM_BUNDLE_ID ?? 'com.burbn.instagram';
-const capabilities: WebdriverIO.Capabilities & Record<string, unknown> = {
+const capabilities: Capabilities = {
     platformName: 'iOS', 'appium:automationName': 'XCUITest', 'appium:udid': manifest.device.udid,
     'appium:bundleId': bundleId, 'appium:noReset': true, 'appium:forceAppLaunch': true,
     'appium:shouldTerminateApp': true, 'appium:newCommandTimeout': 180,
@@ -318,4 +318,3 @@ console.log(
 );
 await driver.pause(2000);
 await driver.deleteSession();
-
