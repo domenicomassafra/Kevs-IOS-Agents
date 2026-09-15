@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import { collectDoctorReport, type DoctorCommandRunner } from '../src/doctor.js';
@@ -11,23 +14,35 @@ function runner(fixtures: Record<string, { status?: number; stdout?: string; std
     };
 }
 
-test('doctor reports a missing full Xcode as a real-device blocker without blocking source readiness', () => {
+function doctorCwd(context: test.TestContext): string {
+    const cwd = mkdtempSync(path.join(os.tmpdir(), 'phone-farm-doctor-'));
+    context.after(() => rmSync(cwd, { recursive: true, force: true }));
+    const appium = path.join(cwd, 'node_modules', 'appium');
+    const appiumRuntime = path.join(cwd, 'node_modules', 'appium-runtime');
+    mkdirSync(appium, { recursive: true });
+    mkdirSync(appiumRuntime, { recursive: true });
+    writeFileSync(path.join(appium, 'index.js'), '');
+    writeFileSync(path.join(appiumRuntime, 'index.js'), '');
+    return cwd;
+}
+
+test('doctor reports a missing full Xcode as a real-device blocker without blocking source readiness', (context) => {
     const report = collectDoctorReport(runner({
         'xcode-select -p': { stdout: '/Library/Developer/CommandLineTools\n' },
         'docker --version': { status: 127, stderr: 'not found' },
-    }), {}, process.cwd());
+    }), {}, doctorCwd(context));
     assert.equal(report.sourceReady, true);
     assert.equal(report.realDeviceReady, false);
     assert.equal(report.checks.find(({ id }) => id === 'xcode')?.status, 'fail');
 });
 
-test('doctor recognizes full Xcode and a visible physical device', () => {
+test('doctor recognizes full Xcode and a visible physical device', (context) => {
     const report = collectDoctorReport(runner({
         'xcode-select -p': { stdout: '/Applications/Xcode.app/Contents/Developer\n' },
         'xcodebuild -version': { stdout: 'Xcode 26.1\nBuild version 17B55' },
         'docker --version': { stdout: 'Docker version 28.0.0' },
         'xcrun xctrace list devices': { stdout: '== Devices ==\nDodo iPhone (26.0) (0000-AAAA)\nDodo Mac (26.0) (MAC)\n\n== Simulators ==\niPhone 17 (26.0) (SIM)\n' },
-    }), {}, process.cwd());
+    }), {}, doctorCwd(context));
     assert.equal(report.realDeviceReady, true);
     assert.match(report.checks.find(({ id }) => id === 'iphone')?.summary ?? '', /1 physical/);
 });
