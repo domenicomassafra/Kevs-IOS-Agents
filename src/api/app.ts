@@ -1262,7 +1262,9 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                 Promise.resolve(options.listHosts?.() ?? []),
             ]);
             const onlineDevices = devices.filter((device) => Boolean(device.connected) && !device.disabled).length;
-            const onlineHosts = hosts.filter((host) => host.online !== false).length;
+            const healthyHosts = hosts.filter((host) => host.online !== false && !host.error).length;
+            const offlineHosts = hosts.filter((host) => host.online === false).length;
+            const degradedHosts = hosts.filter((host) => host.online !== false && Boolean(host.error)).length;
             const activeSchedules = schedules.filter(({ status }) => status === 'active').length;
             const running = executions.filter(({ status }) => status === 'running').length;
             const queued = executions.filter(({ status }) => status === 'queued').length;
@@ -1275,9 +1277,13 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
             else if (onlineDevices === 0) attention.push({
                 title: 'All devices offline', copy: 'Check execution hosts or boot a virtual runtime from the execution layer.', href: '/fleet',
             });
-            if (hosts.length && onlineHosts < hosts.length) attention.push({
-                title: `${hosts.length - onlineHosts} execution host${hosts.length - onlineHosts === 1 ? '' : 's'} offline`,
+            if (offlineHosts) attention.push({
+                title: `${offlineHosts} execution host${offlineHosts === 1 ? '' : 's'} offline`,
                 copy: 'Configured hosts remain visible and devices will return automatically when workers reconnect.', href: '#host-list',
+            });
+            if (degradedHosts) attention.push({
+                title: `${degradedHosts} execution host${degradedHosts === 1 ? '' : 's'} degraded`,
+                copy: 'The worker is reachable but reported an incompatible or quarantined capability/device state.', href: '#host-list',
             });
             if (recentFailures) attention.push({
                 title: `${recentFailures} recent failure${recentFailures === 1 ? '' : 's'}`,
@@ -1305,7 +1311,7 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                     meta: `${running} running · ${queued} queued`,
                 },
                 {
-                    href: '/', eyebrow: 'Execution hosts', title: `${onlineHosts}/${hosts.length} online`,
+                    href: '/', eyebrow: 'Execution hosts', title: `${healthyHosts}/${hosts.length} healthy`,
                     copy: 'Worker health, CPU/load/RAM/uptime and virtual-runtime lifecycle stay visible even when a node drops.',
                     meta: hosts.length ? hosts.map(({ id }) => id).join(' · ') : 'No hosts configured',
                 },
@@ -1404,8 +1410,8 @@ export async function createApp(options: CreateAppOptions): Promise<FastifyInsta
                     : '<p class="host-runtime-empty">Worker is configured but unreachable. Its devices stay registered and will return when the node reconnects.</p>';
                 return `<article class="host-card${online ? degraded ? ' degraded' : '' : ' offline'}"><div class="host-card-head"><div><span class="eyebrow">Execution host</span><h3>${escapeHtml(host.id)}</h3><p>${escapeHtml(host.hostname)} · ${escapeHtml(host.os)} ${escapeHtml(host.arch)}</p></div>${status}</div>${metricHtml}<div class="connection-chips">${capabilities || '<span class="connection-chip unavailable">capabilities unavailable</span>'}</div>${error}${hostRuntimes.length ? `<div class="host-runtime-list"><div class="host-runtime-head"><strong>Virtual runtimes</strong><span>${hostRuntimes.filter(({ state }) => state === 'booted').length}/${hostRuntimes.length} running</span></div>${runtimeRows}</div>` : empty}</article>`;
             }).join('');
-            const onlineHosts = hosts.filter((host) => host.online !== false).length;
-            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${onlineHosts}/${hosts.length} online</p></div><div class="host-grid">${cards || '<div class="empty-state"><span class="empty-state-kicker">Execution layer</span><h2>No execution hosts configured</h2><p>Pair a Mac/PC worker with the control plane to expose physical devices and virtual runtimes.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Open device setup</a></div></div>'}</div></section>`);
+            const healthyHosts = hosts.filter((host) => host.online !== false && !host.error).length;
+            return reply.type('text/html').send(`<section id="host-list" class="host-panel" hx-get="/api/fragments/hosts" hx-trigger="every 15s" hx-swap="outerHTML"><div class="fleet-health-head"><h2>Execution hosts</h2><p>${healthyHosts}/${hosts.length} healthy</p></div><div class="host-grid">${cards || '<div class="empty-state"><span class="empty-state-kicker">Execution layer</span><h2>No execution hosts configured</h2><p>Pair a Mac/PC worker with the control plane to expose physical devices and virtual runtimes.</p><div class="empty-state-actions"><a class="button primary" href="/devices/register">Open device setup</a></div></div>'}</div></section>`);
         });
         app.get('/api/fragments/fleet-health', async (_request, reply) => {
             const [devices, registered, schedules, executions, campaignRows] = await Promise.all([

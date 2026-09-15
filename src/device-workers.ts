@@ -273,7 +273,6 @@ export class DeviceWorkerClient {
             if (result.warning) warnings.push(result.warning);
             return result.device ? [result.device] : [];
         });
-        warnings.forEach((warning) => console.warn(`Device worker ${this.descriptor.id}: ${warning}`));
         return { devices, warnings };
     }
 
@@ -367,6 +366,7 @@ export class DeviceWorkerClient {
 export class DeviceWorkerFleet implements RemoteControl {
     private readonly clients: Map<string, DeviceWorkerClient>;
     private readonly ownership = new Map<string, string>();
+    private readonly workerLogStates = new Map<string, string>();
     private snapshots: DeviceWorkerDevice[] = [];
     private hostSnapshots: HostSnapshot[] = [];
 
@@ -374,8 +374,29 @@ export class DeviceWorkerFleet implements RemoteControl {
         descriptors: readonly DeviceWorkerDescriptor[],
         fetchImpl: typeof fetch = fetch,
         private readonly registryPath?: string,
+        private readonly logger: Pick<Console, 'info' | 'warn'> = console,
     ) {
         this.clients = new Map(descriptors.map((descriptor) => [descriptor.id, new DeviceWorkerClient(descriptor, fetchImpl)]));
+    }
+
+    private logWorkerTransition(host: HostSnapshot): void {
+        const state = host.online === false
+            ? `offline:${host.error ?? ''}`
+            : host.error
+                ? `degraded:${host.error}`
+                : 'healthy';
+        const previous = this.workerLogStates.get(host.id);
+        if (previous === state) return;
+        this.workerLogStates.set(host.id, state);
+        if (host.online === false) {
+            this.logger.warn(`Device worker ${host.id} is unavailable${host.error ? `: ${host.error}` : ''}`);
+            return;
+        }
+        if (host.error) {
+            this.logger.warn(`Device worker ${host.id} is degraded: ${host.error}`);
+            return;
+        }
+        if (previous && previous !== 'healthy') this.logger.info(`Device worker ${host.id} recovered`);
     }
 
     private unavailableHost(id: string, client: DeviceWorkerClient, error: unknown, online: boolean): HostSnapshot {
@@ -402,7 +423,6 @@ export class DeviceWorkerFleet implements RemoteControl {
                 const devices = inventory.devices;
                 return { id, devices, host };
             } catch (error) {
-                console.warn(`Device worker ${id} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
                 return { id, devices: [] as DeviceWorkerDevice[], host: this.unavailableHost(id, client, error, false) };
             }
         }));
@@ -424,6 +444,7 @@ export class DeviceWorkerFleet implements RemoteControl {
             }
         }
         this.hostSnapshots = batches.map(({ id, host }) => hostById.get(id) ?? host);
+        this.hostSnapshots.forEach((host) => this.logWorkerTransition(host));
         const ownership = new Map<string, string>();
         const snapshots: DeviceWorkerDevice[] = [];
         for (const batch of batches) {
@@ -476,7 +497,7 @@ export class DeviceWorkerFleet implements RemoteControl {
             .map((device) => this.syncDeviceConfiguration(device)));
         syncResults.forEach((result) => {
             if (result.status === 'rejected') {
-                console.warn(`Device-worker configuration sync failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+                this.logger.warn(`Device-worker configuration sync failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
             }
         });
         return snapshots;

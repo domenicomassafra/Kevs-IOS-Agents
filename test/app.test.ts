@@ -257,7 +257,8 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(fragment.body, /1 saved flow/);
     assert.match(fragment.body, /2 reusable pools/);
     assert.match(fragment.body, /1 active schedule/);
-    assert.match(fragment.body, /1\/1 online/);
+    assert.match(fragment.body, /0\/1 healthy/);
+    assert.match(fragment.body, /1 execution host degraded/);
     assert.match(fragment.body, /semantic iOS flows/i);
     assert.match(fragment.body, /Recent runs/);
     assert.match(fragment.body, /Portable flow/);
@@ -266,6 +267,7 @@ test('overview control center exposes the major product surfaces instead of hidi
     const hosts = await inject(app, { method: 'GET', url: '/api/fragments/hosts' });
     assert.equal(hosts.statusCode, 200);
     assert.match(hosts.body, /degraded/);
+    assert.match(hosts.body, /0\/1 healthy/);
     assert.match(hosts.body, /ignored unsupported worker advertisement/);
     assert.doesNotMatch(hosts.body, /connection-chip ready">online/);
 

@@ -53,11 +53,17 @@ test('device worker client authenticates and proxies screen/action calls without
     assert.deepEqual(config.tags, ['staging', 'ios-real']);
 });
 
-test('configured workers remain visible as offline instead of disappearing from host inventory', async () => {
+test('configured workers remain visible as offline and log only on state transitions', async () => {
     const fetchImpl: typeof fetch = async () => { throw new Error('connect ECONNREFUSED'); };
+    const warnings: string[] = [];
+    const infos: string[] = [];
     const fleet = new DeviceWorkerFleet([
         { id: 'sleeping-mac', url: new URL('http://sleeping-mac:3010/'), token: 'secret' },
-    ], fetchImpl);
+    ], fetchImpl, undefined, {
+        warn: (message?: unknown) => warnings.push(String(message)),
+        info: (message?: unknown) => infos.push(String(message)),
+    });
+    await fleet.refresh();
     await fleet.refresh();
     const [host] = fleet.hosts();
     assert.equal(host?.id, 'sleeping-mac');
@@ -65,6 +71,9 @@ test('configured workers remain visible as offline instead of disappearing from 
     assert.equal(host?.online, false);
     assert.match(host?.error ?? '', /ECONNREFUSED/);
     assert.deepEqual(host?.capabilities, []);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0] ?? '', /sleeping-mac.*ECONNREFUSED/);
+    assert.deepEqual(infos, []);
 });
 
 test('worker protocol handshake rejects stale gateways before they can publish device state', async () => {
@@ -83,6 +92,45 @@ test('worker protocol handshake rejects stale gateways before they can publish d
     const [host] = fleet.hosts();
     assert.equal(host?.online, false);
     assert.match(host?.error ?? '', /404/);
+});
+
+test('worker recovery emits one recovery transition after an outage', async (context) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'phone-farm-recovery-'));
+    const registryPath = path.join(directory, 'devices.json');
+    context.after(() => rm(directory, { recursive: true, force: true }));
+    let available = false;
+    const fetchImpl: typeof fetch = async (input) => {
+        if (!available) throw new Error('connect ECONNREFUSED');
+        const pathname = new URL(new Request(input).url).pathname;
+        if (pathname === '/health') return Response.json({
+            ok: true, role: 'device-worker', workerId: 'recovering-mac',
+            protocolVersion: DEVICE_WORKER_PROTOCOL_VERSION, platforms: ['ios'],
+        });
+        if (pathname === '/v1/devices') return Response.json({ devices: [] });
+        if (pathname === '/v1/host') return Response.json({
+            id: 'recovering-mac', hostname: 'recovering-mac', os: 'darwin', arch: 'arm64', online: true,
+            observedAt: new Date(0).toISOString(), capabilities: ['ios.physical'],
+            tools: { appium: true, appiumRuntime: true, xcrun: true },
+        });
+        throw new Error(`Unexpected request ${pathname}`);
+    };
+    const warnings: string[] = [];
+    const infos: string[] = [];
+    const fleet = new DeviceWorkerFleet([
+        { id: 'recovering-mac', url: new URL('http://recovering-mac:3010/'), token: 'secret' },
+    ], fetchImpl, registryPath, {
+        warn: (message?: unknown) => warnings.push(String(message)),
+        info: (message?: unknown) => infos.push(String(message)),
+    });
+    await fleet.refresh();
+    available = true;
+    await fleet.refresh();
+    await fleet.refresh();
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0] ?? '', /unavailable/);
+    assert.deepEqual(infos, ['Device worker recovering-mac recovered']);
+    assert.equal(fleet.hosts()[0]?.online, true);
+    assert.equal(fleet.hosts()[0]?.error, undefined);
 });
 
 test('an iOS-only control plane quarantines unsupported worker devices without poisoning its registry', async (context) => {
