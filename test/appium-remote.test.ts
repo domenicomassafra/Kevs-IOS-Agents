@@ -65,7 +65,7 @@ test('Appium remote uses the narrow W3C/Appium protocol without a third-party We
     assert.equal(requests.some(({ method, pathname }) => method === 'DELETE' && pathname === '/session/session-1'), true);
 });
 
-test('Appium session creation failures do not poison later reconnect attempts', async () => {
+test('Appium remote retries transient session creation failures within the same request', async () => {
     let attempts = 0;
     const fetchImpl: typeof fetch = async (input) => {
         const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
@@ -80,7 +80,6 @@ test('Appium session creation failures do not poison later reconnect attempts', 
     const remote = new AppiumRemoteControl({
         name: 'Simulator', udid: 'SIM-RETRY', platform: 'ios', kind: 'simulator', automationBackend: 'appium', pluginData: {},
     }, 'appium.test', 4726, fetchImpl);
-    await assert.rejects(() => remote.getScreenInfo('SIM-RETRY'), /temporary startup failure/);
     assert.deepEqual(await remote.getScreenInfo('SIM-RETRY'), { screenSize: { width: 430, height: 932 }, scale: 1 });
     assert.equal(attempts, 2);
 });

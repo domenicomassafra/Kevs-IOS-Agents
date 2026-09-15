@@ -23,6 +23,7 @@ export class AppiumRemoteControl implements RemoteControl {
             hostname: this.appiumHost,
             port: this.appiumPort,
             path: '/',
+            connectionRetryCount: 2,
             connectionRetryTimeout: 120_000,
             capabilities: {
                 platformName: 'iOS',

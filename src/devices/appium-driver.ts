@@ -61,9 +61,14 @@ export interface Browser {
 }
 
 class AppiumProtocolError extends Error {
-    constructor(message: string, readonly code?: string) {
+    constructor(message: string, readonly code?: string, readonly status?: number) {
         super(message);
     }
+}
+
+function retryableSessionError(error: unknown): boolean {
+    if (!(error instanceof AppiumProtocolError)) return true;
+    return error.status === 408 || error.status === 429 || (error.status !== undefined && error.status >= 500);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -171,9 +176,20 @@ export class AppiumDriver implements Browser {
         const prefix = (options.path ?? '/').replace(/^\/+|\/+$/g, '');
         const baseUrl = new URL(`http://${options.hostname}:${options.port}/${prefix ? `${prefix}/` : ''}`);
         const timeoutMs = Math.max(1_000, options.connectionRetryTimeout ?? 120_000);
-        const body = await AppiumDriver.requestRaw(fetchImpl, baseUrl, 'POST', 'session', {
-            capabilities: { alwaysMatch: options.capabilities },
-        }, timeoutMs);
+        const retries = Math.max(0, Math.min(5, Math.trunc(options.connectionRetryCount ?? 0)));
+        let body: WebDriverResponse | undefined;
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            try {
+                body = await AppiumDriver.requestRaw(fetchImpl, baseUrl, 'POST', 'session', {
+                    capabilities: { alwaysMatch: options.capabilities },
+                }, timeoutMs);
+                break;
+            } catch (error) {
+                if (attempt >= retries || !retryableSessionError(error)) throw error;
+                await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, 200 * (2 ** attempt))));
+            }
+        }
+        if (!body) throw new Error('Appium session creation failed without an error');
         const value = record(body.value);
         const sessionId = typeof value?.sessionId === 'string' ? value.sessionId : body.sessionId;
         if (!sessionId) throw new Error('Appium created a session without returning a session id');
@@ -201,8 +217,8 @@ export class AppiumDriver implements Browser {
         if (text) {
             try { parsed = JSON.parse(text) as WebDriverResponse; }
             catch {
-                if (!response.ok) throw new AppiumProtocolError(`Appium returned HTTP ${response.status}: ${text.slice(0, 500)}`);
-                throw new AppiumProtocolError(`Appium returned invalid JSON for ${method} /${pathname}`);
+                if (!response.ok) throw new AppiumProtocolError(`Appium returned HTTP ${response.status}: ${text.slice(0, 500)}`, undefined, response.status);
+                throw new AppiumProtocolError(`Appium returned invalid JSON for ${method} /${pathname}`, undefined, response.status);
             }
         }
         if (!response.ok) {
@@ -212,6 +228,7 @@ export class AppiumDriver implements Browser {
             throw new AppiumProtocolError(
                 `Appium ${method} /${pathname} failed with HTTP ${response.status}${message ? `: ${message}` : ''}`,
                 code,
+                response.status,
             );
         }
         return parsed;

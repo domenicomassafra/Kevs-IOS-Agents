@@ -94,3 +94,15 @@ test('internal Appium driver returns a non-existing element for ordinary no-such
     assert.equal(await element.isExisting(), false);
     assert.equal(await element.isDisplayed(), false);
 });
+
+test('internal Appium driver does not retry non-transient session errors', async () => {
+    let attempts = 0;
+    const fetchImpl: typeof fetch = async () => {
+        attempts += 1;
+        return Response.json({ value: { error: 'invalid argument', message: 'bad capability' } }, { status: 400 });
+    };
+    await assert.rejects(() => remoteWithFetch({
+        hostname: 'appium.test', port: 4725, connectionRetryCount: 3, capabilities: { platformName: 'iOS' },
+    }, fetchImpl), /bad capability/);
+    assert.equal(attempts, 1);
+});
