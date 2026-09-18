@@ -12,6 +12,20 @@ export interface RuntimeDevice extends Device {
     automationBackend: 'wda' | 'appium';
 }
 
+export function workerAllowsRuntimeKind(
+    kind: RuntimeDevice['kind'] | undefined,
+    physicalIosEnabled: boolean,
+): boolean {
+    return physicalIosEnabled || (kind ?? 'physical') !== 'physical';
+}
+
+export function filterRuntimeDevicesForWorker(
+    devices: readonly RuntimeDevice[],
+    physicalIosEnabled: boolean,
+): RuntimeDevice[] {
+    return devices.filter((device) => workerAllowsRuntimeKind(device.kind, physicalIosEnabled));
+}
+
 function iosRuntimeVersion(runtime: string): string {
     const tail = runtime.split('.').at(-1) ?? runtime;
     return tail.replace(/^iOS-/, '').replaceAll('-', '.');

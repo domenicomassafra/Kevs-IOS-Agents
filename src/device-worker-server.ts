@@ -10,7 +10,9 @@ import type { DeviceConnectionStatus } from './devices/connection-manager.js';
 import type { RemoteAction } from './devices/wda-remote.js';
 import type { JsonObject } from './types.js';
 import { detectHostCapabilities } from './hosts/capabilities.js';
-import { discoverRuntimeDevices, registerRuntimeDevice } from './devices/runtime-discovery.js';
+import {
+    discoverRuntimeDevices, filterRuntimeDevicesForWorker, registerRuntimeDevice, workerAllowsRuntimeKind,
+} from './devices/runtime-discovery.js';
 import { changeVirtualRuntimeState, listVirtualRuntimes, type VirtualRuntimePlatform } from './devices/virtual-runtime.js';
 import { DEVICE_WORKER_PROTOCOL_VERSION } from './device-workers.js';
 
@@ -34,7 +36,7 @@ async function localConnectionStatus(udid: string): Promise<DeviceConnectionStat
     } catch { /* fall through to direct probes */ }
     const registered = (await loadRegisteredDevices()).find((device) => device.udid === udid);
     if (!registered) throw Object.assign(new Error('Device is not registered on this worker'), { statusCode: 404 });
-    const connected = (await discoverRuntimeDevices()).some((device) => device.udid === udid);
+    const connected = (await discoverWorkerRuntimeDevices()).some((device) => device.udid === udid);
     const backend = registered.automationBackend
         ?? ((registered.platform ?? 'ios') === 'ios' && (registered.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
     const appiumHost = backend === 'appium'
@@ -75,6 +77,14 @@ async function localConnectionStatus(udid: string): Promise<DeviceConnectionStat
     };
 }
 
+function physicalIosEnabled(): boolean {
+    return process.env.PHONE_FARM_ENABLE_PHYSICAL_IOS === 'true';
+}
+
+async function discoverWorkerRuntimeDevices() {
+    return filterRuntimeDevicesForWorker(await discoverRuntimeDevices(), physicalIosEnabled());
+}
+
 export interface StartDeviceWorkerServerOptions {
     host?: string;
     port?: number;
@@ -108,7 +118,7 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
         platforms: ['ios'] as const,
     }));
     app.get('/v1/host', async () => detectHostCapabilities({ id: workerId }));
-    app.get('/v1/runtime-devices', async () => ({ devices: await discoverRuntimeDevices() }));
+    app.get('/v1/runtime-devices', async () => ({ devices: await discoverWorkerRuntimeDevices() }));
     app.get('/v1/virtual-runtimes', async () => ({ runtimes: await listVirtualRuntimes() }));
     app.post<{ Params: { platform: VirtualRuntimePlatform; id: string; action: 'boot' | 'shutdown' } }>(
         '/v1/virtual-runtimes/:platform/:id/:action', async (request, reply) => {
@@ -124,7 +134,8 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
         return reply.code(201).send({ device: redactDevice(device) });
     });
     app.get('/v1/devices', async () => {
-        const [registered, connected] = await Promise.all([loadRegisteredDevices(), discoverRuntimeDevices()]);
+        const [allRegistered, connected] = await Promise.all([loadRegisteredDevices(), discoverWorkerRuntimeDevices()]);
+        const registered = allRegistered.filter((device) => workerAllowsRuntimeKind(device.kind, physicalIosEnabled()));
         const online = new Map(connected.map((device) => [device.udid, device]));
         const statuses = await Promise.all(registered.map(async (device) => {
             try { return await localConnectionStatus(device.udid); } catch { return undefined; }
@@ -140,7 +151,7 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     });
 
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/info', async (request, reply) => {
-        const device = (await discoverRuntimeDevices()).find(({ udid }) => udid === request.params.udid);
+        const device = (await discoverWorkerRuntimeDevices()).find(({ udid }) => udid === request.params.udid);
         if (!device) return reply.code(404).send({ error: 'Device is not connected to this worker' });
         return remote.getScreenInfo(device.udid);
     });
