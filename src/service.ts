@@ -8,9 +8,20 @@ export type ServiceName = 'appium' | 'appium-runtime' | 'wda' | 'worker' | 'devi
 
 const SERVICES: ServiceName[] = ['appium', 'appium-runtime', 'wda', 'worker', 'device-worker', 'web'];
 
-export function servicesForRole(role = process.env.PHONE_FARM_ROLE ?? 'standalone'): ServiceName[] {
-    if (role === 'device-worker') return ['appium', 'appium-runtime', 'wda', 'worker', 'device-worker'];
-    if (role === 'standalone') return ['appium', 'appium-runtime', 'wda', 'worker', 'web'];
+export function servicesForRole(
+    role = process.env.PHONE_FARM_ROLE ?? 'standalone',
+    physicalIosEnabled = process.env.PHONE_FARM_ENABLE_PHYSICAL_IOS !== 'false',
+): ServiceName[] {
+    if (role === 'device-worker') {
+        return physicalIosEnabled
+            ? ['appium', 'appium-runtime', 'wda', 'worker', 'device-worker']
+            : ['appium-runtime', 'worker', 'device-worker'];
+    }
+    if (role === 'standalone') {
+        return physicalIosEnabled
+            ? ['appium', 'appium-runtime', 'wda', 'worker', 'web']
+            : ['appium-runtime', 'worker', 'web'];
+    }
     if (role === 'control-plane') return [];
     throw new Error(`Unknown PHONE_FARM_ROLE: ${role}`);
 }

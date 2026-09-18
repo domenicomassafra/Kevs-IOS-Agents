@@ -22,5 +22,6 @@ test('launchd supervision uses one process per farm responsibility and no shell 
 
 test('device-worker launchd role excludes the web control plane', () => {
     assert.deepEqual(servicesForRole('device-worker'), ['appium', 'appium-runtime', 'wda', 'worker', 'device-worker']);
+    assert.deepEqual(servicesForRole('device-worker', false), ['appium-runtime', 'worker', 'device-worker']);
     assert.deepEqual(servicesForRole('control-plane'), []);
 });
