@@ -37,6 +37,17 @@ fi
 mkdir -p .runtime/minipc
 chmod 700 .runtime/minipc
 
+# Record the exact source revision that is about to be deployed. The health
+# endpoint reads this file from the persistent /data volume so operators can
+# prove which main SHA is actually live instead of inferring it from checkout
+# state or image age.
+release_sha="$(git rev-parse HEAD)"
+release_subject="$(git log -1 --format=%s | tr -d '\r\n' | sed 's/\\/\\\\/g; s/"/\\"/g')"
+release_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+printf '{"sha":"%s","subject":"%s","deployedAt":"%s"}\n' \
+  "$release_sha" "$release_subject" "$release_time" > .runtime/minipc/RELEASED
+chmod 600 .runtime/minipc/RELEASED
+
 docker compose --env-file .env.minipc -f docker-compose.production.yml up -d --build
 docker compose --env-file .env.minipc -f docker-compose.production.yml ps
 

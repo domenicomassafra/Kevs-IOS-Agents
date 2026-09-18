@@ -53,7 +53,7 @@ Useful verification:
 npm ci
 npm run check
 npm run doctor:control-plane
-docker compose -f docker-compose.production.yml ps
+docker compose --env-file .env.minipc -f docker-compose.production.yml ps
 curl -fsS http://127.0.0.1:3000/health
 ```
 

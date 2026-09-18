@@ -62,4 +62,4 @@ ENV NODE_ENV=production \
     DEVICES_CONFIG_PATH=/data/devices.json \
     SCHEDULER_DATA_DIR=/data/scheduler
 
-CMD ["sh", "-c", "npm run db:migrate && exec node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/api/server.ts"]
+CMD ["sh", "-c", "attempt=1; until npm run db:migrate; do if [ \"$attempt\" -ge 30 ]; then echo 'Database migrations did not become ready after 30 attempts' >&2; exit 1; fi; echo \"Database not ready for migrations (attempt $attempt/30); retrying in 2s\" >&2; attempt=$((attempt + 1)); sleep 2; done; exec node --env-file-if-exists=.env --env-file-if-exists=.env.devices --import tsx src/api/server.ts"]
