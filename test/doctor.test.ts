@@ -42,7 +42,8 @@ test('doctor recognizes full Xcode and a visible physical device', (context) => 
         'xcodebuild -version': { stdout: 'Xcode 26.1\nBuild version 17B55' },
         'docker --version': { stdout: 'Docker version 28.0.0' },
         'xcrun xctrace list devices': { stdout: '== Devices ==\nDodo iPhone (26.0) (0000-AAAA)\nDodo Mac (26.0) (MAC)\n\n== Simulators ==\niPhone 17 (26.0) (SIM)\n' },
-    }), {}, doctorCwd(context));
+        'security find-identity -v -p codesigning': { stdout: '  1) ABCDEF "Apple Development"\n     1 valid identities found\n' },
+    }), { XCODE_ORG_ID: 'TEAM123', WDA_BUNDLE_ID: 'com.example.owner.WebDriverAgentRunner' }, doctorCwd(context));
     assert.equal(report.realDeviceReady, true);
     assert.match(report.checks.find(({ id }) => id === 'iphone')?.summary ?? '', /1 physical/);
 });
@@ -61,6 +62,22 @@ test('device-worker runtime can be ready without a physical iPhone and does not 
     assert.equal(report.checks.find(({ id }) => id === 'iphone')?.status, 'fail');
     assert.equal(report.runtimeReady, true);
     assert.equal(report.realDeviceReady, false);
+});
+
+test('simulator-only device worker is runtime-ready without physical signing', (context) => {
+    const cwd = doctorCwd(context);
+    const report = collectDoctorReport(runner({
+        'xcode-select -p': { stdout: '/Applications/Xcode.app/Contents/Developer\n' },
+        'xcodebuild -version': { stdout: 'Xcode 27.0\nBuild version 27A266a' },
+    }), {
+        PHONE_FARM_ROLE: 'device-worker',
+        PHONE_FARM_WORKER_ID: 'macstudio',
+        PHONE_FARM_ENABLE_PHYSICAL_IOS: 'false',
+        DATABASE_URL: 'postgresql://phone_farm:secret@minipc:55432/phone_farm',
+    }, cwd);
+    assert.equal(report.runtimeReady, true);
+    assert.equal(report.realDeviceReady, false);
+    assert.equal(report.checks.find(({ id }) => id === 'signing')?.status, 'warn');
 });
 
 test('control-plane doctor does not require Xcode and requires Docker/database configuration', () => {

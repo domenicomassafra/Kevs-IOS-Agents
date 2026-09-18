@@ -43,11 +43,14 @@ require_configured DATABASE_URL "${DATABASE_URL:-}"
 # can be a useful simulator execution worker without an Apple Development team,
 # and the doctor reports physical-device readiness separately from worker
 # runtime readiness.
+physical_ios_enabled="${PHONE_FARM_ENABLE_PHYSICAL_IOS:-true}"
 physical_devices="$(xcrun xctrace list devices 2>/dev/null \
   | sed -n '/== Devices ==/,/== Simulators ==/p' \
   | sed '1d;$d' \
   | grep -Ev '^[[:space:]]*$|MacBook|Mac mini|Mac Studio|Mac Pro|Mac \(' || true)"
-if [[ -n "$physical_devices" ]]; then
+if [[ "$physical_ios_enabled" == "false" ]]; then
+  echo "Physical iPhone lane disabled; installing a simulator-capable worker only."
+elif [[ -n "$physical_devices" ]]; then
   require_configured XCODE_ORG_ID "${XCODE_ORG_ID:-}"
   if [[ "${WDA_BUNDLE_ID:-}" == "com.example.WebDriverAgentRunner" || -z "${WDA_BUNDLE_ID:-}" ]]; then
     echo "WDA_BUNDLE_ID must be changed from the example value before physical-iPhone installation" >&2

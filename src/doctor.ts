@@ -66,6 +66,7 @@ export function collectDoctorReport(
 ): DoctorReport {
     const checks: DoctorCheck[] = [];
     const role = (env.PHONE_FARM_ROLE ?? 'standalone') as DoctorReport['role'];
+    const physicalIosEnabled = env.PHONE_FARM_ENABLE_PHYSICAL_IOS !== 'false';
     if (!['standalone', 'control-plane', 'device-worker'].includes(role)) {
         checks.push({ id: 'role', status: 'fail', summary: `Unknown PHONE_FARM_ROLE: ${role}` });
     } else {
@@ -166,7 +167,12 @@ export function collectDoctorReport(
             : { id: 'configuration', status: 'warn', summary: '.env is not configured', detail: 'Copy the role-appropriate env example before a live run.' });
     }
 
-    if (role !== 'control-plane' && fullXcode) {
+    if (role !== 'control-plane' && !physicalIosEnabled) {
+        checks.push({
+            id: 'iphone', status: 'warn', summary: 'Physical iPhone lane is disabled',
+            detail: 'Set PHONE_FARM_ENABLE_PHYSICAL_IOS=true after configuring Apple Development signing.',
+        });
+    } else if (role !== 'control-plane' && fullXcode) {
         const devices = command(runner, 'xcrun', ['xctrace', 'list', 'devices']);
         const physical = devices.status === 0 ? physicalDeviceLines(devices.stdout) : [];
         checks.push(physical.length
@@ -176,13 +182,32 @@ export function collectDoctorReport(
         checks.push({ id: 'iphone', status: 'fail', summary: 'iPhone discovery is blocked by the Xcode prerequisite' });
     }
 
+    if (role !== 'control-plane' && physicalIosEnabled) {
+        const teamId = env.XCODE_ORG_ID?.trim();
+        const bundleId = env.WDA_BUNDLE_ID?.trim();
+        const configured = Boolean(teamId && !teamId.includes('replace-')
+            && bundleId && bundleId !== 'com.example.WebDriverAgentRunner');
+        const identities = command(runner, 'security', ['find-identity', '-v', '-p', 'codesigning']);
+        const identityCount = Number(identities.stdout.match(/(\d+) valid identities found/)?.[1] ?? 0);
+        checks.push(configured && identities.status === 0 && identityCount > 0
+            ? { id: 'signing', status: 'pass', summary: `${identityCount} Apple code-signing identit${identityCount === 1 ? 'y' : 'ies'} available` }
+            : {
+                id: 'signing', status: 'fail', summary: 'Physical-iPhone signing is not ready',
+                detail: !configured
+                    ? 'Configure XCODE_ORG_ID and a unique WDA_BUNDLE_ID.'
+                    : 'Add a valid Apple Development signing identity in Xcode.',
+            });
+    } else if (role !== 'control-plane') {
+        checks.push({ id: 'signing', status: 'warn', summary: 'Physical-iPhone signing is disabled with the physical lane' });
+    }
+
     const sourceRequired = role === 'control-plane' ? ['node'] : ['node', 'appium'];
     const runtimeRequired = role === 'control-plane'
         ? ['node', 'database-runtime', 'database-url', ...(env.PHONE_FARM_DEVICE_WORKERS?.trim() ? ['worker-token', 'internal-token'] : [])]
         : role === 'device-worker'
             ? ['node', 'appium', 'xcode', 'control-database']
             : ['node', 'appium', 'xcode', 'iphone'];
-    const realDeviceRequired = role === 'control-plane' ? [] : ['node', 'appium', 'xcode', 'iphone'];
+    const realDeviceRequired = role === 'control-plane' ? [] : ['node', 'appium', 'xcode', 'iphone', 'signing'];
     const failed = (ids: string[]) => checks.some((check) => ids.includes(check.id) && check.status === 'fail');
     return {
         role,
@@ -191,7 +216,7 @@ export function collectDoctorReport(
         runtimeReady: !failed(runtimeRequired),
         // A control-plane host never owns a physical iPhone itself; consumers
         // should use runtimeReady plus fleet/device health for that role.
-        realDeviceReady: role === 'control-plane' ? false : !failed(realDeviceRequired),
+        realDeviceReady: role === 'control-plane' ? false : physicalIosEnabled && !failed(realDeviceRequired),
         checks,
     };
 }

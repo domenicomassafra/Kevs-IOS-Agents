@@ -51,6 +51,7 @@ export async function detectHostCapabilities(options: {
     envPath?: string;
     appiumEntry?: string;
     appiumRuntimeEntry?: string;
+    physicalIosEnabled?: boolean;
     commandAvailable?: (command: string) => Promise<boolean>;
 } = {}): Promise<HostSnapshot> {
     const platform = options.platform ?? process.platform;
@@ -61,12 +62,13 @@ export async function detectHostCapabilities(options: {
         exists(options.appiumRuntimeEntry ?? path.resolve('node_modules/appium-runtime/index.js')),
     ]);
     const capabilities: HostCapability[] = [];
+    const physicalIosEnabled = options.physicalIosEnabled ?? process.env.PHONE_FARM_ENABLE_PHYSICAL_IOS !== 'false';
     if (appium || appiumRuntime) capabilities.push('appium');
     if (xcrun) capabilities.push('simctl');
     if (platform === 'darwin') {
-        capabilities.push('ios.physical');
+        if (physicalIosEnabled) capabilities.push('ios.physical');
         if (xcrun) capabilities.push('ios.simulator');
-        if (xcrun && appium) capabilities.push('wda');
+        if (physicalIosEnabled && xcrun && appium) capabilities.push('wda');
     }
     return {
         id: options.id ?? process.env.PHONE_FARM_WORKER_ID ?? 'local',
