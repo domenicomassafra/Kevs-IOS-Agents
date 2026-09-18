@@ -4,7 +4,8 @@ This repository is the **single canonical control plane** for the Farming / Farm
 
 ## Authority
 
-- Canonical working source: `farming/Kevs-IOS-Agents`, branch `main`.
+- Canonical Mac working source: `/Users/domenico/Code/Kevs-IOS-Agents`, branch `main`.
+- Canonical MiniPC checkout: `/home/udodo/farming/Kevs-IOS-Agents`, branch `main`.
 - Canonical remote: `origin` → `domenicomassafra/Kevs-IOS-Agents`.
 - Source ancestry remote: `upstream` → `kevinbadi/Kevs-IOS-Agents`.
 - `Git-Agni/prod-FARM-IOS-Core` is ancestry only: its `main` diverged at `bec4331` and contains three old README-only commits not carried into the canonical product line.
