@@ -55,7 +55,8 @@ function physicalDeviceLines(output: string): string[] {
     const section = output.split('== Simulators ==')[0] ?? output;
     return section.split('\n')
         .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('==') && !/Mac \(/i.test(line));
+        .filter((line) => line && !line.startsWith('==')
+            && !/(?:\bMac \(|\bMacBook\b|\bMac mini\b|\bMac Studio\b|\bMac Pro\b)/i.test(line));
 }
 
 export function collectDoctorReport(
@@ -178,7 +179,9 @@ export function collectDoctorReport(
     const sourceRequired = role === 'control-plane' ? ['node'] : ['node', 'appium'];
     const runtimeRequired = role === 'control-plane'
         ? ['node', 'database-runtime', 'database-url', ...(env.PHONE_FARM_DEVICE_WORKERS?.trim() ? ['worker-token', 'internal-token'] : [])]
-        : ['node', 'appium', 'xcode', 'iphone', ...(role === 'device-worker' ? ['control-database'] : [])];
+        : role === 'device-worker'
+            ? ['node', 'appium', 'xcode', 'control-database']
+            : ['node', 'appium', 'xcode', 'iphone'];
     const realDeviceRequired = role === 'control-plane' ? [] : ['node', 'appium', 'xcode', 'iphone'];
     const failed = (ids: string[]) => checks.some((check) => ids.includes(check.id) && check.status === 'fail');
     return {

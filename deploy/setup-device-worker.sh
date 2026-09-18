@@ -38,10 +38,23 @@ require_configured PHONE_FARM_DEVICE_WORKER_TOKEN "${PHONE_FARM_DEVICE_WORKER_TO
 require_configured PHONE_FARM_INTERNAL_TOKEN "${PHONE_FARM_INTERNAL_TOKEN:-}"
 require_configured PHONE_FARM_CONTROL_PLANE_URL "${PHONE_FARM_CONTROL_PLANE_URL:-}"
 require_configured DATABASE_URL "${DATABASE_URL:-}"
-require_configured XCODE_ORG_ID "${XCODE_ORG_ID:-}"
-if [[ "${WDA_BUNDLE_ID:-}" == "com.example.WebDriverAgentRunner" || -z "${WDA_BUNDLE_ID:-}" ]]; then
-  echo "WDA_BUNDLE_ID must be changed from the example value before installation" >&2
-  exit 1
+
+# Signing is required only when a physical iPhone is currently attached. A Mac
+# can be a useful simulator execution worker without an Apple Development team,
+# and the doctor reports physical-device readiness separately from worker
+# runtime readiness.
+physical_devices="$(xcrun xctrace list devices 2>/dev/null \
+  | sed -n '/== Devices ==/,/== Simulators ==/p' \
+  | sed '1d;$d' \
+  | grep -Ev '^[[:space:]]*$|MacBook|Mac mini|Mac Studio|Mac Pro|Mac \(' || true)"
+if [[ -n "$physical_devices" ]]; then
+  require_configured XCODE_ORG_ID "${XCODE_ORG_ID:-}"
+  if [[ "${WDA_BUNDLE_ID:-}" == "com.example.WebDriverAgentRunner" || -z "${WDA_BUNDLE_ID:-}" ]]; then
+    echo "WDA_BUNDLE_ID must be changed from the example value before physical-iPhone installation" >&2
+    exit 1
+  fi
+else
+  echo "No physical iPhone detected; installing a simulator-capable worker. Configure XCODE_ORG_ID/WDA_BUNDLE_ID before adding a physical iPhone."
 fi
 
 npm ci

@@ -47,6 +47,22 @@ test('doctor recognizes full Xcode and a visible physical device', (context) => 
     assert.match(report.checks.find(({ id }) => id === 'iphone')?.summary ?? '', /1 physical/);
 });
 
+test('device-worker runtime can be ready without a physical iPhone and does not count the host Mac as one', (context) => {
+    const cwd = doctorCwd(context);
+    const report = collectDoctorReport(runner({
+        'xcode-select -p': { stdout: '/Applications/Xcode.app/Contents/Developer\n' },
+        'xcodebuild -version': { stdout: 'Xcode 27.0\nBuild version 27A266a' },
+        'xcrun xctrace list devices': { stdout: '== Devices ==\nMac Studio Dodo (47E01785-0016-5835-8977-860F1D589104)\n\n== Simulators ==\n' },
+    }), {
+        PHONE_FARM_ROLE: 'device-worker',
+        PHONE_FARM_WORKER_ID: 'macstudio',
+        DATABASE_URL: 'postgresql://phone_farm:secret@minipc:55432/phone_farm',
+    }, cwd);
+    assert.equal(report.checks.find(({ id }) => id === 'iphone')?.status, 'fail');
+    assert.equal(report.runtimeReady, true);
+    assert.equal(report.realDeviceReady, false);
+});
+
 test('control-plane doctor does not require Xcode and requires Docker/database configuration', () => {
     const report = collectDoctorReport(runner({
         'docker --version': { stdout: 'Docker version 28.0.0' },
