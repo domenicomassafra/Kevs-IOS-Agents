@@ -33,6 +33,36 @@ require_configured() {
   fi
 }
 
+require_launchd_running() {
+  local label="$1"
+  local detail
+  if ! detail="$(launchctl print "gui/$(id -u)/$label" 2>/dev/null)"; then
+    echo "$label is not loaded after installation" >&2
+    exit 1
+  fi
+  if ! grep -q 'state = running' <<<"$detail" || grep -q 'execs = 0' <<<"$detail"; then
+    echo "$label did not reach an executing launchd state" >&2
+    exit 1
+  fi
+}
+
+wait_for_http() {
+  local name="$1"
+  local url="$2"
+  local header="${3:-}"
+  local attempt
+  for attempt in $(seq 1 30); do
+    if [[ -n "$header" ]]; then
+      curl -fsS -H "$header" "$url" >/dev/null 2>&1 && return 0
+    else
+      curl -fsS "$url" >/dev/null 2>&1 && return 0
+    fi
+    sleep 0.5
+  done
+  echo "$name did not become ready at $url" >&2
+  exit 1
+}
+
 [[ "${PHONE_FARM_ROLE:-}" == "device-worker" ]] || { echo "PHONE_FARM_ROLE=device-worker is required in .env" >&2; exit 1; }
 require_configured PHONE_FARM_DEVICE_WORKER_TOKEN "${PHONE_FARM_DEVICE_WORKER_TOKEN:-}"
 require_configured PHONE_FARM_INTERNAL_TOKEN "${PHONE_FARM_INTERNAL_TOKEN:-}"
@@ -68,6 +98,11 @@ fi
 npm run db:migrate
 npm run doctor:device-worker
 npm run service -- install
+require_launchd_running com.phone-farm.appium-runtime
+require_launchd_running com.phone-farm.worker
+require_launchd_running com.phone-farm.device-worker
+wait_for_http "Device worker" "http://127.0.0.1:${DEVICE_WORKER_PORT:-3010}/health" "Authorization: Bearer $PHONE_FARM_DEVICE_WORKER_TOKEN"
+wait_for_http "Appium runtime" "http://127.0.0.1:${APPIUM_RUNTIME_PORT:-4726}/status"
 npm run service -- status
 
-echo "Mac device worker installed. The MiniPC should reference ${PHONE_FARM_WORKER_ID:-mac-worker}=http://<this-mac-private-address>:${DEVICE_WORKER_PORT:-3010}."
+echo "Mac device worker installed and locally healthy. The MiniPC should reference ${PHONE_FARM_WORKER_ID:-mac-worker}=http://<this-mac-private-address>:${DEVICE_WORKER_PORT:-3010}."

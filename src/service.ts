@@ -40,21 +40,22 @@ function xml(value: string): string {
 
 export function serviceSpecs(root = process.cwd(), node = process.execPath): Record<ServiceName, ServiceSpec> {
     const common = ['--env-file-if-exists=.env', '--env-file-if-exists=.env.devices', '--import', 'tsx'];
+    const fromRoot = (...segments: string[]) => path.join(root, ...segments);
     return {
         appium: {
             label: 'com.phone-farm.appium',
-            args: [node, 'node_modules/appium/index.js', '--address', '127.0.0.1', '--base-path', '/', '--port', '4725', '--log-level', 'info'],
+            args: [node, fromRoot('node_modules', 'appium', 'index.js'), '--address', '127.0.0.1', '--base-path', '/', '--port', '4725', '--log-level', 'info'],
             env: { APPIUM_HOME: path.join(root, '.appium2') },
         },
         'appium-runtime': {
             label: 'com.phone-farm.appium-runtime',
-            args: [node, 'node_modules/appium-runtime/index.js', '--address', '127.0.0.1', '--base-path', '/', '--port', '4726', '--log-level', 'info'],
+            args: [node, fromRoot('node_modules', 'appium-runtime', 'index.js'), '--address', '127.0.0.1', '--base-path', '/', '--port', '4726', '--log-level', 'info'],
             env: { APPIUM_HOME: path.join(root, '.appium-runtime') },
         },
-        wda: { label: 'com.phone-farm.wda', args: [node, ...common, 'src/devices/wda-service.ts'] },
-        worker: { label: 'com.phone-farm.worker', args: [node, ...common, 'src/scheduler/worker.ts'] },
-        'device-worker': { label: 'com.phone-farm.device-worker', args: [node, ...common, 'src/device-worker-server.ts'] },
-        web: { label: 'com.phone-farm.web', args: [node, ...common, 'src/api/server.ts'] },
+        wda: { label: 'com.phone-farm.wda', args: [node, ...common, fromRoot('src', 'devices', 'wda-service.ts')] },
+        worker: { label: 'com.phone-farm.worker', args: [node, ...common, fromRoot('src', 'scheduler', 'worker.ts')] },
+        'device-worker': { label: 'com.phone-farm.device-worker', args: [node, ...common, fromRoot('src', 'device-worker-server.ts')] },
+        web: { label: 'com.phone-farm.web', args: [node, ...common, fromRoot('src', 'api', 'server.ts')] },
     };
 }
 
@@ -90,7 +91,6 @@ ${envXml}
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
-  <key>ProcessType</key><string>Background</string>
   <key>StandardOutPath</key><string>${xml(path.join(logs, `${service}.out.log`))}</string>
   <key>StandardErrorPath</key><string>${xml(path.join(logs, `${service}.err.log`))}</string>
 </dict>
@@ -122,6 +122,10 @@ function launchctl(args: string[], stdio: 'inherit' | 'pipe' = 'inherit'): strin
     return execFileSync('/bin/launchctl', args, { encoding: 'utf8', stdio }) ?? '';
 }
 
+function launchctlAsUser(uid: number, args: string[], stdio: 'inherit' | 'pipe' = 'inherit'): string {
+    return launchctl(['asuser', String(uid), '/bin/launchctl', ...args], stdio);
+}
+
 function launchAgentLoaded(domain: string, label: string): boolean {
     try {
         launchctl(['print', `${domain}/${label}`], 'pipe');
@@ -131,19 +135,20 @@ function launchAgentLoaded(domain: string, label: string): boolean {
     }
 }
 
-async function waitForLaunchAgentUnloaded(domain: string, label: string): Promise<void> {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+async function waitForLaunchAgentUnloaded(domain: string, label: string, timeoutMs = 15_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
         if (!launchAgentLoaded(domain, label)) return;
-        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        await new Promise<void>((resolve) => setTimeout(resolve, 250));
     }
-    throw new Error(`launchd did not finish unloading ${label}`);
+    throw new Error(`launchd did not finish unloading ${label} within ${timeoutMs}ms`);
 }
 
-async function bootstrapLaunchAgent(domain: string, destination: string, label: string): Promise<void> {
+async function bootstrapLaunchAgent(uid: number, domain: string, destination: string, label: string): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= 6; attempt += 1) {
         try {
-            launchctl(['bootstrap', domain, destination], 'pipe');
+            launchctlAsUser(uid, ['bootstrap', domain, destination], 'pipe');
             return;
         } catch (error) {
             lastError = error;
@@ -158,12 +163,13 @@ export async function installLaunchAgents(): Promise<void> {
     const rendered = await renderLaunchAgents();
     const target = path.join(os.homedir(), 'Library', 'LaunchAgents');
     await mkdir(target, { recursive: true });
-    const domain = `gui/${process.getuid?.() ?? 0}`;
+    const uid = process.getuid?.() ?? 0;
+    const domain = `gui/${uid}`;
     const selectedLabels = new Set(rendered.map((source) => path.basename(source, '.plist')));
     for (const service of SERVICES) {
         const label = serviceSpecs()[service].label;
         if (selectedLabels.has(label)) continue;
-        try { launchctl(['bootout', `${domain}/${label}`], 'pipe'); } catch { /* already unloaded */ }
+        try { launchctlAsUser(uid, ['bootout', `${domain}/${label}`], 'pipe'); } catch { /* already unloaded */ }
         await waitForLaunchAgentUnloaded(domain, label);
         await rm(path.join(target, `${label}.plist`), { force: true });
     }
@@ -171,9 +177,9 @@ export async function installLaunchAgents(): Promise<void> {
         const destination = path.join(target, path.basename(source));
         await writeFile(destination, await readFile(source), { mode: 0o600 });
         const label = path.basename(destination, '.plist');
-        try { launchctl(['bootout', `${domain}/${label}`], 'pipe'); } catch { /* not loaded */ }
+        try { launchctlAsUser(uid, ['bootout', `${domain}/${label}`], 'pipe'); } catch { /* not loaded */ }
         await waitForLaunchAgentUnloaded(domain, label);
-        await bootstrapLaunchAgent(domain, destination, label);
+        await bootstrapLaunchAgent(uid, domain, destination, label);
     }
 }
 

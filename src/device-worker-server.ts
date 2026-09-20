@@ -17,6 +17,7 @@ import {
 import { changeVirtualRuntimeState, listVirtualRuntimes, type VirtualRuntimePlatform } from './devices/virtual-runtime.js';
 import { DEVICE_WORKER_PROTOCOL_VERSION } from './device-workers.js';
 import { physicalIosLaneEnabled } from './runtime-options.js';
+import { isEntrypoint } from './entrypoint.js';
 
 function safeEqual(left: string, right: string): boolean {
     const a = Buffer.from(left);
@@ -252,4 +253,4 @@ async function main(): Promise<void> {
     process.once('SIGTERM', () => void shutdown());
 }
 
-if (process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').href) await main();
+if (isEntrypoint(import.meta.url)) await main();

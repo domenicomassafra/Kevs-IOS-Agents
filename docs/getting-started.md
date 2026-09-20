@@ -101,8 +101,9 @@ setting suppresses physical-iPhone discovery, WDA/legacy-Appium launch agents,
 and direct physical-device control while keeping the Appium Simulator lane.
 
 The worker setup installs the required Appium runtimes, runs migrations against
-the MiniPC database, runs `doctor:device-worker`, and installs the selected
-launchd services. Inspect them with `npm run service -- status`.
+the MiniPC database, runs `doctor:device-worker`, installs the selected launchd
+services, and fails closed unless the gateway and Appium runtime pass local
+health checks. Inspect the final launchd state with `npm run service -- status`.
 
 ## 5. Prepare WebDriverAgent (physical lane only)
 

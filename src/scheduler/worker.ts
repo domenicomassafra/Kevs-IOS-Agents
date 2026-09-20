@@ -9,6 +9,7 @@ import { createQueue, ensureDeviceQueue, type ExecutionJob } from './queue.js';
 import { SchedulerRepository } from './repository.js';
 import { createTikTokPlugin } from '../tiktok-plugin.js';
 import { createInstagramPlugin } from '../instagram-plugin.js';
+import { isEntrypoint } from '../entrypoint.js';
 
 export interface WorkerRuntime { close(): Promise<void> }
 
@@ -94,4 +95,4 @@ async function main(): Promise<void> {
     process.once('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-if (process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').href) await main();
+if (isEntrypoint(import.meta.url)) await main();
