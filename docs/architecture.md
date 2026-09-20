@@ -1,55 +1,53 @@
 # Architecture — what does what
 
-Mobile Farm is a control plane plus execution-host runtimes over one PostgreSQL
-database and a few local state files. There is no client framework: the
-dashboard is server-rendered HTML with HTMX. Physical iPhones keep their
-specialized WDA video/control path, while generic Appium runtimes expose the
-same dashboard contract through screenshot streaming and shared input methods.
+Mobile Farm is one Linux MiniPC control plane plus macOS execution-host runtimes
+over one PostgreSQL database and a few worker-local state files. There is no
+client framework: the dashboard is server-rendered HTML with HTMX. Physical
+iPhones keep their specialized WDA video/control path, while iOS Simulators use
+the isolated modern Appium lane. Both are exposed to the MiniPC through the
+authenticated device-worker gateway.
 
 ```
-                         ┌───────────────────────────────┐
-  browser  ── HTTP ─────▶│  web  (Fastify + HTMX)  :3000 │
-                         │  dashboard, JSON API,         │
-                         │  plugin panels & routes       │
-                         └───────┬───────────────┬───────┘
-                                 │ SQL           │ HTTP (Unix socket)
-                                 ▼               ▼
-        ┌────────────────────────────┐   ┌──────────────────────────┐
-        │ PostgreSQL                 │   │ wda-service              │
-        │  scheduler.*  pgboss.*     │   │  1 WebDriverAgent / phone│
-        │  drizzle.*                 │   │  forwards :8100+ / :9100+ │
-        └───────▲────────────────────┘   └───────────┬──────────────┘
-                │ SQL / pg-boss                      │ USB
-        ┌───────┴────────────┐              ┌────────▼─────────┐
-        │ worker             │─────────────▶│ Appium 2 :4725   │──▶ physical iPhone/WDA recipes
-        │  runs due tasks    │              ├──────────────────┤
-        │                    │─────────────▶│ Appium 3 :4726   │──▶ iOS Simulator
-        └────────────────────┘              └──────────────────┘
+ browser / Hermes / MCP
+          │
+          ▼
+┌───────────────────────────────┐
+│ MiniPC control plane          │
+│ Fastify + HTMX + scheduler    │
+│ PostgreSQL / pg-boss          │
+└──────────┬────────────────────┘
+           │ authenticated worker HTTP + shared PostgreSQL
+           ▼
+┌───────────────────────────────┐
+│ macOS execution worker        │
+│ device gateway + job worker   │
+├───────────────────────────────┤
+│ Appium legacy + WDA           │──▶ physical iPhone (optional)
+│ Appium runtime + XCUITest     │──▶ iOS Simulator
+└───────────────────────────────┘
 ```
 
-## The four processes
+## Runtime ownership
 
-### `web` — `src/api/server.ts` → `startServer()` → `src/api/app.ts`
-Fastify app on `WEB_PORT` (default 3000).
+### MiniPC `web` — `src/api/server.ts` → `startServer()` → `src/api/app.ts`
+Fastify control plane, normally containerized on the MiniPC.
 
 - Server‑rendered dashboard (`/`, `/devices/:udid`, `/tasks`, `/devices/register`).
 - JSON API under `/api/*` (devices, registrations, schedules, executions,
   assets, remote control).
-- Live device screen: `GET /api/devices/:udid/remote/stream` proxies the
-  phone's MJPEG feed (used on the device page; the device **grid** uses
-  periodic `…/remote/screenshot` stills instead). The proxy aborts the
-  upstream feed when the browser disconnects. `POST …/remote/action` forwards
-  tap/swipe to WDA.
+- Live device screen and input are proxied through the owning device worker;
+  browser clients never need direct access to WDA/Appium ports.
 - Loads plugins (`PHONE_FARM_PLUGINS`) and the auth provider
   (`PHONE_FARM_AUTH_PLUGIN`); mounts each plugin's **panels** on the device
   page and its **routes** under `/plugins/<pluginId>`.
 - `assertSafeBind(host, authProvider)` refuses a non‑loopback bind with no
   auth provider.
-- Owns device **registration** (`DeviceRegistrationService`) and creates the
-  scheduler runtime used to enqueue work.
+- Owns the canonical registry view and scheduler runtime. In distributed mode,
+  registration/runtime lifecycle requests are delegated to the selected worker.
 
-### `worker` — `src/scheduler/worker.ts` → `startWorker()`
-Headless. Owns task execution.
+### macOS `worker` — `src/scheduler/worker.ts` → `startWorker()`
+Headless executor. It claims work from the MiniPC PostgreSQL instance and runs
+it only for devices owned by that execution host.
 
 - One pg-boss worker per **active** registered device. A device with `disabled: true` in `devices.json`
   is skipped here and by `wda-service` — the entry stays but nothing supervises
@@ -62,7 +60,14 @@ Headless. Owns task execution.
   and the run‑window deadline.
 - Must load the **same plugin versions** as `web`.
 
-### `wda-service` — `src/devices/wda-service.ts`
+### macOS `device-worker` gateway — `src/device-worker-server.ts`
+
+Authenticated transport boundary used by the MiniPC for host inventory,
+runtime discovery/lifecycle, screenshots, accessibility, streaming, input and
+device configuration. A disabled device or disabled physical-iOS lane is
+rejected here as well as hidden from discovery.
+
+### macOS `wda-service` — `src/devices/wda-service.ts`
 Persistent WebDriverAgent supervisor, controlled over a Unix socket
 (`.wda/wda-service.sock`).
 
@@ -73,13 +78,13 @@ Persistent WebDriverAgent supervisor, controlled over a Unix socket
   message }`. States: `ready`, `unlock-required`, `error`, …
 - Single‑supervisor by design; a lock prevents duplicates.
 
-### `appium` legacy lane — `:4725`
+### macOS `appium` legacy physical lane — `:4725`
 The existing Appium 2 + pinned XCUITest/WDA stack is isolated in
 `APPIUM_HOME=.appium2`. Physical-iPhone social recipes still depend on custom
-WDA endpoints, so this lane is deliberately retained until FARM-017 ports those
-extensions to modern WDA. Dashboard control for this lane talks directly to WDA.
+WDA endpoints, so this lane is deliberately retained for physical-device social
+recipes. It is omitted completely when `PHONE_FARM_ENABLE_PHYSICAL_IOS=false`.
 
-### `appium-runtime` modern lane — `:4726`
+### macOS `appium-runtime` Simulator lane — `:4726`
 Appium 3 lives side-by-side under `APPIUM_HOME=.appium-runtime`, with modern
 XCUITest for iOS Simulator. `AppiumRemoteControl`
 provides screen info, screenshots, input, app lifecycle and a bounded

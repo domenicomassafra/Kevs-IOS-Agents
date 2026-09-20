@@ -11,10 +11,12 @@ import type { RemoteAction } from './devices/wda-remote.js';
 import type { JsonObject } from './types.js';
 import { detectHostCapabilities } from './hosts/capabilities.js';
 import {
-    discoverRuntimeDevices, filterRuntimeDevicesForWorker, registerRuntimeDevice, workerAllowsRuntimeKind,
+    discoverRuntimeDevices, filterRuntimeDevicesForWorker, registerRuntimeDevice,
+    workerAllowsOperationalDevice, workerAllowsRuntimeKind,
 } from './devices/runtime-discovery.js';
 import { changeVirtualRuntimeState, listVirtualRuntimes, type VirtualRuntimePlatform } from './devices/virtual-runtime.js';
 import { DEVICE_WORKER_PROTOCOL_VERSION } from './device-workers.js';
+import { physicalIosLaneEnabled } from './runtime-options.js';
 
 function safeEqual(left: string, right: string): boolean {
     const a = Buffer.from(left);
@@ -34,8 +36,7 @@ async function localConnectionStatus(udid: string): Promise<DeviceConnectionStat
             if (status) return status;
         }
     } catch { /* fall through to direct probes */ }
-    const registered = (await loadRegisteredDevices()).find((device) => device.udid === udid);
-    if (!registered) throw Object.assign(new Error('Device is not registered on this worker'), { statusCode: 404 });
+    const registered = await requireWorkerDevice(udid);
     const connected = (await discoverWorkerRuntimeDevices()).some((device) => device.udid === udid);
     const backend = registered.automationBackend
         ?? ((registered.platform ?? 'ios') === 'ios' && (registered.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
@@ -77,12 +78,20 @@ async function localConnectionStatus(udid: string): Promise<DeviceConnectionStat
     };
 }
 
-function physicalIosEnabled(): boolean {
-    return process.env.PHONE_FARM_ENABLE_PHYSICAL_IOS === 'true';
+async function discoverWorkerRuntimeDevices() {
+    const allowPhysical = physicalIosLaneEnabled();
+    return filterRuntimeDevicesForWorker(await discoverRuntimeDevices({ includePhysical: allowPhysical }), allowPhysical);
 }
 
-async function discoverWorkerRuntimeDevices() {
-    return filterRuntimeDevicesForWorker(await discoverRuntimeDevices(), physicalIosEnabled());
+async function requireWorkerDevice(udid: string): Promise<RegisteredDevice> {
+    const registered = (await loadRegisteredDevices()).find((device) => device.udid === udid);
+    if (!registered || !workerAllowsRuntimeKind(registered.kind, physicalIosLaneEnabled())) {
+        throw Object.assign(new Error('Device is unavailable on this worker'), { statusCode: 404 });
+    }
+    if (!workerAllowsOperationalDevice(registered, physicalIosLaneEnabled())) {
+        throw Object.assign(new Error('Device is disabled on this worker'), { statusCode: 409 });
+    }
+    return registered;
 }
 
 export interface StartDeviceWorkerServerOptions {
@@ -130,12 +139,15 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
         },
     );
     app.post<{ Params: { udid: string }; Body: { name?: string } }>('/v1/runtime-devices/:udid/register', async (request, reply) => {
-        const device = await registerRuntimeDevice(request.params.udid, { name: request.body?.name });
+        const device = await registerRuntimeDevice(request.params.udid, {
+            name: request.body?.name,
+            includePhysical: physicalIosLaneEnabled(),
+        });
         return reply.code(201).send({ device: redactDevice(device) });
     });
     app.get('/v1/devices', async () => {
         const [allRegistered, connected] = await Promise.all([loadRegisteredDevices(), discoverWorkerRuntimeDevices()]);
-        const registered = allRegistered.filter((device) => workerAllowsRuntimeKind(device.kind, physicalIosEnabled()));
+        const registered = allRegistered.filter((device) => workerAllowsRuntimeKind(device.kind, physicalIosLaneEnabled()));
         const online = new Map(connected.map((device) => [device.udid, device]));
         const statuses = await Promise.all(registered.map(async (device) => {
             try { return await localConnectionStatus(device.udid); } catch { return undefined; }
@@ -151,15 +163,21 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
     });
 
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/info', async (request, reply) => {
+        await requireWorkerDevice(request.params.udid);
         const device = (await discoverWorkerRuntimeDevices()).find(({ udid }) => udid === request.params.udid);
         if (!device) return reply.code(404).send({ error: 'Device is not connected to this worker' });
         return remote.getScreenInfo(device.udid);
     });
-    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/source', async (request) => remote.getAccessibilityTree(request.params.udid));
-    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/screenshot', async (request, reply) => (
-        reply.header('cache-control', 'no-store').type('image/png').send(await remote.getScreenshot(request.params.udid))
-    ));
+    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/source', async (request) => {
+        await requireWorkerDevice(request.params.udid);
+        return remote.getAccessibilityTree(request.params.udid);
+    });
+    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/screenshot', async (request, reply) => {
+        await requireWorkerDevice(request.params.udid);
+        return reply.header('cache-control', 'no-store').type('image/png').send(await remote.getScreenshot(request.params.udid));
+    });
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/stream', async (request, reply) => {
+        await requireWorkerDevice(request.params.udid);
         const abort = new AbortController();
         request.raw.once('close', () => abort.abort());
         const upstream = await remote.getMjpegStream(request.params.udid, abort.signal);
@@ -169,13 +187,17 @@ export async function startDeviceWorkerServer(options: StartDeviceWorkerServerOp
             .send(Readable.from(upstream.body as AsyncIterable<Uint8Array>));
     });
     app.post<{ Params: { udid: string }; Body: RemoteAction }>('/v1/devices/:udid/action', async (request) => {
+        await requireWorkerDevice(request.params.udid);
         await remote.performAction(request.params.udid, request.body);
         return { ok: true };
     });
-    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/locked', async (request) => ({ locked: await remote.isLocked(request.params.udid) }));
+    app.get<{ Params: { udid: string } }>('/v1/devices/:udid/locked', async (request) => {
+        await requireWorkerDevice(request.params.udid);
+        return { locked: await remote.isLocked(request.params.udid) };
+    });
     app.get<{ Params: { udid: string } }>('/v1/devices/:udid/connection', async (request) => localConnectionStatus(request.params.udid));
     app.post<{ Params: { udid: string } }>('/v1/devices/:udid/reconnect', async (request, reply) => {
-        const registered = (await loadRegisteredDevices()).find((device) => device.udid === request.params.udid);
+        const registered = await requireWorkerDevice(request.params.udid);
         const backend = registered?.automationBackend
             ?? ((registered?.platform ?? 'ios') === 'ios' && (registered?.kind ?? 'physical') === 'physical' ? 'wda' : 'appium');
         if (backend === 'appium') {

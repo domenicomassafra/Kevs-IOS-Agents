@@ -43,7 +43,7 @@ cp .env.device-worker.example .env
 ./deploy/setup-device-worker.sh
 ```
 
-`PHONE_FARM_ROLE=device-worker` changes launchd packaging to install the physical-iPhone Appium/WDA lane, the modern Appium runtime sidecar, the pg-boss execution worker and the authenticated HTTP device gateway. The web dashboard is deliberately omitted on that Mac.
+`PHONE_FARM_ROLE=device-worker` changes launchd packaging to install the pg-boss execution worker, authenticated HTTP device gateway and modern Appium runtime sidecar. With `PHONE_FARM_ENABLE_PHYSICAL_IOS=true` it also installs the physical-iPhone Appium/WDA lane. Set the flag to `false` for a simulator-only Mac; setup removes stale physical-lane launch agents instead of leaving them active. The web dashboard is deliberately omitted on every worker.
 
 The two Appium homes/ports are intentionally independent: `.appium2`/`:4725` preserves the custom physical-iPhone WDA contract, while `.appium-runtime`/`:4726` uses current XCUITest for iOS Simulator. This keeps simulator runtime upgrades isolated from the physical-iPhone WDA lane.
 

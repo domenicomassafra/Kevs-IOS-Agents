@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { physicalIosLaneEnabled } from './runtime-options.js';
 
 export type ServiceName = 'appium' | 'appium-runtime' | 'wda' | 'worker' | 'device-worker' | 'web';
 
@@ -10,7 +12,7 @@ const SERVICES: ServiceName[] = ['appium', 'appium-runtime', 'wda', 'worker', 'd
 
 export function servicesForRole(
     role = process.env.PHONE_FARM_ROLE ?? 'standalone',
-    physicalIosEnabled = process.env.PHONE_FARM_ENABLE_PHYSICAL_IOS !== 'false',
+    physicalIosEnabled = physicalIosLaneEnabled(),
 ): ServiceName[] {
     if (role === 'device-worker') {
         return physicalIosEnabled
@@ -120,18 +122,58 @@ function launchctl(args: string[], stdio: 'inherit' | 'pipe' = 'inherit'): strin
     return execFileSync('/bin/launchctl', args, { encoding: 'utf8', stdio }) ?? '';
 }
 
+function launchAgentLoaded(domain: string, label: string): boolean {
+    try {
+        launchctl(['print', `${domain}/${label}`], 'pipe');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function waitForLaunchAgentUnloaded(domain: string, label: string): Promise<void> {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (!launchAgentLoaded(domain, label)) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`launchd did not finish unloading ${label}`);
+}
+
+async function bootstrapLaunchAgent(domain: string, destination: string, label: string): Promise<void> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 6; attempt += 1) {
+        try {
+            launchctl(['bootstrap', domain, destination], 'pipe');
+            return;
+        } catch (error) {
+            lastError = error;
+            if (attempt < 6) await new Promise<void>((resolve) => setTimeout(resolve, attempt * 200));
+        }
+    }
+    throw lastError ?? new Error(`Could not bootstrap ${label}`);
+}
+
 export async function installLaunchAgents(): Promise<void> {
     if (process.platform !== 'darwin') throw new Error('launchd supervision is supported only on macOS');
     const rendered = await renderLaunchAgents();
     const target = path.join(os.homedir(), 'Library', 'LaunchAgents');
     await mkdir(target, { recursive: true });
     const domain = `gui/${process.getuid?.() ?? 0}`;
+    const selectedLabels = new Set(rendered.map((source) => path.basename(source, '.plist')));
+    for (const service of SERVICES) {
+        const label = serviceSpecs()[service].label;
+        if (selectedLabels.has(label)) continue;
+        try { launchctl(['bootout', `${domain}/${label}`], 'pipe'); } catch { /* already unloaded */ }
+        await waitForLaunchAgentUnloaded(domain, label);
+        await rm(path.join(target, `${label}.plist`), { force: true });
+    }
     for (const source of rendered) {
         const destination = path.join(target, path.basename(source));
-        await writeFile(destination, await import('node:fs/promises').then(({ readFile }) => readFile(source)), { mode: 0o600 });
+        await writeFile(destination, await readFile(source), { mode: 0o600 });
         const label = path.basename(destination, '.plist');
         try { launchctl(['bootout', `${domain}/${label}`], 'pipe'); } catch { /* not loaded */ }
-        launchctl(['bootstrap', domain, destination]);
+        await waitForLaunchAgentUnloaded(domain, label);
+        await bootstrapLaunchAgent(domain, destination, label);
     }
 }
 

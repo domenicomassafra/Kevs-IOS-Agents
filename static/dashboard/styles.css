@@ -8,6 +8,8 @@
     --panel-raised: #111111;
     --border: rgb(255 255 255 / 9%);
     --border-strong: rgb(255 255 255 / 16%);
+    --surface: var(--panel);
+    --line: var(--border);
     --text: #f5f5f5;
     --muted: #8c8c8c;
     --accent: #ffffff;
@@ -39,6 +41,15 @@ body[data-runtime-backend="appium"] .ios-social-only { display: none !important;
 button, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+    outline: 2px solid #f5f5f5;
+    outline-offset: 3px;
+}
 h1, h2, p { margin-top: 0; }
 h1 {
     margin-bottom: 8px;
@@ -374,6 +385,15 @@ p { margin-bottom: 0; color: var(--muted); line-height: 1.55; }
 }
 .button:hover, .icon-button:hover { border-color: rgb(255 255 255 / 22%); filter: brightness(1.06); }
 button:disabled { cursor: wait; opacity: .55; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}
 
 .sr-only {
     position: absolute;

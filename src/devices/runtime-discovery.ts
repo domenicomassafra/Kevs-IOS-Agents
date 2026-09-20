@@ -19,6 +19,13 @@ export function workerAllowsRuntimeKind(
     return physicalIosEnabled || (kind ?? 'physical') !== 'physical';
 }
 
+export function workerAllowsOperationalDevice(
+    device: Pick<RegisteredDevice, 'kind' | 'disabled'>,
+    physicalIosEnabled: boolean,
+): boolean {
+    return device.disabled !== true && workerAllowsRuntimeKind(device.kind, physicalIosEnabled);
+}
+
 export function filterRuntimeDevicesForWorker(
     devices: readonly RuntimeDevice[],
     physicalIosEnabled: boolean,
@@ -56,9 +63,12 @@ export async function discoverIosSimulators(): Promise<RuntimeDevice[]> {
     }
 }
 
-export async function discoverRuntimeDevices(): Promise<RuntimeDevice[]> {
+export async function discoverRuntimeDevices(
+    options: { includePhysical?: boolean } = {},
+): Promise<RuntimeDevice[]> {
+    const includePhysical = options.includePhysical ?? true;
     const [iosPhysical, iosSimulators] = await Promise.all([
-        process.platform === 'darwin' ? discoverConnectedDevices().catch(() => []) : Promise.resolve([]),
+        includePhysical && process.platform === 'darwin' ? discoverConnectedDevices().catch(() => []) : Promise.resolve([]),
         discoverIosSimulators(),
     ]);
     return [
@@ -69,9 +79,9 @@ export async function discoverRuntimeDevices(): Promise<RuntimeDevice[]> {
 
 export async function registerRuntimeDevice(
     udid: string,
-    options: { name?: string } = {},
+    options: { name?: string; includePhysical?: boolean } = {},
 ): Promise<RegisteredDevice> {
-    const runtime = (await discoverRuntimeDevices()).find((device) => device.udid === udid);
+    const runtime = (await discoverRuntimeDevices({ includePhysical: options.includePhysical })).find((device) => device.udid === udid);
     if (!runtime) throw Object.assign(new Error('Runtime device is not currently discoverable on this worker'), { statusCode: 404 });
     if (runtime.kind === 'physical') {
         throw Object.assign(new Error('Physical iPhones use the guided WDA registration flow'), { statusCode: 409 });

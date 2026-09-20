@@ -61,7 +61,9 @@ else
 fi
 
 npm ci
-[[ -d .appium2/node_modules/appium-xcuitest-driver ]] || npm run appium:install-driver
+if [[ "$physical_ios_enabled" != "false" ]]; then
+  [[ -d .appium2/node_modules/appium-xcuitest-driver ]] || npm run appium:install-driver
+fi
 [[ -d .appium-runtime/node_modules/appium-xcuitest-driver ]] || npm run appium:runtime:install-ios
 npm run db:migrate
 npm run doctor:device-worker

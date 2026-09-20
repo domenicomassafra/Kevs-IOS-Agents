@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { physicalIosLaneEnabled } from './runtime-options.js';
+
 export type DoctorStatus = 'pass' | 'warn' | 'fail';
 
 export interface DoctorCheck {
@@ -66,7 +68,7 @@ export function collectDoctorReport(
 ): DoctorReport {
     const checks: DoctorCheck[] = [];
     const role = (env.PHONE_FARM_ROLE ?? 'standalone') as DoctorReport['role'];
-    const physicalIosEnabled = env.PHONE_FARM_ENABLE_PHYSICAL_IOS !== 'false';
+    const physicalIosEnabled = physicalIosLaneEnabled(env);
     if (!['standalone', 'control-plane', 'device-worker'].includes(role)) {
         checks.push({ id: 'role', status: 'fail', summary: `Unknown PHONE_FARM_ROLE: ${role}` });
     } else {

@@ -2,6 +2,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { access } from 'node:fs/promises';
 
+import { physicalIosLaneEnabled } from '../runtime-options.js';
+
 export type HostCapability =
     | 'ios.physical'
     | 'ios.simulator'
@@ -62,7 +64,7 @@ export async function detectHostCapabilities(options: {
         exists(options.appiumRuntimeEntry ?? path.resolve('node_modules/appium-runtime/index.js')),
     ]);
     const capabilities: HostCapability[] = [];
-    const physicalIosEnabled = options.physicalIosEnabled ?? process.env.PHONE_FARM_ENABLE_PHYSICAL_IOS !== 'false';
+    const physicalIosEnabled = options.physicalIosEnabled ?? physicalIosLaneEnabled();
     if (appium || appiumRuntime) capabilities.push('appium');
     if (xcrun) capabilities.push('simctl');
     if (platform === 'darwin') {

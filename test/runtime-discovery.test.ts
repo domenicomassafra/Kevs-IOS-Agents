@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterRuntimeDevicesForWorker, parseSimctlDevices } from '../src/devices/runtime-discovery.js';
+import {
+    filterRuntimeDevicesForWorker, parseSimctlDevices, workerAllowsOperationalDevice,
+} from '../src/devices/runtime-discovery.js';
 
 test('parses available iOS simulators into Appium runtimes', () => {
     const devices = parseSimctlDevices(JSON.stringify({
@@ -24,4 +26,11 @@ test('simulator-only workers never advertise a connected physical iPhone', () =>
     ];
     assert.deepEqual(filterRuntimeDevicesForWorker(devices, false).map(({ udid }) => udid), ['SIM-1']);
     assert.deepEqual(filterRuntimeDevicesForWorker(devices, true).map(({ udid }) => udid), ['PHONE-1', 'SIM-1']);
+});
+
+test('worker operational gates reject disabled devices and disabled physical lanes', () => {
+    assert.equal(workerAllowsOperationalDevice({ kind: 'simulator' }, false), true);
+    assert.equal(workerAllowsOperationalDevice({ kind: 'simulator', disabled: true }, false), false);
+    assert.equal(workerAllowsOperationalDevice({ kind: 'physical' }, false), false);
+    assert.equal(workerAllowsOperationalDevice({ kind: 'physical' }, true), true);
 });

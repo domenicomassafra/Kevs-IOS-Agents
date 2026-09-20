@@ -55,7 +55,7 @@ npm ci
 npm run check
 npm run doctor:control-plane
 docker compose --env-file .env.minipc -f docker-compose.production.yml ps
-curl -fsS http://127.0.0.1:3000/health
+curl -fsS http://127.0.0.1:4050/health   # .env.minipc.example default
 ```
 
 ## macOS iPhone worker
@@ -63,12 +63,12 @@ curl -fsS http://127.0.0.1:3000/health
 Prepare a worker only on a Mac with full Xcode selected:
 
 ```bash
-cp .env.device-worker.example .env.devices   # first install only
+cp .env.device-worker.example .env           # first install only
 ./deploy/setup-device-worker.sh
 npm run doctor:device-worker
 ```
 
-Physical iPhone registration stays on the guided WDA path. iOS Simulator discovery/boot/attach stays on the Appium/XCUITest path. The worker exposes one authenticated worker API back to the MiniPC; it does not run a second scheduler or product database.
+Physical iPhone registration stays on the guided WDA path. iOS Simulator discovery/boot/attach stays on the Appium/XCUITest path. Set `PHONE_FARM_ENABLE_PHYSICAL_IOS=false` for a simulator-only worker; the worker then omits physical discovery and physical-lane launch agents. The worker exposes one authenticated worker API back to the MiniPC; it does not run a second scheduler or product database.
 
 The control plane and device worker use a versioned handshake. Run workers from the same released `main` line: stale, mismatched or non-iOS workers are kept offline/degraded and their advertised devices are never imported into the canonical registry. If two workers advertise the same UDID, that device is quarantined until ownership is unambiguous.
 

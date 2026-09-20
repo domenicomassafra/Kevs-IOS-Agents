@@ -240,6 +240,8 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.match(page.body, /data-device-view="compact"/);
     assert.match(page.body, /assets\/overview\.js\?v=/);
     assert.match(page.body, /Build a flow/);
+    assert.match(page.body, /aria-label="Primary"/);
+    assert.match(page.body, /href="\/" aria-current="page"/);
 
     const overviewAsset = await inject(app, { method: 'GET', url: '/assets/overview.js' });
     assert.equal(overviewAsset.statusCode, 200);
@@ -288,6 +290,10 @@ test('overview control center exposes the major product surfaces instead of hidi
     assert.equal(automationStyles.statusCode, 200);
     assert.match(automationStyles.body, /\.flow-schedule-bar > \[hidden\]/);
     assert.match(automationStyles.body, /\.flow-version-actions > \[hidden\]/);
+    assert.match(automationStyles.body, /--surface:\s*var\(--panel\)/);
+    assert.match(automationStyles.body, /--line:\s*var\(--border\)/);
+    assert.match(automationStyles.body, /prefers-reduced-motion:\s*reduce/);
+    assert.match(automationStyles.body, /button:focus-visible/);
 
     const runs = await inject(app, { method: 'GET', url: '/tasks' });
     assert.equal(runs.statusCode, 200);

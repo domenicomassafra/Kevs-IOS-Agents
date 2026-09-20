@@ -1,25 +1,26 @@
 # Getting started
 
-Phone Farm iOS drives physical iPhones from a local dashboard: guided device
-registration, a live screen with remote tap/swipe, and a PostgreSQL‑backed
-scheduler that runs versioned automation tasks (TikTok and Instagram plugins
-ship built‑in).
+Phone Farm iOS uses one Linux MiniPC control plane plus one or more macOS
+execution workers. The MiniPC owns the dashboard/API, PostgreSQL, schedules and
+canonical fleet state. A Mac owns Apple-specific transport for physical iPhones
+and iOS Simulators. TikTok, Instagram and Portable Flow tasks all pass through
+the same scheduler and evidence path.
 
 ## Requirements
 
 | Requirement | Notes |
 | --- | --- |
-| macOS + Xcode | Real‑device builds and signing. `xcode-select -p` must point at an Xcode install, not the Command Line Tools. |
-| Node.js 22+ | `engines.node >= 22`. The app runs TypeScript directly through `tsx`; there is no build step for the server. |
-| PostgreSQL 14+ | `docker compose up -d postgres` is provided, or bring your own and set `DATABASE_URL`. |
-| A physical iPhone | Developer‑enabled, trusted, connected by USB. |
-| An Apple Developer team | For signing WebDriverAgent. |
+| Linux MiniPC + Docker | Production control-plane authority. `deploy/setup-minipc.sh` installs the Compose stack and PostgreSQL. |
+| macOS + full Xcode | Required on each execution worker. `xcode-select -p` must point at an Xcode install, not Command Line Tools. |
+| Node.js 22+ | Required for source validation and macOS worker processes. |
+| iOS Simulator | Optional execution lane through the isolated Appium/XCUITest runtime. |
+| Physical iPhone + Apple Developer team | Optional physical lane. Required only when `PHONE_FARM_ENABLE_PHYSICAL_IOS=true`. |
 
-## 1. Xcode & first device pairing
+## 1. Prepare a macOS execution worker
 
-Everything downstream — signing WebDriverAgent, launching it as a UI test,
-the registration wizard's checks — assumes Xcode can already **see and sign
-for** the iPhone. Do this once, before touching the repo:
+Install and select full Xcode on every Mac that will expose iOS runtimes. A
+simulator-only worker can stop after Xcode/Appium setup. For a physical iPhone,
+Xcode must also be able to **see and sign for** the device:
 
 1. **Install the full Xcode** from the App Store (not just the Command Line
    Tools), open it once, and accept the licence:
@@ -30,10 +31,9 @@ for** the iPhone. Do this once, before touching the repo:
    ```
    `xcode-select -p` must now print `…/Xcode.app/Contents/Developer`.
 
-2. **Add your Apple ID** in Xcode → Settings → Accounts. Select the team and
-   note its **Team ID** (the 10-character string) — that's `XCODE_ORG_ID`
-   in step 3. A free personal team works for a single device; a paid team is
-   needed for more than one, and for the device list not to expire weekly.
+2. **Physical lane only:** add the signing account in Xcode → Settings →
+   Accounts, select the intended team, and record its Team ID as
+   `XCODE_ORG_ID`.
 
 3. **Pair the iPhone.** Connect it by USB, unlock it, tap **Trust This
    Computer**, enter the passcode. In Xcode → Window → **Devices and
@@ -45,54 +45,66 @@ for** the iPhone. Do this once, before touching the repo:
    Security → **Developer Mode** → on → restart → confirm. If the toggle
    isn't there yet, it appears after the first pair with Xcode.
 
-5. **Login keychain** — `wda:prepare` (step 5) signs with a certificate in
+5. **Login keychain** — `wda:prepare` signs with a certificate in
    your login keychain, which is only unlocked in a graphical session. Run it
    from Terminal.app / a remote desktop, not a bare SSH shell.
 
-Verify the phone is visible to the toolchain:
+For the physical lane, verify the phone is visible to the toolchain:
 
 ```sh
 xcrun xctrace list devices      # your iPhone must be under "Devices", not "Devices Offline"
 ```
 
-## 2. Install
+## 2. Install the canonical checkout
 
 ```sh
-git clone <this-repo> phone-farm
-cd phone-farm
-npm install
-npm run appium:install-driver     # installs the XCUITest driver into ./.appium2
+git clone <this-repo> Kevs-IOS-Agents
+cd Kevs-IOS-Agents
+npm ci
+npm run check
 ```
 
-## 3. Configure
+Use the same released `main` revision on the MiniPC and every execution worker.
+The MiniPC is the only control plane; a Mac worker must never start a competing
+dashboard/database authority.
+
+## 3. Configure and deploy the MiniPC
 
 ```sh
-cp .env.example .env
+cp .env.minipc.example .env.minipc
+# edit passwords, worker URLs and shared tokens
+./deploy/setup-minipc.sh
 ```
 
-Fill in at least:
-
-| Key | What it is |
-| --- | --- |
-| `IOS_PLATFORM_VERSION` | e.g. `17.5` — must match the device |
-| `XCODE_ORG_ID` | Apple Development **Team ID** (Xcode → Settings → Accounts) |
-| `WDA_BUNDLE_ID` | A bundle id you control, e.g. `com.yourorg.WebDriverAgentRunner` |
-| `DATABASE_URL` | `postgresql://phone_farm:PASSWORD@127.0.0.1:5432/phone_farm` |
-| `POSTGRES_PASSWORD` | Needed by `docker compose` if you use the bundled database |
-
-You don't need to put a device UDID in `.env`. The CLI scripts and the
-dashboard's registration wizard resolve the target device on their own; pass
-`--udid <udid>` (or set `IOS_UDID`) only to pin a specific one. Device
-passcodes stay out of `.env` too — see [devices & secrets](#devices-and-secrets).
-
-## 4. Database
+The production deployment owns PostgreSQL and the web/API service. Useful
+verification after setup:
 
 ```sh
-npm run db:up        # start the bundled Postgres (skip if you run your own)
-npm run db:migrate   # apply scheduler + pg-boss schema
+docker compose --env-file .env.minipc -f docker-compose.production.yml ps
+docker compose --env-file .env.minipc -f docker-compose.production.yml exec -T control-plane npm run doctor:control-plane
 ```
 
-## 5. Build WebDriverAgent
+See [distributed MiniPC deployment](deployment/distributed-minipc.md) for the
+private-network/Tailscale layout and current production ports.
+
+## 4. Configure each macOS worker
+
+```sh
+cp .env.device-worker.example .env
+# point DATABASE_URL and PHONE_FARM_CONTROL_PLANE_URL at the MiniPC
+# copy PHONE_FARM_DEVICE_WORKER_TOKEN and PHONE_FARM_INTERNAL_TOKEN from MiniPC config
+./deploy/setup-device-worker.sh
+```
+
+Set `PHONE_FARM_ENABLE_PHYSICAL_IOS=false` for a simulator-only worker. That
+setting suppresses physical-iPhone discovery, WDA/legacy-Appium launch agents,
+and direct physical-device control while keeping the Appium Simulator lane.
+
+The worker setup installs the required Appium runtimes, runs migrations against
+the MiniPC database, runs `doctor:device-worker`, and installs the selected
+launchd services. Inspect them with `npm run service -- status`.
+
+## 5. Prepare WebDriverAgent (physical lane only)
 
 ```sh
 npm run wda:prepare                 # the connected / sole registered device
@@ -100,7 +112,7 @@ npm run wda:prepare -- --udid <udid> # a specific device
 npm run wda:prepare -- --all        # every device in devices.json
 ```
 
-This patches the Appium‑bundled `appium-webdriveragent`, then runs
+This patches the Appium-bundled `appium-webdriveragent`, then runs
 `xcodebuild build-for-testing` signed with your team, once per target device.
 It ends with `** TEST BUILD SUCCEEDED **`.
 
@@ -111,22 +123,12 @@ It ends with `** TEST BUILD SUCCEEDED **`.
 > and `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k <pw>
 > ~/Library/Keychains/login.keychain-db` first.
 
-## 6. Run the four processes
+## 6. Open the control plane
 
-Each is long‑lived. In development that's four terminals; for an always‑on host,
-wrap each in a `launchd` agent (macOS) or systemd unit with your own process
-manager — they need no arguments, just the repo as the working directory and
-`.env` on the path.
-
-```sh
-npm run appium         # Appium 3 + XCUITest on :4725
-npm run wda:service    # per-device WebDriverAgent supervisor (Unix socket + :8100+/:9100+)
-npm run worker         # scheduler worker — runs due tasks
-npm run web            # dashboard + API on :3000
-```
-
-Open <http://127.0.0.1:3000>, go to **Register device**, pick the connected
-device, and step through the checks. Unlock the phone when WDA first launches.
+Open the MiniPC dashboard through its configured private/Tailscale endpoint.
+The browser never needs direct access to Appium or WDA ports on the Mac. Go to
+**Add device** to attach a booted Simulator or start the guided physical-iPhone
+registration flow. Unlock the phone when WDA first launches.
 
 ## 7. Schedule something
 
@@ -187,9 +189,12 @@ Registered devices live in `devices.json` (git‑ignored):
 | --- | --- |
 | `wda: error … stale or corrupted` | Re‑run `npm run wda:prepare`; delete `~/Library/Developer/Xcode/DerivedData/WebDriverAgent-*` if it keeps producing an empty `.app`. |
 | `wda: unlock-required` | Physically unlock the iPhone once. |
-| `Appium is unavailable on port 4725` | `npm run appium` not running, or a stale process on the port. |
+| physical device is missing from a worker | Check `PHONE_FARM_ENABLE_PHYSICAL_IOS`, `npm run doctor:device-worker`, USB trust and Xcode signing. |
+| Simulator is missing | Check `npm run doctor:device-worker`, `xcrun simctl list devices available`, and the `appium-runtime` launchd service. |
+| worker is shown offline on MiniPC | Verify the private worker URL/token and `npm run service -- status` on the Mac. |
 | web returns 401 everywhere | An auth provider is configured — sign in, or unset `PHONE_FARM_AUTH_PLUGIN` on loopback. |
 | `sh: appium: command not found` in an agent | Invoke via `node node_modules/appium/index.js …` if npm did not link the bin. |
 
-`GET /health` lists the loaded plugins and versions. `wda:service`'s socket
-has `/health` with per‑device state.
+`GET /health` on the MiniPC lists the loaded plugins and versions. Physical
+workers also expose per-device WDA state through their local supervisor; do not
+publish WDA/Appium ports outside the execution host.

@@ -20,7 +20,7 @@
                     <span class="brand-by">iPhone + iOS Simulator control</span>
                 </span>
             </a>
-            <nav class="topbar-nav"><a class="nav-link is-active" href="/">Overview</a><a class="nav-link" href="/fleet">Fleet</a><a class="nav-link" href="/automations">Automations</a><a class="nav-link" href="/tasks">Runs</a><a class="button primary" href="/devices/register">Add device</a>__PLUGIN_NAV____AUTH_NAV__</nav>
+            <nav class="topbar-nav" aria-label="Primary"><a class="nav-link is-active" href="/" aria-current="page">Overview</a><a class="nav-link" href="/fleet">Fleet</a><a class="nav-link" href="/automations">Automations</a><a class="nav-link" href="/tasks">Runs</a><a class="button primary" href="/devices/register">Add device</a>__PLUGIN_NAV____AUTH_NAV__</nav>
         </div>
     </header>
     <main class="shell">
@@ -42,7 +42,7 @@
 
         <div class="overview-section-head">
             <div><span class="eyebrow">Infrastructure</span><h2>Execution layer</h2></div>
-            <button class="button secondary" type="button" hx-get="/api/fragments/devices" hx-target="#device-list" hx-swap="outerHTML">Refresh</button>
+            <button class="button secondary" type="button" aria-controls="device-list" hx-get="/api/fragments/devices" hx-target="#device-list" hx-swap="outerHTML">Refresh devices</button>
         </div>
         <section id="fleet-health" class="fleet-health-panel" hx-get="/api/fragments/fleet-health" hx-trigger="load, every 10s" hx-swap="outerHTML" aria-live="polite">
             <div class="loading-card"><span class="spinner" aria-hidden="true"></span>Loading fleet health…</div>
